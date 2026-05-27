@@ -1362,6 +1362,412 @@ pre {
   }
 }
 
+.app-shell.theme-dark {
+  --app-bg: #050607;
+  --sidebar-bg: #070809;
+  --topbar-bg: #050607;
+  --panel: #0d0f11;
+  --panel-raised: #111317;
+  --panel-muted: #15181c;
+  --field: #0a0c0e;
+  --field-strong: #111418;
+  --line: #24282e;
+  --line-soft: #191d22;
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-soft: #747983;
+  --button: #171a1f;
+  --button-hover: #20242a;
+  --button-primary: #f5f5f5;
+  --button-primary-text: #050607;
+  --selected: #171a1f;
+  --selected-strong: #20242a;
+  --accent: #5aa89d;
+  --accent-soft: rgba(90, 168, 157, 0.12);
+  --terminal-bg: #050607;
+  --terminal-text: #e5e7eb;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
+}
+
+.app-shell.theme-light {
+  --app-bg: #f6f6f4;
+  --sidebar-bg: #fbfbfa;
+  --topbar-bg: #fbfbfa;
+  --panel: #ffffff;
+  --panel-raised: #ffffff;
+  --panel-muted: #f3f3f1;
+  --field: #ffffff;
+  --field-strong: #f7f7f5;
+  --line: #deded9;
+  --line-soft: #ecece8;
+  --text: #151515;
+  --text-muted: #696963;
+  --text-soft: #8a8a84;
+  --button: #f4f4f1;
+  --button-hover: #e9e9e4;
+  --button-primary: #151515;
+  --button-primary-text: #ffffff;
+  --selected: #ededeb;
+  --selected-strong: #e5e5e0;
+  --accent: #4d8f83;
+  --accent-soft: rgba(77, 143, 131, 0.08);
+  --terminal-bg: #111111;
+  --terminal-text: #f4f4f4;
+  --shadow: 0 1px 2px rgba(15, 15, 15, 0.06);
+}
+
+.app-shell {
+  background: var(--app-bg);
+  color: var(--text);
+}
+
+.app-sidebar,
+.window-titlebar,
+.toolbelt {
+  background: var(--sidebar-bg);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.window-titlebar {
+  background: var(--topbar-bg);
+}
+
+.workspace {
+  background: var(--app-bg);
+}
+
+.brand-mark,
+.avatar {
+  background: var(--button-primary);
+  border-color: var(--line);
+  color: var(--button-primary-text);
+}
+
+.brand h1,
+.account-strip strong,
+.title-center,
+.title-center span,
+.tool-title,
+.message-meta strong,
+.plan-row strong,
+.card-head span,
+.metric-grid strong,
+.terminal-head strong {
+  color: var(--text);
+}
+
+.brand span,
+.account-strip span,
+.nav-list small,
+.history-list small,
+.quiet,
+.nav-head,
+.history-list time,
+.title-center small,
+.repo-picker span,
+.compact-select span,
+.composer-tabs span,
+.message-meta time,
+.branch-readout small,
+.tool-card small,
+.plan-row span,
+.card-head code,
+.engine-grid span,
+.metric-grid span,
+.terminal-head span,
+.session-note,
+.command-history p,
+.inspector-card p {
+  color: var(--text-muted);
+}
+
+.primary-nav .nav-list,
+.search-box,
+.repo-picker,
+.branch-chip,
+.model-chip,
+.square-button,
+.connection-pill,
+.compact-select,
+.check-chip,
+.theme-switch,
+.terminal-actions label,
+.model-select,
+.repo-readout,
+.approval-select,
+.branch-readout,
+.engine-grid label,
+.toggle-row label,
+.metric-grid div,
+.file-list span,
+.safety-list span,
+.capability-list span,
+.tool-card input,
+.composer-footer select,
+input,
+textarea,
+select {
+  background: var(--field);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.conversation-panel,
+.inspector,
+.terminal-dock,
+.tool-card,
+.hero-card {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.inspector-card,
+.composer,
+.composer-footer,
+.terminal-head,
+.message,
+.plan-row + .plan-row,
+.inspector-tabs,
+.mode-tabs,
+.toolbelt {
+  border-color: var(--line-soft);
+}
+
+.inspector-card.hero-card {
+  background:
+    linear-gradient(180deg, var(--accent-soft), transparent 84px),
+    var(--panel);
+}
+
+.nav-list button,
+.history-list button,
+.message-actions button,
+.secondary-button,
+.composer-footer button,
+.workflow-grid,
+.tool-card .secondary-button,
+.auth-actions button.secondary-button,
+.card-head button,
+.workflow-grid button {
+  background: transparent;
+  color: var(--text);
+}
+
+.sidebar-icon,
+.doctor-button,
+.message-actions button,
+.secondary-button,
+.composer-footer button,
+.tool-card .secondary-button,
+.auth-actions button.secondary-button {
+  background: var(--button);
+  color: var(--text);
+}
+
+.nav-list button.active,
+.history-list button.active,
+.workflow-grid button.active {
+  background: var(--selected);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.nav-list button.active svg,
+.history-list button.active svg,
+.model-chip svg,
+.plan-row svg,
+.safety-list svg,
+.capability-list svg,
+.model-select svg:last-child {
+  color: var(--text-muted);
+}
+
+.mode-tabs,
+.inspector-tabs {
+  background: var(--panel);
+}
+
+.mode-tabs button,
+.inspector-tabs button,
+.composer-tabs button {
+  color: var(--text-muted);
+}
+
+.mode-tabs button.active,
+.inspector-tabs button.active,
+.composer-tabs button.active {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.mode-tabs kbd,
+.tab-chip,
+.bridge-pill.connected,
+.health-pill.ready {
+  background: var(--selected);
+  color: var(--text);
+}
+
+.health-pill.missing,
+.health-pill.idle,
+.connection-pill.blocked {
+  background: var(--button);
+  color: var(--text-muted);
+}
+
+.connection-pill.ready,
+.terminal-head span.running {
+  color: var(--text);
+}
+
+.connection-pill.ready svg,
+.terminal-head span.running::before {
+  color: var(--accent);
+}
+
+.primary-run,
+.mini-run,
+.auth-actions button,
+.terminal-actions button,
+.tool-card button {
+  background: var(--button-primary);
+  color: var(--button-primary-text);
+  box-shadow: none;
+}
+
+.primary-run:hover:not(:disabled),
+.mini-run:hover:not(:disabled),
+.auth-actions button:hover:not(:disabled),
+.terminal-actions button:hover:not(:disabled),
+.tool-card button:hover:not(:disabled) {
+  background: var(--button-primary);
+  box-shadow: none;
+  filter: brightness(0.96);
+}
+
+.theme-switch {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 2px;
+  min-height: 38px;
+  padding: 3px;
+}
+
+.theme-switch button {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 0 8px;
+}
+
+.theme-switch button.active {
+  background: var(--selected-strong);
+  color: var(--text);
+}
+
+.message-avatar {
+  background: var(--field-strong);
+  color: var(--text-muted);
+}
+
+.grok-avatar {
+  background: var(--button-primary);
+  color: var(--button-primary-text);
+}
+
+.message p {
+  color: var(--text);
+}
+
+.message-meta span {
+  color: var(--text-muted);
+}
+
+.plan-card {
+  background: var(--panel-raised);
+  border-color: var(--line);
+}
+
+.composer textarea,
+.terminal-actions input,
+.repo-picker input,
+.search-box input,
+.engine-grid select,
+.engine-grid input,
+.approval-select select,
+.compact-select select,
+.model-chip select {
+  background: transparent;
+  color: var(--text);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--line);
+  box-shadow: 0 0 0 2px var(--selected);
+}
+
+.terminal-view,
+.mini-output {
+  background: var(--terminal-bg);
+  color: var(--terminal-text);
+}
+
+.terminal-head,
+.composer,
+.composer-footer {
+  background: var(--panel);
+}
+
+.terminal-prefix {
+  color: #9ca3af;
+}
+
+.terminal-system {
+  color: #d1d5db;
+}
+
+.terminal-code {
+  border-left-color: var(--accent);
+  color: #e5e7eb;
+}
+
+.toggle-row input,
+.check-chip input,
+.checkline input {
+  accent-color: var(--accent);
+}
+
+.theme-light .app-sidebar {
+  border-right-color: var(--line);
+}
+
+.theme-light .terminal-view,
+.theme-light .mini-output {
+  background: #111111;
+  color: #f4f4f4;
+}
+
+.theme-light .mode-tabs,
+.theme-light .inspector-tabs {
+  background: #ffffff;
+}
+
+.theme-light .inspector-tabs button {
+  color: var(--text-muted);
+}
+
+.theme-light .inspector-tabs button.active {
+  color: var(--text);
+}
+
 @media (max-width: 1280px) {
   .app-shell {
     grid-template-columns: 248px minmax(0, 1fr);
