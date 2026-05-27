@@ -19,6 +19,7 @@ import {
   Layers3,
   Loader2,
   MessageSquare,
+  Moon,
   MoreHorizontal,
   PanelRight,
   Play,
@@ -30,6 +31,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   SquareTerminal,
+  Sun,
   TerminalSquare,
   Trash2,
   User,
@@ -59,6 +61,7 @@ type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks
 type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 type PermissionMode = "default" | "acceptEdits" | "auto" | "dontAsk" | "plan";
+type ThemeMode = "dark" | "light";
 type GrokModelId =
   | "grok-build"
   | "grok-build-0.1"
@@ -156,6 +159,7 @@ type SessionState = {
   actionPolicy?: ActionPolicy;
   codingWorkflow?: string;
   chromeExtensionId?: string;
+  themeMode?: ThemeMode;
   lastRun?: ToolRun | null;
   history?: ToolRun[];
 };
@@ -187,6 +191,7 @@ const storageKeys = {
   codingWorkflow: "grok-desktop-coding-workflow",
   lastRun: "grok-desktop-last-run",
   runHistory: "grok-desktop-run-history",
+  themeMode: "grok-desktop-theme-mode",
   inspectorTab: "grok-desktop-inspector-tab",
   modelPreset: "grok-desktop-model-preset",
   customModel: "grok-desktop-custom-model",
@@ -467,6 +472,10 @@ function isPermissionMode(value: unknown): value is PermissionMode {
   return value === "default" || value === "acceptEdits" || value === "auto" || value === "dontAsk" || value === "plan";
 }
 
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === "dark" || value === "light";
+}
+
 function isToolRun(value: unknown): value is ToolRun {
   if (!value || typeof value !== "object") return false;
   const run = value as Partial<ToolRun>;
@@ -680,6 +689,10 @@ function App() {
   const [chromeExtensionId, setChromeExtensionId] = useState(
     () => window.localStorage.getItem(storageKeys.chromeExtensionId) ?? "",
   );
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = window.localStorage.getItem(storageKeys.themeMode);
+    return isThemeMode(stored) ? stored : "dark";
+  });
   const [statuses, setStatuses] = useState<ToolStatus[]>([]);
   const [lastRun, setLastRun] = useState<ToolRun | null>(() => storedLastRun());
   const [ecosystemRun, setEcosystemRun] = useState<ToolRun | null>(null);
@@ -1375,6 +1388,9 @@ function App() {
           if (typeof restored.chromeExtensionId === "string") {
             setChromeExtensionId(restored.chromeExtensionId);
           }
+          if (isThemeMode(restored.themeMode)) {
+            setThemeMode(restored.themeMode);
+          }
           setHistory(restoredHistory);
           setLastRun(restoredLastRun);
 
@@ -1416,6 +1432,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.chromeExtensionId, chromeExtensionId);
   }, [chromeExtensionId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.themeMode, themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
@@ -1501,6 +1521,7 @@ function App() {
         actionPolicy,
         codingWorkflow,
         chromeExtensionId,
+        themeMode,
         lastRun,
         history,
       };
@@ -1524,6 +1545,7 @@ function App() {
     mode,
     sessionLoaded,
     shellCommand,
+    themeMode,
   ]);
 
   useEffect(() => {
@@ -1582,7 +1604,7 @@ function App() {
   const grokVersion = grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown");
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
         <div className="mac-lights" aria-hidden="true">
           <span className="red" />
@@ -1778,6 +1800,26 @@ function App() {
               />
               <span>Check</span>
             </label>
+            <div className="theme-switch" aria-label="Theme">
+              <button
+                aria-pressed={themeMode === "dark"}
+                className={themeMode === "dark" ? "active" : ""}
+                onClick={() => setThemeMode("dark")}
+                type="button"
+              >
+                <Moon size={14} />
+                <span>Dark</span>
+              </button>
+              <button
+                aria-pressed={themeMode === "light"}
+                className={themeMode === "light" ? "active" : ""}
+                onClick={() => setThemeMode("light")}
+                type="button"
+              >
+                <Sun size={14} />
+                <span>Light</span>
+              </button>
+            </div>
             <span className={`connection-pill ${isGrokReady ? "ready" : "blocked"}`}>
               {isGrokReady ? <CheckCircle2 size={15} /> : <CircleAlert size={15} />}
               {statusLabel}

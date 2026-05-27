@@ -233,7 +233,7 @@ BROWSER_USE_API_KEY=
 - Absorb Repo can inspect local repositories or clone remote git URLs.
 - Absorb Repo writes a manifest, language stats, important-file list, command hints, and summary.
 - Output panel shows command, cwd, duration, exit code, timeout state, stdout/stderr, and run history.
-- UIUX concept art generated with `imagegen` is saved at `docs/design/grok-desktop-uiux-concept.png` and `docs/design/grok-desktop-grok-style-uiux-v2.png`.
+- UIUX concept art generated with `imagegen` is saved at `docs/design/grok-desktop-uiux-concept.png`, `docs/design/grok-desktop-grok-style-uiux-v2.png`, and the restrained dark/light direction at `docs/design/grok-desktop-restrained-dark-light-uiux.png`.
 
 ## Known Limits
 
