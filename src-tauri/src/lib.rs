@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     env, fs,
     io::{BufRead, BufReader},
     path::PathBuf,
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -16,6 +17,8 @@ use tauri::{AppHandle, Emitter};
 extern "C" {
     fn setpgid(pid: i32, pgid: i32) -> i32;
 }
+
+static GROK_RUNS: OnceLock<Arc<Mutex<HashMap<String, u32>>>> = OnceLock::new();
 
 #[derive(Serialize)]
 struct ToolStatus {
@@ -293,6 +296,21 @@ fn grok_startup_timeout_secs(default_secs: u64) -> u64 {
         .unwrap_or(default_secs)
 }
 
+fn grok_silent_answer_timeout_secs(default_secs: u64) -> u64 {
+    env::var("GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default_secs)
+}
+
+fn grok_max_turns(default_turns: u8) -> u8 {
+    env::var("GROK_DESKTOP_GROK_MAX_TURNS")
+        .ok()
+        .and_then(|value| value.parse::<u8>().ok())
+        .filter(|value| (1..=40).contains(value))
+        .unwrap_or(default_turns)
+}
+
 fn prepare_child_process(command: &mut Command) {
     #[cfg(unix)]
     unsafe {
@@ -306,16 +324,85 @@ fn prepare_child_process(command: &mut Command) {
     }
 }
 
-fn terminate_child_tree(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        let process_group = format!("-{}", child.id());
-        let _ = Command::new("kill").args(["-TERM", &process_group]).status();
-        thread::sleep(Duration::from_millis(250));
-        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
+fn child_pids(pid: u32) -> Vec<u32> {
+    Command::new("pgrep")
+        .args(["-P", &pid.to_string()])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|line| line.trim().parse::<u32>().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn collect_process_tree(pid: u32, seen: &mut HashSet<u32>) {
+    if !seen.insert(pid) {
+        return;
     }
 
+    for child in child_pids(pid) {
+        collect_process_tree(child, seen);
+    }
+}
+
+fn terminate_pid_tree(pid: u32) {
+    #[cfg(unix)]
+    {
+        let process_group = format!("-{pid}");
+        let _ = Command::new("kill").args(["-TERM", &process_group]).status();
+
+        let mut processes = HashSet::new();
+        collect_process_tree(pid, &mut processes);
+        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+            let _ = Command::new("kill")
+                .args(["-TERM", &child_pid.to_string()])
+                .status();
+        }
+
+        thread::sleep(Duration::from_millis(250));
+
+        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
+        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+            let _ = Command::new("kill")
+                .args(["-KILL", &child_pid.to_string()])
+                .status();
+        }
+    }
+}
+
+fn terminate_child_tree(child: &mut Child) {
+    terminate_pid_tree(child.id());
     let _ = child.kill();
+}
+
+fn grok_run_registry() -> &'static Arc<Mutex<HashMap<String, u32>>> {
+    GROK_RUNS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+fn register_grok_run(run_id: &str, pid: u32) {
+    if let Ok(mut registry) = grok_run_registry().lock() {
+        registry.insert(run_id.to_string(), pid);
+    }
+}
+
+fn unregister_grok_run(run_id: &str) {
+    if let Ok(mut registry) = grok_run_registry().lock() {
+        registry.remove(run_id);
+    }
+}
+
+struct GrokRunGuard {
+    run_id: String,
+}
+
+impl Drop for GrokRunGuard {
+    fn drop(&mut self) {
+        unregister_grok_run(&self.run_id);
+    }
 }
 
 fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
@@ -775,6 +862,8 @@ fn grok_args(
         args.push("--no-subagents".to_string());
     }
 
+    args.push("--max-turns".to_string());
+    args.push(grok_max_turns(12).to_string());
     args.push("-p".to_string());
     args.push(prepared_prompt);
     args.push("--output-format".to_string());
@@ -1036,12 +1125,17 @@ fn run_external_command_streaming(
             return run;
         }
     };
+    register_grok_run(&run_id, child.id());
+    let _run_guard = GrokRunGuard {
+        run_id: run_id.clone(),
+    };
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let output = Arc::new(Mutex::new(String::new()));
     let error_output = Arc::new(Mutex::new(String::new()));
     let last_activity = Arc::new(Mutex::new(Instant::now()));
+    let last_stdout_activity = Arc::new(Mutex::new(Instant::now()));
     let mut stream_threads = Vec::new();
 
     if let Some(stdout) = stdout {
@@ -1051,6 +1145,7 @@ fn run_external_command_streaming(
         let command = display_command.clone();
         let output = Arc::clone(&output);
         let last_activity = Arc::clone(&last_activity);
+        let last_stdout_activity = Arc::clone(&last_stdout_activity);
         stream_threads.push(thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 let line = strip_ansi_codes(&line);
@@ -1059,6 +1154,9 @@ fn run_external_command_streaming(
                     buffer.push('\n');
                 }
                 if let Ok(mut timestamp) = last_activity.lock() {
+                    *timestamp = Instant::now();
+                }
+                if let Ok(mut timestamp) = last_stdout_activity.lock() {
                     *timestamp = Instant::now();
                 }
                 emit_grok_event(
@@ -1115,24 +1213,33 @@ fn run_external_command_streaming(
     }
 
     let timeout = Duration::from_secs(timeout_secs);
-    let startup_timeout_secs = grok_startup_timeout_secs(75);
+    let startup_timeout_secs = grok_startup_timeout_secs(240);
     let startup_timeout = Duration::from_secs(startup_timeout_secs);
+    let silent_answer_timeout_secs = grok_silent_answer_timeout_secs(180);
+    let silent_answer_timeout = Duration::from_secs(silent_answer_timeout_secs);
     let mut timed_out = false;
     let mut timeout_note: Option<String> = None;
+    let mut last_heartbeat = Instant::now();
 
     loop {
-        let has_output = output
+        let has_stdout_output = output
             .lock()
             .map(|buffer| !buffer.trim().is_empty())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        let has_any_output = has_stdout_output
             || error_output
                 .lock()
                 .map(|buffer| !buffer.trim().is_empty())
                 .unwrap_or(false);
-        let no_startup_activity = !has_output
+        let no_startup_activity = !has_any_output
             && last_activity
                 .lock()
                 .map(|timestamp| timestamp.elapsed() >= startup_timeout)
+                .unwrap_or(false);
+        let no_stdout_answer = !has_stdout_output
+            && last_stdout_activity
+                .lock()
+                .map(|timestamp| timestamp.elapsed() >= silent_answer_timeout)
                 .unwrap_or(false);
 
         match child.try_wait() {
@@ -1145,13 +1252,43 @@ fn run_external_command_streaming(
                 terminate_child_tree(&mut child);
                 break;
             }
+            Ok(None) if no_stdout_answer => {
+                timed_out = true;
+                timeout_note = Some(format!(
+                    "Grok produced no user-visible answer for {silent_answer_timeout_secs}s. The run was stopped so the desktop UI can recover."
+                ));
+                terminate_child_tree(&mut child);
+                break;
+            }
             Ok(None) if start.elapsed() >= timeout => {
                 timed_out = true;
                 timeout_note = Some(format!("Command timed out after {timeout_secs}s."));
                 terminate_child_tree(&mut child);
                 break;
             }
-            Ok(None) => thread::sleep(Duration::from_millis(120)),
+            Ok(None) => {
+                if last_heartbeat.elapsed() >= Duration::from_secs(8) {
+                    let elapsed = start.elapsed().as_secs();
+                    emit_grok_event(
+                        &app,
+                        GrokStreamEvent {
+                            run_id: run_id.clone(),
+                            stream: "system".to_string(),
+                            line: format!(
+                                "Grok is still working ({elapsed}s elapsed). Use Stop if this run is no longer useful."
+                            ),
+                            done: false,
+                            ok: None,
+                            exit_code: None,
+                            duration_ms: Some(start.elapsed().as_millis()),
+                            cwd: cwd_string.clone(),
+                            command: display_command.clone(),
+                        },
+                    );
+                    last_heartbeat = Instant::now();
+                }
+                thread::sleep(Duration::from_millis(120));
+            }
             Err(error) => {
                 let stderr = error.to_string();
                 emit_grok_event(
@@ -1312,6 +1449,21 @@ fn run_grok_streaming_task(
         Some(cwd),
         command_timeout_secs(600),
     )
+}
+
+#[tauri::command]
+fn cancel_grok_run(run_id: String) -> bool {
+    let pid = grok_run_registry()
+        .lock()
+        .ok()
+        .and_then(|registry| registry.get(&run_id).copied());
+
+    if let Some(pid) = pid {
+        terminate_pid_tree(pid);
+        true
+    } else {
+        false
+    }
 }
 
 #[tauri::command]
@@ -1650,6 +1802,7 @@ pub fn run() {
             start_grok_login,
             run_grok_task,
             run_grok_streaming_task,
+            cancel_grok_run,
             run_shell_command,
             inspect_grok_environment,
             list_grok_models,

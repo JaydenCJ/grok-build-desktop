@@ -89,7 +89,7 @@ grok --no-alt-screen --model <selected-model> --effort <agent-effort> \
   [--reasoning-effort <reasoning-effort>] [--best-of-n <n>] \
   [--experimental-memory] [--disable-web-search] [--no-subagents] \
   [--permission-mode <mode>] [--check] \
-  -p "<mode context + user task>" --output-format plain
+  --max-turns 12 -p "<mode context + user task>" --output-format plain
 ```
 
 Optional overrides:
@@ -202,12 +202,14 @@ GROK_DESKTOP_GROK_CMD=grok
 GROK_DESKTOP_GROK_ARGS="--no-alt-screen --model grok-build --effort high -p {prompt} --output-format plain"
 GROK_DESKTOP_GROK_CHECK=false
 GROK_DESKTOP_COMMAND_TIMEOUT_SECS=240
-GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS=75
+GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS=240
+GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS=180
+GROK_DESKTOP_GROK_MAX_TURNS=12
 XAI_API_KEY=
 BROWSER_USE_API_KEY=
 ```
 
-`{prompt}` receives the mode context plus the current task. `{mode}` is also available in argument templates. `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS` protects streaming Grok runs that produce no stdout/stderr during startup, then cleans up the spawned process tree.
+`{prompt}` receives the mode context plus the current task. `{mode}` is also available in argument templates. Grok Desktop also emits heartbeat progress while headless Grok is silent, supports Stop from the UI, applies a bounded default turn limit, and cleans up the spawned process tree when a run is stopped or times out.
 
 ## Current Features
 
@@ -219,9 +221,9 @@ BROWSER_USE_API_KEY=
 - The visual direction now follows a Grok/xAI-style command surface with a dark left rail and top command bar, bright work area, and a right capability inspector.
 - Coding workflows include Analyze, Implement, Review, Debug, Tests, and Refactor.
 - Action policies include Review only, Patch ready, and Autopilot.
-- Grok run controls include selectable effort, permission mode, and optional `--check` self-verification.
+- Grok run controls include selectable effort, permission mode, optional `--check` self-verification, and a Stop action for long-running headless jobs.
 - Grok and browser-use subprocess calls are wrapped with timeouts and clear errors.
-- Grok Build CLI defaults to `grok-build`, but the UI can select `grok-build-0.1`, Grok 4.x aliases, fast reasoning/non-reasoning presets, or a custom model ID accepted by the installed Grok CLI. Effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and Grok's headless `--check` self-verification are all exposed in the UI.
+- Grok Build CLI defaults to `grok-build` with Medium effort, but the UI can select `grok-build-0.1`, Grok 4.x aliases, fast reasoning/non-reasoning presets, or a custom model ID accepted by the installed Grok CLI. Effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and Grok's headless `--check` self-verification are all exposed in the UI. Web search and subagents default off for local code tasks so ordinary repo analysis does not automatically fan out into unrelated remote or MCP work.
 - Grok Build CLI supports project working directories and realtime stdout/stderr streaming in Coding Mode.
 - Grok Capability inspector exposes tabs for Context, Skills, MCP, Agents, Plugins, Hooks, and Permissions. It combines `grok inspect` discovery with managed `grok mcp`, `grok plugin`, and `grok sessions` commands.
 - Local Terminal commands can run through `zsh -lc` from the selected project path.
