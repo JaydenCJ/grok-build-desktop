@@ -1,0 +1,18 @@
+[project]
+name = "grok-desktop-scripts"
+version = "0.1.0"
+description = "Python script layer for Grok Desktop desktop agent integrations."
+requires-python = ">=3.11"
+dependencies = [
+  "browser-use>=0.5.0",
+  "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6.0",
+]
+
+[tool.ruff]
+line-length = 96
+target-version = "py311"

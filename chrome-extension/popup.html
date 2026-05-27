@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="src/popup.css" />
+    <title>Grok Desktop Agent</title>
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header>
+        <div class="mark">V</div>
+        <div>
+          <h1>Grok Desktop</h1>
+          <p>Chrome companion</p>
+        </div>
+        <span id="bridge-status" class="bridge-status">Bridge idle</span>
+      </header>
+
+      <section class="controls">
+        <button id="track">Watch current tab</button>
+        <button id="control">Control current tab</button>
+      </section>
+
+      <section class="safety-panel">
+        <div>
+          <span>Responsible control</span>
+          <p>Visible, focus-safe, user-approved actions.</p>
+        </div>
+        <label>
+          <input id="focus-guard" type="checkbox" />
+          <span>Respect typing focus</span>
+        </label>
+        <label>
+          <input id="visible-motion" type="checkbox" />
+          <span>Show Agent cursor motion</span>
+        </label>
+        <label>
+          <input id="controlled-only" type="checkbox" />
+          <span>Change only controlled tabs</span>
+        </label>
+      </section>
+
+      <section class="tabs">
+        <div class="section-title">
+          <span>Agent tabs</span>
+          <div class="section-actions">
+            <button id="snapshot-all" title="Snapshot all tabs">Scan all</button>
+            <button id="refresh" title="Refresh">Refresh</button>
+          </div>
+        </div>
+        <div id="tab-list" class="tab-list"></div>
+      </section>
+    </main>
+    <script src="src/popup.js"></script>
+  </body>
+</html>
