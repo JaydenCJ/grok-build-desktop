@@ -23,7 +23,7 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 - The Mac app persists session state through `load_session_state` and `save_session_state` at `~/Library/Application Support/Grok Desktop/session_state.json`.
 - External commands are wrapped with a timeout so missing or stuck CLIs do not permanently block the app.
 - Grok streaming uses a selected working directory so future ACP, Plan Mode, or sub-agent backends can preserve the same prompt/cwd contract.
-- The current visual direction is captured in `docs/design/grok-desktop-uiux-concept.png`, the Grok/xAI iteration in `docs/design/grok-desktop-grok-style-uiux-v2.png`, and the restrained pure dark/light system in `docs/design/grok-desktop-restrained-dark-light-uiux.png`.
+- The current visual direction is captured in `docs/design/grok-desktop-uiux-concept.png`, the Grok/xAI iteration in `docs/design/grok-desktop-grok-style-uiux-v2.png`, the restrained pure dark/light system in `docs/design/grok-desktop-restrained-dark-light-uiux.png`, and the latest power-clean 10-point direction in `docs/design/grok-desktop-10pt-power-clean-ui.png`.
 
 ## Platform Adapter Shape
 
@@ -37,6 +37,7 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 - `GROK_DESKTOP_PYTHON`: Python executable for scripts and package checks.
 - `GROK_DESKTOP_GROK_CMD`: Grok CLI executable.
 - `GROK_DESKTOP_GROK_ARGS`: whitespace-split Grok arguments. Use `{prompt}` and `{mode}` placeholders.
+- `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS`: startup watchdog for streaming Grok runs with no stdout/stderr activity.
 - `XAI_API_KEY`: optional Grok API key auth visible to the spawned CLI process.
 
 ## Next Integration Targets

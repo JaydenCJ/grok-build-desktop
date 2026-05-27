@@ -202,11 +202,12 @@ GROK_DESKTOP_GROK_CMD=grok
 GROK_DESKTOP_GROK_ARGS="--no-alt-screen --model grok-build --effort high -p {prompt} --output-format plain"
 GROK_DESKTOP_GROK_CHECK=false
 GROK_DESKTOP_COMMAND_TIMEOUT_SECS=240
+GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS=75
 XAI_API_KEY=
 BROWSER_USE_API_KEY=
 ```
 
-`{prompt}` receives the mode context plus the current task. `{mode}` is also available in argument templates.
+`{prompt}` receives the mode context plus the current task. `{mode}` is also available in argument templates. `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS` protects streaming Grok runs that produce no stdout/stderr during startup, then cleans up the spawned process tree.
 
 ## Current Features
 
@@ -233,7 +234,7 @@ BROWSER_USE_API_KEY=
 - Absorb Repo can inspect local repositories or clone remote git URLs.
 - Absorb Repo writes a manifest, language stats, important-file list, command hints, and summary.
 - Output panel shows command, cwd, duration, exit code, timeout state, stdout/stderr, and run history.
-- UIUX concept art generated with `imagegen` is saved at `docs/design/grok-desktop-uiux-concept.png`, `docs/design/grok-desktop-grok-style-uiux-v2.png`, and the restrained dark/light direction at `docs/design/grok-desktop-restrained-dark-light-uiux.png`.
+- UIUX concept art generated with `imagegen` is saved at `docs/design/grok-desktop-uiux-concept.png`, `docs/design/grok-desktop-grok-style-uiux-v2.png`, the restrained dark/light direction at `docs/design/grok-desktop-restrained-dark-light-uiux.png`, and the latest power-clean 10-point direction at `docs/design/grok-desktop-10pt-power-clean-ui.png`.
 
 ## Known Limits
 
