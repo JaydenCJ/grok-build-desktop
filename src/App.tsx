@@ -358,8 +358,6 @@ const defaultStatuses: ToolStatus[] = [
   },
 ];
 
-const spaces = ["Grok Desktop", "Mobile Apps", "Infra Tools"];
-
 const primaryNavItems = [
   { label: "Spaces", meta: "Work areas" },
   { label: "Projects", meta: "Repositories" },
@@ -1574,8 +1572,6 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busyRunner, drafts, mode]);
 
-  const currentWorkflow =
-    codingPresets.find((preset) => preset.id === codingWorkflow) ?? codingPresets[0];
   const currentPolicy = actionPolicies[actionPolicy];
   const grokToolStatus = statusMap.grok;
   const isGrokReady = Boolean(grokStatus?.authenticated);
@@ -1602,7 +1598,6 @@ function App() {
   const hookItems = grokInspectSection(inspectOutput, "Hooks", 8);
   const permissionsSource = grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected");
   const grokVersion = grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown");
-
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
@@ -1628,23 +1623,6 @@ function App() {
                 {item.label === "Projects" ? <FolderGit2 size={16} /> : item.label === "Sessions" ? <History size={16} /> : item.label === "Memory" ? <Sparkles size={16} /> : item.label === "Settings" ? <Settings size={16} /> : <Layers3 size={16} />}
                 <span>{item.label}</span>
                 <small>{item.meta}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="nav-section">
-          <div className="nav-head">
-            <span>Spaces</span>
-            <button aria-label="New space" className="sidebar-icon" type="button">
-              <Plus size={15} />
-            </button>
-          </div>
-          <div className="nav-list">
-            {spaces.map((space, index) => (
-              <button className={index === 0 ? "active" : ""} key={space} type="button">
-                <Layers3 size={16} />
-                <span>{space}</span>
               </button>
             ))}
           </div>
@@ -1764,42 +1742,6 @@ function App() {
             <small>{grokVersion}</small>
           </div>
           <div className="top-actions">
-            <label className="compact-select">
-              <span>Effort</span>
-              <select
-                aria-label="Grok effort"
-                onChange={(event) => setEffortLevel(event.currentTarget.value as EffortLevel)}
-                value={effortLevel}
-              >
-                {(Object.keys(effortLevels) as EffortLevel[]).map((effort) => (
-                  <option key={effort} value={effort}>
-                    {effortLevels[effort].label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="compact-select">
-              <span>Mode</span>
-              <select
-                aria-label="Grok permission mode"
-                onChange={(event) => setPermissionMode(event.currentTarget.value as PermissionMode)}
-                value={permissionMode}
-              >
-                {(Object.keys(permissionModes) as PermissionMode[]).map((permission) => (
-                  <option key={permission} value={permission}>
-                    {permissionModes[permission].label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check-chip">
-              <input
-                checked={selfCheck}
-                onChange={(event) => setSelfCheck(event.currentTarget.checked)}
-                type="checkbox"
-              />
-              <span>Check</span>
-            </label>
             <div className="theme-switch" aria-label="Theme">
               <button
                 aria-pressed={themeMode === "dark"}
@@ -1854,16 +1796,6 @@ function App() {
               <kbd>{modeCopy[item].shortcut}</kbd>
             </button>
           ))}
-          {codingPresets.slice(1, 5).map((preset) => (
-            <button
-              className={codingWorkflow === preset.id ? "active" : ""}
-              key={preset.id}
-              onClick={() => applyCodingPreset(preset)}
-              type="button"
-            >
-              <span>{preset.label}</span>
-            </button>
-          ))}
         </section>
 
         <section className="workbench">
@@ -1895,25 +1827,6 @@ function App() {
                     Grok Desktop will package this request with repo path, workflow, model engine,
                     approval policy, and terminal verification so Grok receives a complete coding context.
                   </p>
-                  <div className="plan-card">
-                    {[
-                      ["Workflow", currentWorkflow.label],
-                      ["Policy", currentPolicy.label],
-                      ["Model", activeModel],
-                      ["Effort", effortLevels[effortLevel].label],
-                      ["Reasoning", activeReasoningLabel],
-                      ["Best-of-N", String(bestOfN)],
-                      ["Mode", permissionModes[permissionMode].label],
-                      ["Context", workspacePath],
-                      ["Ecosystem", `${grokInspectCount(inspectOutput, "Skills")} skills · ${grokInspectCount(inspectOutput, "MCP Servers")} MCP · ${grokInspectCount(inspectOutput, "Agents")} agents`],
-                    ].map(([label, detail]) => (
-                      <div className="plan-row" key={label}>
-                        <CheckCircle2 size={16} />
-                        <strong>{label}</strong>
-                        <span>{detail}</span>
-                      </div>
-                    ))}
-                  </div>
                   <div className="message-actions">
                     <button type="button"><Copy size={15} /> Copy</button>
                     <button type="button"><RefreshCcw size={15} /> Retry</button>
@@ -1938,6 +1851,21 @@ function App() {
               <div className="composer-footer">
                 <button aria-label="Attach context" type="button"><AtSign size={16} /></button>
                 <button aria-label="Prompt tags" type="button"><SlidersHorizontal size={16} /></button>
+                <select
+                  aria-label="Coding workflow"
+                  className="workflow-select"
+                  onChange={(event) => {
+                    const preset = codingPresets.find((item) => item.id === event.currentTarget.value);
+                    if (preset) applyCodingPreset(preset);
+                  }}
+                  value={codingWorkflow}
+                >
+                  {codingPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
                 <select
                   aria-label="Action policy"
                   onChange={(event) => setActionPolicy(event.currentTarget.value as ActionPolicy)}
@@ -1965,6 +1893,13 @@ function App() {
             </div>
           </div>
 
+          <details className="inspector-drawer">
+            <summary>
+              <span><PanelRight size={16} /> Context and tools</span>
+              <small>
+                {grokInspectCount(inspectOutput, "Skills")} skills · {grokInspectCount(inspectOutput, "MCP Servers")} MCP · {grokInspectCount(inspectOutput, "Agents")} agents
+              </small>
+            </summary>
           <aside className="inspector" aria-label="Grok context">
             <div className="inspector-tabs" role="tablist" aria-label="Grok capability inspector">
               {inspectorTabs.map((tab) => (
@@ -2055,6 +1990,20 @@ function App() {
                           ))}
                         </select>
                       </label>
+                      <label>
+                        <span>Permission</span>
+                        <select
+                          aria-label="Permission mode"
+                          onChange={(event) => setPermissionMode(event.currentTarget.value as PermissionMode)}
+                          value={permissionMode}
+                        >
+                          {(Object.keys(permissionModes) as PermissionMode[]).map((permission) => (
+                            <option key={permission} value={permission}>
+                              {permissionModes[permission].label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       {modelPreset === "custom" ? (
                         <label className="engine-wide">
                           <span>Custom ID</span>
@@ -2091,6 +2040,14 @@ function App() {
                           type="checkbox"
                         />
                         <span>Subagents</span>
+                      </label>
+                      <label>
+                        <input
+                          checked={selfCheck}
+                          onChange={(event) => setSelfCheck(event.currentTarget.checked)}
+                          type="checkbox"
+                        />
+                        <span>Check</span>
                       </label>
                     </div>
                     <div className="auth-actions">
@@ -2372,6 +2329,7 @@ function App() {
               ) : null}
             </div>
           </aside>
+          </details>
         </section>
 
         <section className="terminal-dock">
@@ -2411,7 +2369,12 @@ function App() {
           </div>
         </section>
 
-        <section className="toolbelt" aria-label="Developer tools">
+        <details className="toolbelt" aria-label="Developer tools">
+          <summary>
+            <span><Wrench size={16} /> Developer utilities</span>
+            <small>Browser, Chrome bridge, Absorb Repo</small>
+          </summary>
+          <div className="toolbelt-grid">
           <div className="tool-card">
             <div className="tool-title">
               <Globe2 size={17} />
@@ -2484,7 +2447,8 @@ function App() {
               Absorb
             </button>
           </div>
-        </section>
+          </div>
+        </details>
       </section>
     </main>
   );

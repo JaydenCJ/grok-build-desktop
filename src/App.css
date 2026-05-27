@@ -952,7 +952,7 @@ pre {
 .toggle-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .toggle-row label {
@@ -1766,6 +1766,377 @@ select:focus {
 
 .theme-light .inspector-tabs button.active {
   color: var(--text);
+}
+
+/* Clean workspace pass: keep Claude/Codex-style clarity without cloning their trade dress. */
+.app-shell {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.app-sidebar {
+  gap: 10px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  padding: 14px 12px;
+}
+
+.brand {
+  padding: 2px 4px 6px;
+}
+
+.brand-mark,
+.avatar {
+  border-radius: 7px;
+  height: 30px;
+  width: 30px;
+}
+
+.brand h1 {
+  font-size: 0.96rem;
+}
+
+.brand span,
+.account-strip span,
+.nav-list small,
+.history-list small,
+.quiet {
+  font-size: 0.73rem;
+}
+
+.primary-nav .nav-list {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.primary-nav .nav-list button {
+  min-height: 34px;
+}
+
+.primary-nav .nav-list small {
+  display: none;
+}
+
+.nav-head {
+  padding: 2px 2px 0;
+}
+
+.nav-list,
+.history-list {
+  gap: 2px;
+}
+
+.nav-list button,
+.history-list button {
+  border-radius: 7px;
+  min-height: 33px;
+  padding: 0 9px;
+}
+
+.history-list button {
+  min-height: 46px;
+  padding: 6px 9px;
+}
+
+.sidebar-health {
+  display: none;
+  gap: 6px;
+}
+
+.health-pill,
+.doctor-button {
+  min-height: 32px;
+}
+
+.account-strip {
+  padding-top: 10px;
+}
+
+.workspace {
+  grid-template-rows: auto auto minmax(0, 1fr) 128px 38px;
+}
+
+.window-titlebar {
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 58px;
+  padding: 10px 14px;
+}
+
+.title-center,
+.square-button {
+  display: none;
+}
+
+.repo-controls {
+  gap: 7px;
+}
+
+.repo-picker {
+  max-width: 440px;
+  min-height: 36px;
+}
+
+.repo-picker span {
+  font-size: 0.76rem;
+}
+
+.branch-chip,
+.model-chip,
+.connection-pill,
+.compact-select,
+.check-chip,
+.theme-switch {
+  min-height: 36px;
+}
+
+.model-chip {
+  grid-template-columns: auto minmax(128px, auto);
+}
+
+.compact-select {
+  grid-template-columns: auto minmax(84px, auto);
+}
+
+.top-actions {
+  gap: 7px;
+}
+
+.primary-run {
+  min-width: 92px;
+}
+
+.mode-tabs {
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.mode-tabs button {
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.mode-tabs kbd {
+  font-size: 0.62rem;
+}
+
+.workbench {
+  align-content: start;
+  gap: 10px;
+  grid-auto-rows: auto;
+  grid-template-columns: minmax(0, 980px);
+  justify-content: center;
+  padding: 10px 14px;
+}
+
+.conversation-panel,
+.inspector,
+.terminal-dock,
+.tool-card {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.message {
+  gap: 12px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding: 16px 18px;
+}
+
+.message-avatar {
+  border-radius: 7px;
+  height: 30px;
+  width: 30px;
+}
+
+.message p {
+  line-height: 1.55;
+  margin-top: 5px;
+}
+
+.message-actions {
+  display: none;
+}
+
+.composer-tabs {
+  padding: 6px 12px 0;
+}
+
+.composer-tabs button {
+  min-height: 32px;
+}
+
+.composer textarea {
+  min-height: 92px;
+  padding: 10px 14px;
+}
+
+.composer-footer {
+  padding: 7px 12px;
+}
+
+.composer-footer select.workflow-select {
+  max-width: 152px;
+}
+
+.inspector-drawer {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inspector-drawer:not([open]) {
+  height: 42px;
+}
+
+.inspector-drawer summary {
+  align-items: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  min-height: 42px;
+  outline: none;
+  padding: 0 12px;
+  user-select: none;
+}
+
+.inspector-drawer summary::marker,
+.inspector-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.inspector-drawer summary span {
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 820;
+  gap: 8px;
+}
+
+.inspector-drawer summary small {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  margin-left: auto;
+}
+
+.inspector-drawer:not([open]) .inspector {
+  display: none;
+}
+
+.inspector-drawer[open] summary {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.inspector-drawer .inspector {
+  border: 0;
+  border-radius: 0;
+  max-height: 420px;
+}
+
+.inspector-tabs {
+  grid-template-columns: repeat(7, minmax(44px, 1fr));
+  overflow-x: auto;
+  padding: 0 6px;
+}
+
+.inspector-tabs button {
+  font-size: 0.66rem;
+  min-height: 40px;
+}
+
+.inspector-card {
+  gap: 9px;
+  padding: 12px;
+}
+
+.inspector-card.hero-card p {
+  font-size: 0.76rem;
+}
+
+.engine-grid {
+  gap: 7px;
+}
+
+.engine-grid label,
+.toggle-row label,
+.file-list span,
+.safety-list span,
+.capability-list span,
+.metric-grid div {
+  border-radius: 7px;
+}
+
+.auth-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.terminal-dock {
+  height: auto;
+  margin: 0 14px;
+}
+
+.terminal-head {
+  min-height: 44px;
+  padding: 7px 10px;
+}
+
+.terminal-view {
+  font-size: 0.76rem;
+  padding: 10px;
+}
+
+.toolbelt {
+  background: var(--app-bg);
+  border-top: 1px solid var(--line-soft);
+  display: block;
+  overflow: hidden;
+  padding: 0 14px 8px;
+}
+
+.toolbelt summary {
+  align-items: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 36px;
+  outline: none;
+  user-select: none;
+}
+
+.toolbelt summary::marker,
+.toolbelt summary::-webkit-details-marker {
+  display: none;
+}
+
+.toolbelt summary span {
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 820;
+  gap: 8px;
+}
+
+.toolbelt summary small {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin-left: auto;
+}
+
+.toolbelt-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(260px, 0.8fr);
+  padding-bottom: 4px;
+}
+
+.tool-card {
+  min-height: 58px;
 }
 
 @media (max-width: 1280px) {
