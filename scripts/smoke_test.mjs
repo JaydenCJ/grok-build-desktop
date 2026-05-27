@@ -34,6 +34,7 @@ for (const label of [
   "Theme",
   "Dark",
   "Light",
+  "Stop",
 ]) {
   assert.ok(app.includes(label), `App UI missing label: ${label}`);
 }
@@ -42,6 +43,7 @@ for (const command of [
   "load_session_state",
   "save_session_state",
   "run_grok_streaming_task",
+  "cancel_grok_run",
   "inspect_grok_environment",
   "list_grok_mcp",
   "doctor_grok_mcp",
@@ -51,6 +53,8 @@ for (const command of [
 ]) {
   assert.ok(read("src-tauri/src/lib.rs").includes(command), `missing Tauri command: ${command}`);
 }
+
+assert.ok(read("src-tauri/src/lib.rs").includes("--max-turns"), "Grok max-turn guard missing");
 
 const manifest = JSON.parse(read("chrome-extension/manifest.json"));
 assert.equal(manifest.manifest_version, 3, "Chrome extension must stay Manifest V3");

@@ -37,7 +37,9 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 - `GROK_DESKTOP_PYTHON`: Python executable for scripts and package checks.
 - `GROK_DESKTOP_GROK_CMD`: Grok CLI executable.
 - `GROK_DESKTOP_GROK_ARGS`: whitespace-split Grok arguments. Use `{prompt}` and `{mode}` placeholders.
-- `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS`: startup watchdog for streaming Grok runs with no stdout/stderr activity.
+- `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS`: startup watchdog for streaming Grok runs with no stdout/stderr activity. Defaults to 240 seconds.
+- `GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS`: watchdog for Grok runs that keep logging internally but produce no user-visible answer. Defaults to 180 seconds.
+- `GROK_DESKTOP_GROK_MAX_TURNS`: default headless turn cap. Defaults to 12.
 - `XAI_API_KEY`: optional Grok API key auth visible to the spawned CLI process.
 
 ## Next Integration Targets

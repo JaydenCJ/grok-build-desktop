@@ -36,6 +36,7 @@ export type CallGrokOptions = {
   webSearchEnabled?: boolean;
   subagentsEnabled?: boolean;
   selfCheck?: boolean;
+  onRunId?: (runId: string) => void;
   onEvent?: (event: GrokStreamEvent) => void;
 };
 
@@ -45,6 +46,7 @@ function createRunId() {
 
 export async function callGrokCLI(prompt: string, options: CallGrokOptions) {
   const runId = createRunId();
+  options.onRunId?.(runId);
   const unlisten = await listen<GrokStreamEvent>("grok-desktop://grok-stream", (event) => {
     if (event.payload.runId === runId) {
       options.onEvent?.(event.payload);
@@ -62,12 +64,16 @@ export async function callGrokCLI(prompt: string, options: CallGrokOptions) {
       permissionMode: options.permissionMode || null,
       bestOfN: options.bestOfN || null,
       experimentalMemory: options.experimentalMemory ?? false,
-      webSearchEnabled: options.webSearchEnabled ?? true,
-      subagentsEnabled: options.subagentsEnabled ?? true,
+      webSearchEnabled: options.webSearchEnabled ?? false,
+      subagentsEnabled: options.subagentsEnabled ?? false,
       selfCheck: options.selfCheck ?? false,
       runId,
     });
   } finally {
     unlisten();
   }
+}
+
+export async function cancelGrokCLI(runId: string) {
+  return invoke<boolean>("cancel_grok_run", { runId });
 }

@@ -37,7 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import "./App.css";
-import { callGrokCLI, type GrokStreamEvent } from "./lib/grok";
+import { callGrokCLI, cancelGrokCLI, type GrokStreamEvent } from "./lib/grok";
 
 type Mode = "standard" | "coding";
 type Runner =
@@ -200,6 +200,7 @@ const storageKeys = {
   webSearchEnabled: "grok-desktop-web-search-enabled",
   subagentsEnabled: "grok-desktop-subagents-enabled",
   selfCheck: "grok-desktop-self-check",
+  safeRuntimeDefaults: "grok-desktop-safe-runtime-defaults-v3",
 };
 
 const defaultDrafts: Record<Mode, string> = {
@@ -702,6 +703,7 @@ function App() {
   const [history, setHistory] = useState<ToolRun[]>(() => storedRunHistory());
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [busyRunner, setBusyRunner] = useState<Runner | "status" | null>(null);
+  const [activeGrokRunId, setActiveGrokRunId] = useState<string | null>(null);
   const [contextBusy, setContextBusy] = useState<"models" | "inspect" | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(() => {
     const stored = window.localStorage.getItem(storageKeys.inspectorTab);
@@ -714,9 +716,11 @@ function App() {
   const [customModel, setCustomModel] = useState(
     () => window.localStorage.getItem(storageKeys.customModel) ?? "",
   );
+  const safeRuntimeDefaultsMigrated =
+    window.localStorage.getItem(storageKeys.safeRuntimeDefaults) === "true";
   const [effortLevel, setEffortLevel] = useState<EffortLevel>(() => {
     const stored = window.localStorage.getItem(storageKeys.effortLevel);
-    return isEffortLevel(stored) ? stored : "high";
+    return safeRuntimeDefaultsMigrated && isEffortLevel(stored) ? stored : "medium";
   });
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
     const stored = window.localStorage.getItem(storageKeys.reasoningEffort);
@@ -734,10 +738,10 @@ function App() {
     () => window.localStorage.getItem(storageKeys.experimentalMemory) === "true",
   );
   const [webSearchEnabled, setWebSearchEnabled] = useState(
-    () => window.localStorage.getItem(storageKeys.webSearchEnabled) !== "false",
+    () => safeRuntimeDefaultsMigrated && window.localStorage.getItem(storageKeys.webSearchEnabled) === "true",
   );
   const [subagentsEnabled, setSubagentsEnabled] = useState(
-    () => window.localStorage.getItem(storageKeys.subagentsEnabled) !== "false",
+    () => safeRuntimeDefaultsMigrated && window.localStorage.getItem(storageKeys.subagentsEnabled) === "true",
   );
   const [selfCheck, setSelfCheck] = useState(
     () => window.localStorage.getItem(storageKeys.selfCheck) === "true",
@@ -807,9 +811,10 @@ function App() {
       "- Optimize for a senior programmer who wants high signal and minimal ceremony.",
       "- Start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
       "- Prefer exact file paths, exact commands, and concrete implementation details.",
+      "- If the user includes this repository's GitHub URL, prefer the selected local working directory over fetching the remote repository unless they explicitly ask for remote state.",
       "- If changing code, keep edits narrow and make verification easy.",
       "- If the request is ambiguous, make the safest useful assumption and state it briefly.",
-      "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents when they clearly improve the result.",
+      "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents only when they clearly improve the result; do not start unrelated MCP workflows for ordinary repository analysis.",
       "- When web search is enabled, use it only for unstable/version-sensitive facts and cite sources in the response.",
       "- For hard implementation or debugging, reason privately, then return crisp evidence, changes, and verification.",
       "",
@@ -927,6 +932,20 @@ function App() {
     }
   }
 
+  async function cancelGrok() {
+    if (!activeGrokRunId) return;
+    setTerminalLines((current) => [...current, "[sys] Stopping Grok run..."].slice(-500));
+    try {
+      const cancelled = await cancelGrokCLI(activeGrokRunId);
+      if (!cancelled) {
+        setTerminalLines((current) => [...current, "[sys] Grok run already finished or was not registered."].slice(-500));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTerminalLines((current) => [...current, `[err] ${message}`].slice(-500));
+    }
+  }
+
   async function runGrok() {
     const reasoningFlag = reasoningEffort === "off" ? "" : ` --reasoning-effort ${reasoningEffort}`;
     const permissionFlag = permissionMode === "default" ? "" : ` --permission-mode ${permissionMode}`;
@@ -935,11 +954,13 @@ function App() {
     const webFlag = webSearchEnabled ? "" : " --disable-web-search";
     const subagentsFlag = subagentsEnabled ? "" : " --no-subagents";
     const checkFlag = selfCheck ? " --check" : "";
+    const maxTurnsFlag = " --max-turns 12";
     setBusyRunner("grok");
+    setActiveGrokRunId(null);
     setTerminalLines([
       "[sys] Preparing Grok Build CLI.",
       `[sys] Working directory: ${codingCwd.trim() || "project root"}`,
-      `[sys] Command mode: grok --model ${activeModel} --effort ${effortLevel}${permissionFlag}${reasoningFlag}${bestOfNFlag}${memoryFlag}${webFlag}${subagentsFlag}${checkFlag} -p <prompt>`,
+      `[sys] Command mode: grok --model ${activeModel} --effort ${effortLevel}${permissionFlag}${reasoningFlag}${bestOfNFlag}${memoryFlag}${webFlag}${subagentsFlag}${checkFlag}${maxTurnsFlag} -p <prompt>`,
     ]);
     try {
       if (!hasTauriRuntime()) {
@@ -979,6 +1000,7 @@ function App() {
         webSearchEnabled,
         subagentsEnabled,
         selfCheck,
+        onRunId: setActiveGrokRunId,
         onEvent: (event) => {
           setTerminalLines((current) => [...current, formatGrokEvent(event)].slice(-500));
         },
@@ -999,6 +1021,7 @@ function App() {
         stderr: message,
       });
     } finally {
+      setActiveGrokRunId(null);
       setBusyRunner(null);
     }
   }
@@ -1496,6 +1519,10 @@ function App() {
   }, [selfCheck]);
 
   useEffect(() => {
+    window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
+  }, []);
+
+  useEffect(() => {
     window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
   }, [history]);
 
@@ -1605,6 +1632,13 @@ function App() {
         ? compactRunPreview(lastRun.ok ? lastRun.output : lastRun.stderr || lastRun.output) ||
           (lastRun.ok ? "Command finished without output." : "Grok run did not complete.")
         : "Ready to review, implement, test, and verify this repository with Grok.";
+  const grokIsRunning = busyRunner === "grok";
+  const grokRunBlocked =
+    prompt.trim().length === 0 ||
+    (mode === "coding" && grokStatus !== null && !grokStatus.authenticated);
+  const grokControlDisabled = grokIsRunning
+    ? activeGrokRunId === null
+    : busyRunner !== null || grokRunBlocked;
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
@@ -1757,16 +1791,12 @@ function App() {
             </span>
             <button
               className="primary-run"
-              disabled={
-                busyRunner !== null ||
-                prompt.trim().length === 0 ||
-                (mode === "coding" && grokStatus !== null && !grokStatus.authenticated)
-              }
-              onClick={runGrok}
+              disabled={grokControlDisabled}
+              onClick={grokIsRunning ? cancelGrok : runGrok}
               type="button"
             >
-              {busyRunner === "grok" ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
-              <span>{mode === "coding" ? "Run Grok" : "Ask Grok"}</span>
+              {grokIsRunning ? <X size={17} /> : <Play size={17} />}
+              <span>{grokIsRunning ? "Stop" : mode === "coding" ? "Run Grok" : "Ask Grok"}</span>
             </button>
           </div>
         </header>
@@ -1863,15 +1893,11 @@ function App() {
                 </select>
                 <button
                   className="mini-run"
-                  disabled={
-                    busyRunner !== null ||
-                    prompt.trim().length === 0 ||
-                    (mode === "coding" && grokStatus !== null && !grokStatus.authenticated)
-                  }
-                  onClick={runGrok}
+                  disabled={grokControlDisabled}
+                  onClick={grokIsRunning ? cancelGrok : runGrok}
                   type="button"
                 >
-                  {busyRunner === "grok" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
+                  {grokIsRunning ? <X size={16} /> : <Play size={16} />}
                 </button>
               </div>
             </div>
