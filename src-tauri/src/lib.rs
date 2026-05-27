@@ -3,12 +3,19 @@ use std::{
     env, fs,
     io::{BufRead, BufReader},
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use tauri::{AppHandle, Emitter};
+
+#[cfg(unix)]
+extern "C" {
+    fn setpgid(pid: i32, pgid: i32) -> i32;
+}
 
 #[derive(Serialize)]
 struct ToolStatus {
@@ -279,6 +286,38 @@ fn command_timeout_secs(default_secs: u64) -> u64 {
         .unwrap_or(default_secs)
 }
 
+fn grok_startup_timeout_secs(default_secs: u64) -> u64 {
+    env::var("GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default_secs)
+}
+
+fn prepare_child_process(command: &mut Command) {
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            if setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        });
+    }
+}
+
+fn terminate_child_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let process_group = format!("-{}", child.id());
+        let _ = Command::new("kill").args(["-TERM", &process_group]).status();
+        thread::sleep(Duration::from_millis(250));
+        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
+    }
+
+    let _ = child.kill();
+}
+
 fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
@@ -322,14 +361,16 @@ fn run_external_command(
     let display_command = command_line(program, &args);
     let cwd = cwd.unwrap_or_else(project_root);
     let start = Instant::now();
-    let spawn_result = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(&args)
         .current_dir(&cwd)
         .env("PATH", command_path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    prepare_child_process(&mut command);
+    let spawn_result = command.spawn();
 
     let mut child = match spawn_result {
         Ok(child) => child,
@@ -385,7 +426,7 @@ fn run_external_command(
             Ok(Some(_)) => break,
             Ok(None) if start.elapsed() >= timeout => {
                 timed_out = true;
-                let _ = child.kill();
+                terminate_child_tree(&mut child);
                 break;
             }
             Ok(None) => thread::sleep(Duration::from_millis(80)),
@@ -963,14 +1004,16 @@ fn run_external_command_streaming(
         };
     }
 
-    let spawn_result = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(&args)
         .current_dir(&cwd)
         .env("PATH", command_path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+        .stderr(Stdio::piped());
+    prepare_child_process(&mut command);
+    let spawn_result = command.spawn();
 
     let mut child = match spawn_result {
         Ok(child) => child,
@@ -998,6 +1041,7 @@ fn run_external_command_streaming(
     let stderr = child.stderr.take();
     let output = Arc::new(Mutex::new(String::new()));
     let error_output = Arc::new(Mutex::new(String::new()));
+    let last_activity = Arc::new(Mutex::new(Instant::now()));
     let mut stream_threads = Vec::new();
 
     if let Some(stdout) = stdout {
@@ -1006,12 +1050,16 @@ fn run_external_command_streaming(
         let cwd = cwd_string.clone();
         let command = display_command.clone();
         let output = Arc::clone(&output);
+        let last_activity = Arc::clone(&last_activity);
         stream_threads.push(thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 let line = strip_ansi_codes(&line);
                 if let Ok(mut buffer) = output.lock() {
                     buffer.push_str(&line);
                     buffer.push('\n');
+                }
+                if let Ok(mut timestamp) = last_activity.lock() {
+                    *timestamp = Instant::now();
                 }
                 emit_grok_event(
                     &app,
@@ -1037,12 +1085,16 @@ fn run_external_command_streaming(
         let cwd = cwd_string.clone();
         let command = display_command.clone();
         let error_output = Arc::clone(&error_output);
+        let last_activity = Arc::clone(&last_activity);
         stream_threads.push(thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 let line = strip_ansi_codes(&line);
                 if let Ok(mut buffer) = error_output.lock() {
                     buffer.push_str(&line);
                     buffer.push('\n');
+                }
+                if let Ok(mut timestamp) = last_activity.lock() {
+                    *timestamp = Instant::now();
                 }
                 emit_grok_event(
                     &app,
@@ -1063,14 +1115,40 @@ fn run_external_command_streaming(
     }
 
     let timeout = Duration::from_secs(timeout_secs);
+    let startup_timeout_secs = grok_startup_timeout_secs(75);
+    let startup_timeout = Duration::from_secs(startup_timeout_secs);
     let mut timed_out = false;
+    let mut timeout_note: Option<String> = None;
 
     loop {
+        let has_output = output
+            .lock()
+            .map(|buffer| !buffer.trim().is_empty())
+            .unwrap_or(false)
+            || error_output
+                .lock()
+                .map(|buffer| !buffer.trim().is_empty())
+                .unwrap_or(false);
+        let no_startup_activity = !has_output
+            && last_activity
+                .lock()
+                .map(|timestamp| timestamp.elapsed() >= startup_timeout)
+                .unwrap_or(false);
+
         match child.try_wait() {
             Ok(Some(_)) => break,
+            Ok(None) if no_startup_activity => {
+                timed_out = true;
+                timeout_note = Some(format!(
+                    "Grok produced no output for {startup_timeout_secs}s during startup. The CLI may be waiting on an internal network or package check."
+                ));
+                terminate_child_tree(&mut child);
+                break;
+            }
             Ok(None) if start.elapsed() >= timeout => {
                 timed_out = true;
-                let _ = child.kill();
+                timeout_note = Some(format!("Command timed out after {timeout_secs}s."));
+                terminate_child_tree(&mut child);
                 break;
             }
             Ok(None) => thread::sleep(Duration::from_millis(120)),
@@ -1115,7 +1193,8 @@ fn run_external_command_streaming(
         .map(|buffer| buffer.clone())
         .unwrap_or_default();
     if timed_out {
-        let timeout_note = format!("Command timed out after {timeout_secs}s.");
+        let timeout_note =
+            timeout_note.unwrap_or_else(|| format!("Command timed out after {timeout_secs}s."));
         stderr = if stderr.trim().is_empty() {
             timeout_note
         } else {

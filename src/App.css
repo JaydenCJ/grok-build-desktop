@@ -277,15 +277,29 @@ pre {
 
 .history-list button {
   align-items: start;
+  column-gap: 10px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 58px;
   padding: 8px 10px;
 }
 
+.history-list button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-list strong {
+  display: block;
+  min-width: 0;
+}
+
 .history-list time {
   color: #8fa0ae;
   font-size: 0.72rem;
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .health-pill {
@@ -1930,9 +1944,13 @@ select:focus {
   align-content: start;
   gap: 10px;
   grid-auto-rows: auto;
-  grid-template-columns: minmax(0, 980px);
+  grid-template-columns: minmax(0, 980px) 198px;
   justify-content: center;
   padding: 10px 14px;
+}
+
+.conversation-panel {
+  grid-column: 1;
 }
 
 .conversation-panel,
@@ -1958,6 +1976,7 @@ select:focus {
 .message p {
   line-height: 1.55;
   margin-top: 5px;
+  white-space: pre-wrap;
 }
 
 .message-actions {
@@ -1994,23 +2013,25 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: none;
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .inspector-drawer:not([open]) {
-  height: 42px;
+  height: 110px;
 }
 
 .inspector-drawer summary {
-  align-items: center;
+  align-items: start;
   color: var(--text-muted);
   cursor: pointer;
-  display: flex;
-  gap: 12px;
-  min-height: 42px;
+  display: grid;
+  gap: 10px;
+  min-height: 110px;
   outline: none;
-  padding: 0 12px;
+  padding: 14px;
   user-select: none;
 }
 
@@ -2031,7 +2052,8 @@ select:focus {
 .inspector-drawer summary small {
   color: var(--text-muted);
   font-size: 0.76rem;
-  margin-left: auto;
+  line-height: 1.45;
+  margin-left: 0;
 }
 
 .inspector-drawer:not([open]) .inspector {
@@ -2170,6 +2192,26 @@ select:focus {
   .workbench {
     grid-template-columns: 1fr;
     overflow: auto;
+  }
+
+  .conversation-panel,
+  .inspector-drawer {
+    grid-column: 1;
+  }
+
+  .inspector-drawer:not([open]) {
+    height: 42px;
+  }
+
+  .inspector-drawer summary {
+    align-items: center;
+    display: flex;
+    min-height: 42px;
+    padding: 0 12px;
+  }
+
+  .inspector-drawer summary small {
+    margin-left: auto;
   }
 
   .inspector {

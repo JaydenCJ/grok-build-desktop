@@ -516,6 +516,17 @@ function formatOutput(run: ToolRun | null, terminalOutput = "") {
   return `${output}\n\nstderr:\n${stderr}`;
 }
 
+function compactRunPreview(value: string) {
+  return value
+    .replace(/\r/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/```[\s\S]*?```/g, "[code output hidden]")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 720);
+}
+
 function formatBridgeAge(timestamp?: number | null) {
   if (!timestamp) return "not connected";
   const seconds = Math.max(1, Math.round((Date.now() - timestamp) / 1000));
@@ -1587,6 +1598,13 @@ function App() {
   const hookItems = grokInspectSection(inspectOutput, "Hooks", 8);
   const permissionsSource = grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected");
   const grokVersion = grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown");
+  const assistantPreview =
+    busyRunner === "grok"
+      ? "Working through the repository. Streaming details are in Terminal."
+      : lastRun
+        ? compactRunPreview(lastRun.ok ? lastRun.output : lastRun.stderr || lastRun.output) ||
+          (lastRun.ok ? "Command finished without output." : "Grok run did not complete.")
+        : "Ready to review, implement, test, and verify this repository with Grok.";
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
@@ -1779,8 +1797,7 @@ function App() {
                     <time>{lastRun ? `${lastRun.duration_ms}ms` : "ready"}</time>
                   </div>
                   <p>
-                    Grok Desktop will package this request with repo path, workflow, model engine,
-                    approval policy, and terminal verification so Grok receives a complete coding context.
+                    {assistantPreview}
                   </p>
                   <div className="message-actions">
                     <button type="button"><Copy size={15} /> Copy</button>

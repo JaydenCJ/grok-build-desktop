@@ -71,4 +71,9 @@ assert.ok(
   "restrained dark/light imagegen UIUX concept asset missing",
 );
 
+assert.ok(
+  existsSync(join(root, "docs/design/grok-desktop-10pt-power-clean-ui.png")),
+  "10-point power-clean imagegen UIUX concept asset missing",
+);
+
 console.log("smoke: ok");
