@@ -1775,7 +1775,7 @@ select:focus {
 
 .app-sidebar {
   gap: 10px;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   padding: 14px 12px;
 }
 
@@ -1822,6 +1822,7 @@ select:focus {
 
 .nav-list,
 .history-list {
+  align-content: start;
   gap: 2px;
 }
 
@@ -1835,6 +1836,12 @@ select:focus {
 .history-list button {
   min-height: 46px;
   padding: 6px 9px;
+}
+
+.history-nav .search-box {
+  align-self: start;
+  height: 36px;
+  width: 100%;
 }
 
 .sidebar-health {
@@ -1852,7 +1859,7 @@ select:focus {
 }
 
 .workspace {
-  grid-template-rows: auto auto minmax(0, 1fr) 128px 38px;
+  grid-template-rows: auto minmax(0, 1fr) 128px 38px;
 }
 
 .window-titlebar {
@@ -1972,6 +1979,10 @@ select:focus {
 
 .composer-footer {
   padding: 7px 12px;
+}
+
+.composer-footer select.mode-select {
+  max-width: 132px;
 }
 
 .composer-footer select.workflow-select {

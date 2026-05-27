@@ -7,18 +7,15 @@ import {
   CheckCircle2,
   CircleAlert,
   ClipboardCheck,
-  Code2,
   Copy,
   FileText,
   FolderDown,
   FolderGit2,
-  FolderOpen,
   GitBranch,
   Globe2,
   History,
   Layers3,
   Loader2,
-  MessageSquare,
   Moon,
   MoreHorizontal,
   PanelRight,
@@ -359,18 +356,10 @@ const defaultStatuses: ToolStatus[] = [
 ];
 
 const primaryNavItems = [
-  { label: "Spaces", meta: "Work areas" },
-  { label: "Projects", meta: "Repositories" },
-  { label: "Sessions", meta: "Grok threads" },
-  { label: "Memory", meta: "Knowledge store" },
-  { label: "Settings", meta: "Model and tools" },
-];
-
-const projectItems = [
-  { name: "grok-desktop", meta: "Grok desktop" },
-  { name: "web-dashboard", meta: "React SaaS" },
-  { name: "cli-tools", meta: "Automation" },
-  { name: "microservices", meta: "Backend" },
+  { label: "New Session", meta: "Start fresh" },
+  { label: "Search", meta: "Find work" },
+  { label: "Tools", meta: "Skills and MCP" },
+  { label: "Settings", meta: "Preferences" },
 ];
 
 const starterHistory = [
@@ -1620,27 +1609,9 @@ function App() {
           <div className="nav-list">
             {primaryNavItems.map((item, index) => (
               <button className={index === 0 ? "active" : ""} key={item.label} type="button">
-                {item.label === "Projects" ? <FolderGit2 size={16} /> : item.label === "Sessions" ? <History size={16} /> : item.label === "Memory" ? <Sparkles size={16} /> : item.label === "Settings" ? <Settings size={16} /> : <Layers3 size={16} />}
+                {item.label === "New Session" ? <Plus size={16} /> : item.label === "Search" ? <Search size={16} /> : item.label === "Tools" ? <Wrench size={16} /> : <Settings size={16} />}
                 <span>{item.label}</span>
                 <small>{item.meta}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="nav-section">
-          <div className="nav-head">
-            <span>Projects</span>
-            <button aria-label="Add project" className="sidebar-icon" type="button">
-              <FolderOpen size={15} />
-            </button>
-          </div>
-          <div className="nav-list">
-            {projectItems.map((project, index) => (
-              <button className={index === 0 ? "active" : ""} key={project.name} type="button">
-                <FolderGit2 size={16} />
-                <span>{project.name}</span>
-                <small>{project.meta}</small>
               </button>
             ))}
           </div>
@@ -1782,22 +1753,6 @@ function App() {
           </div>
         </header>
 
-        <section className="mode-tabs" role="tablist" aria-label="Grok workflow">
-          {(Object.keys(modeCopy) as Mode[]).map((item) => (
-            <button
-              aria-pressed={mode === item}
-              className={mode === item ? "active" : ""}
-              key={item}
-              onClick={() => switchMode(item)}
-              type="button"
-            >
-              {item === "coding" ? <Code2 size={16} /> : <MessageSquare size={16} />}
-              <span>{modeCopy[item].title}</span>
-              <kbd>{modeCopy[item].shortcut}</kbd>
-            </button>
-          ))}
-        </section>
-
         <section className="workbench">
           <div className="conversation-panel">
             <div className="conversation-scroll">
@@ -1851,6 +1806,18 @@ function App() {
               <div className="composer-footer">
                 <button aria-label="Attach context" type="button"><AtSign size={16} /></button>
                 <button aria-label="Prompt tags" type="button"><SlidersHorizontal size={16} /></button>
+                <select
+                  aria-label="Interaction mode"
+                  className="mode-select"
+                  onChange={(event) => switchMode(event.currentTarget.value as Mode)}
+                  value={mode}
+                >
+                  {(Object.keys(modeCopy) as Mode[]).map((item) => (
+                    <option key={item} value={item}>
+                      {modeCopy[item].title}
+                    </option>
+                  ))}
+                </select>
                 <select
                   aria-label="Coding workflow"
                   className="workflow-select"
