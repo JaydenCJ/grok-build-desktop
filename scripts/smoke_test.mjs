@@ -31,6 +31,9 @@ for (const label of [
   "Terminal",
   "Context Files",
   "Command History",
+  "Theme",
+  "Dark",
+  "Light",
 ]) {
   assert.ok(app.includes(label), `App UI missing label: ${label}`);
 }
@@ -61,6 +64,11 @@ assert.ok(
 assert.ok(
   existsSync(join(root, "docs/design/grok-desktop-grok-style-uiux-v2.png")),
   "Grok style imagegen UIUX concept asset missing",
+);
+
+assert.ok(
+  existsSync(join(root, "docs/design/grok-desktop-restrained-dark-light-uiux.png")),
+  "restrained dark/light imagegen UIUX concept asset missing",
 );
 
 console.log("smoke: ok");
