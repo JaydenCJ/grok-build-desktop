@@ -729,10 +729,12 @@ pre {
 }
 
 .conversation-scroll {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .message {
@@ -2323,9 +2325,9 @@ select:focus {
 }
 
 .message {
+  flex-shrink: 0;
   gap: 11px;
   grid-template-columns: 32px minmax(0, 1fr);
-  min-height: 100%;
   padding: 18px 18px;
 }
 
