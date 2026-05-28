@@ -157,20 +157,52 @@ export function replaceQueue(q: QueueSnapshot): void {
 }
 
 let unlistenFns: UnlistenFn[] = [];
+let attachInflight: Promise<void> | null = null;
+let attachUnavailable = false;
+
+function hasTauriRuntime(): boolean {
+  // Tauri 2 injects __TAURI_INTERNALS__ on window.
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
 export async function attachTauriListeners(): Promise<void> {
-  if (unlistenFns.length > 0) return;
-  const u1 = await listen<{ runId: string; event: GrokEvent }>('grok-desktop://run-event', (e) => {
-    applyRunEvent(e.payload.runId, e.payload.event);
-  });
-  const u2 = await listen<{ runId: string; state: string; startedAt?: number; endedAt?: number; error?: string }>(
-    'grok-desktop://run-state-changed',
-    (e) => applyStateChange(e.payload.runId, e.payload as any),
-  );
-  const u3 = await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
-    'grok-desktop://queue-changed',
-    (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
-  );
-  unlistenFns = [u1, u2, u3];
+  if (unlistenFns.length > 0 || attachUnavailable) return;
+  if (!hasTauriRuntime()) {
+    // Running in vite browser preview without the Tauri shell: skip silently.
+    attachUnavailable = true;
+    return;
+  }
+  // De-dupe parallel callers and StrictMode double-mounts.
+  if (attachInflight) return attachInflight;
+  attachInflight = (async () => {
+    try {
+      const u1 = await listen<{ runId: string; event: GrokEvent }>(
+        'grok-desktop://run-event',
+        (e) => applyRunEvent(e.payload.runId, e.payload.event),
+      );
+      const u2 = await listen<{
+        runId: string;
+        state: string;
+        startedAt?: number;
+        endedAt?: number;
+        error?: string;
+      }>('grok-desktop://run-state-changed', (e) =>
+        applyStateChange(e.payload.runId, e.payload as any),
+      );
+      const u3 = await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
+        'grok-desktop://queue-changed',
+        (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
+      );
+      unlistenFns = [u1, u2, u3];
+    } catch (err) {
+      // First failure latches "unavailable" so we don't keep spamming the console.
+      attachUnavailable = true;
+      throw err;
+    } finally {
+      attachInflight = null;
+    }
+  })();
+  return attachInflight;
 }
 
 export function detachTauriListeners(): void {

@@ -125,7 +125,20 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+// Use a module-global cached root so HMR re-execution of this entry doesn't
+// re-create the root on the same container (which logs a noisy React warning
+// in dev). The cache is keyed by the container element so reloads stay clean.
+const ROOT_KEY = "__GROK_DESKTOP_ROOT__" as const;
+type RootCache = { [k: string]: ReturnType<typeof ReactDOM.createRoot> };
+const rootCache: RootCache =
+  (window as unknown as { [ROOT_KEY]?: RootCache })[ROOT_KEY] ?? {};
+(window as unknown as { [ROOT_KEY]?: RootCache })[ROOT_KEY] = rootCache;
+
+const container = document.getElementById("root") as HTMLElement;
+const root = rootCache.main ?? ReactDOM.createRoot(container);
+rootCache.main = root;
+
+root.render(
   <React.StrictMode>
     <AppErrorBoundary>
       <App />
