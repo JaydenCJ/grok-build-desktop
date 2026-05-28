@@ -126,6 +126,14 @@ assert.ok(
   "Code block copy affordance missing — fenced code must offer a Copy button",
 );
 assert.ok(app.includes("activity-tail"), "Activity tail (latest streamed line) missing");
+assert.ok(
+  app.includes("ThinkingIndicator") && app.includes("Grok is thinking"),
+  "ThinkingIndicator missing — empty assistant bubble must show live processing time",
+);
+assert.ok(
+  css.includes(".thinking-indicator") && css.includes(".thinking-elapsed"),
+  "Thinking indicator styling missing — live elapsed counter must be visible",
+);
 assert.ok(app.includes("setBusyRunner((current) => (current === \"grok\" ? null : current))"), "cancelGrok must clear busyRunner in finally");
 assert.ok(app.includes("setActiveGrokRunId((current) => (current === runIdSnapshot ? null : current))"), "cancelGrok must clear activeGrokRunId");
 
