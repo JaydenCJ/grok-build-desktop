@@ -1730,6 +1730,121 @@ async fn delete_prompt(
     store.delete(&id).await.map_err(|e| e.to_string())
 }
 
+// ── @file references (B sub-project MVP) ────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub path: String,           // path relative to cwd
+    pub display_name: String,   // basename for the picker UI
+    pub size_bytes: u64,
+}
+
+/// `.gitignore`-aware fuzzy file search rooted at `cwd`. Used by the @file
+/// picker in the Composer. The query is matched against the relative path —
+/// case-insensitive contiguous substring, then ranked by:
+///   1. exact basename match
+///   2. basename contains
+///   3. path contains
+/// Hard caps: scan ≤ 25_000 entries (skips the rest), return ≤ `limit`.
+#[tauri::command]
+fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
+    use ignore::WalkBuilder;
+    let root = std::path::PathBuf::from(&cwd);
+    if !root.is_dir() {
+        return Err(format!("cwd is not a directory: {cwd}"));
+    }
+    let needle = query.trim().to_lowercase();
+    let limit = limit.clamp(1, 200);
+
+    let mut hits: Vec<(u32, FileEntry)> = Vec::new(); // (rank, entry) — lower rank = better
+    let mut scanned = 0usize;
+    let walker = WalkBuilder::new(&root)
+        .hidden(true)
+        .git_ignore(true)
+        .git_exclude(true)
+        .git_global(true)
+        .max_depth(Some(12))
+        .build();
+    for dent in walker {
+        scanned += 1;
+        if scanned > 25_000 {
+            break;
+        }
+        let Ok(entry) = dent else { continue };
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let abs = entry.path();
+        let Ok(rel) = abs.strip_prefix(&root) else { continue };
+        let rel_str = rel.to_string_lossy().to_string();
+        let base = abs
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if base.starts_with('.') {
+            continue;
+        }
+        let lower_rel = rel_str.to_lowercase();
+        let lower_base = base.to_lowercase();
+        let rank: u32 = if needle.is_empty() {
+            5_000
+        } else if lower_base == needle {
+            0
+        } else if lower_base.starts_with(&needle) {
+            10
+        } else if lower_base.contains(&needle) {
+            100
+        } else if lower_rel.contains(&needle) {
+            500
+        } else {
+            continue;
+        };
+        let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        hits.push((
+            rank,
+            FileEntry {
+                path: rel_str,
+                display_name: base,
+                size_bytes,
+            },
+        ));
+    }
+    hits.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.path.cmp(&b.1.path)));
+    Ok(hits.into_iter().take(limit).map(|(_, e)| e).collect())
+}
+
+/// Read a file as UTF-8 text, with a hard size cap so a 100MB file doesn't
+/// blow up the IPC channel. Returns `None` if the file is binary or oversized.
+#[tauri::command]
+fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+    let root = std::path::PathBuf::from(&cwd);
+    let candidate = root.join(&path);
+    // Path traversal guard: canonicalize and verify it's still under root.
+    let canon = candidate
+        .canonicalize()
+        .map_err(|e| format!("canonicalize failed: {e}"))?;
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("cwd canonicalize failed: {e}"))?;
+    if !canon.starts_with(&root_canon) {
+        return Err(format!("path escapes cwd: {path}"));
+    }
+    let cap = max_bytes.clamp(1, 1_000_000); // 1MB hard ceiling
+    let metadata = std::fs::metadata(&canon).map_err(|e| format!("stat failed: {e}"))?;
+    if metadata.len() as usize > cap {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(&canon).map_err(|e| format!("read failed: {e}"))?;
+    // Heuristic binary detection: any NUL byte in the first 8KB.
+    if bytes.iter().take(8192).any(|&b| b == 0) {
+        return Ok(None);
+    }
+    match String::from_utf8(bytes) {
+        Ok(s) => Ok(Some(s)),
+        Err(_) => Ok(None),
+    }
+}
+
 // ── Agent overlay (G2) ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1953,6 +2068,8 @@ pub fn run() {
             list_prompts,
             upsert_prompt,
             delete_prompt,
+            glob_files,
+            read_file_safe,
             set_agent_overlay,
             set_agent_cursor
         ])
