@@ -792,7 +792,7 @@ function App() {
       return defaultDrafts;
     }
   });
-  const [prompt, setPrompt] = useState(() => {
+  const initialPromptValue = useMemo(() => {
     const stored = window.localStorage.getItem(storageKeys.mode);
     const initialMode = stored === "coding" || stored === "standard" ? stored : "coding";
     try {
@@ -801,7 +801,17 @@ function App() {
     } catch {
       return defaultDrafts[initialMode];
     }
-  });
+  }, []);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [composerEmpty, setComposerEmpty] = useState(() => initialPromptValue.trim().length === 0);
+  const draftsTimerRef = useRef<number | null>(null);
+  const setComposerValue = (value: string) => {
+    if (promptRef.current) {
+      promptRef.current.value = value;
+    }
+    setComposerEmpty(value.trim().length === 0);
+  };
+  const readComposerValue = () => promptRef.current?.value ?? "";
   const [browserTask, setBrowserTask] = useState(
     "Open https://example.com and report the main heading.",
   );
@@ -960,8 +970,19 @@ function App() {
   }
 
   function updatePrompt(value: string) {
-    setPrompt(value);
+    setComposerValue(value);
     setDrafts((current) => ({ ...current, [mode]: value }));
+  }
+  function scheduleDraftSave() {
+    if (draftsTimerRef.current !== null) {
+      window.clearTimeout(draftsTimerRef.current);
+    }
+    draftsTimerRef.current = window.setTimeout(() => {
+      const value = readComposerValue();
+      setDrafts((current) =>
+        current[mode] === value ? current : { ...current, [mode]: value },
+      );
+    }, 300);
   }
 
   function applyCodingPreset(preset: (typeof codingPresets)[number]) {
@@ -969,8 +990,8 @@ function App() {
     updatePrompt(preset.prompt);
   }
 
-  function buildGrokTaskPrompt() {
-    if (mode !== "coding") return prompt;
+  function buildGrokTaskPrompt(userPrompt: string) {
+    if (mode !== "coding") return userPrompt;
 
     const workflow = codingPresets.find((preset) => preset.id === codingWorkflow);
     const policy = actionPolicies[actionPolicy];
@@ -1005,14 +1026,14 @@ function App() {
       "- For normal coding tasks, use this report format: 1. Summary 2. Files / Evidence 3. Changes or Recommendation 4. Verification commands 5. Next step. For simple tasks, do not use it.",
       "",
       "Task:",
-      prompt,
+      userPrompt,
     ].join("\n");
   }
 
   function switchMode(nextMode: Mode) {
     if (nextMode === mode || busyRunner !== null) return;
     setMode(nextMode);
-    setPrompt(drafts[nextMode] || defaultDrafts[nextMode]);
+    setComposerValue(drafts[nextMode] || defaultDrafts[nextMode]);
   }
 
   async function refreshStatuses() {
@@ -1184,10 +1205,17 @@ function App() {
   }
 
   async function runGrok() {
-    const userPrompt = prompt.trim();
+    const userPrompt = readComposerValue().trim();
     if (!userPrompt) return;
-    const taskPrompt = buildGrokTaskPrompt();
-    updatePrompt("");
+    const taskPrompt = buildGrokTaskPrompt(userPrompt);
+    setComposerValue("");
+    setDrafts((current) =>
+      current[mode] === "" ? current : { ...current, [mode]: "" },
+    );
+    if (draftsTimerRef.current !== null) {
+      window.clearTimeout(draftsTimerRef.current);
+      draftsTimerRef.current = null;
+    }
     const reasoningFlag = reasoningEffort === "off" ? "" : ` --reasoning-effort ${reasoningEffort}`;
     const permissionFlag = permissionMode === "default" ? "" : ` --permission-mode ${permissionMode}`;
     const bestOfNFlag = bestOfN > 1 ? ` --best-of-n ${bestOfN}` : "";
@@ -1738,7 +1766,7 @@ function App() {
 
           setDrafts(nextDrafts);
           setMode(restoredMode);
-          setPrompt(nextDrafts[restoredMode] ?? defaultDrafts[restoredMode]);
+          setComposerValue(nextDrafts[restoredMode] ?? defaultDrafts[restoredMode]);
           if (typeof restored.codingCwd === "string") setCodingCwd(restored.codingCwd);
           if (typeof restored.shellCommand === "string") setShellCommand(restored.shellCommand);
           if (isActionPolicy(restored.actionPolicy)) setActionPolicy(restored.actionPolicy);
@@ -1897,7 +1925,7 @@ function App() {
     if (!cleanComposerMigrated && lastRun) {
       const clearedDrafts = { ...drafts, [mode]: "" };
       setDrafts(clearedDrafts);
-      setPrompt("");
+      setComposerValue("");
       window.localStorage.setItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
     }
     window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
@@ -1983,7 +2011,7 @@ function App() {
         event.preventDefault();
         switchMode("coding");
       }
-      if (event.key === "Enter" && mode === "coding" && prompt.trim()) {
+      if (event.key === "Enter" && mode === "coding" && !composerEmpty) {
         event.preventDefault();
         runGrok();
       }
@@ -2058,19 +2086,32 @@ function App() {
         .split("\n")
         .slice(0, 80)
         .map((line) => `[out] ${line}`);
-  const inspectOutput = [ecosystemRun?.output, ecosystemRun?.stderr]
-    .filter((value) => value && value.trim())
-    .join("\n");
-  const skillItems = grokInspectSection(inspectOutput, "Skills", 10);
-  const agentItems = grokInspectSection(inspectOutput, "Agents", 8);
-  const pluginItems = grokInspectSection(inspectOutput, "Plugins", 8);
-  const mcpItems = grokInspectSection(inspectOutput, "MCP Servers", 8);
-  const hookItems = grokInspectSection(inspectOutput, "Hooks", 8);
-  const permissionsSource = grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected");
-  const grokVersion = grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown");
+  const inspectOutput = useMemo(
+    () =>
+      [ecosystemRun?.output, ecosystemRun?.stderr]
+        .filter((value) => value && value.trim())
+        .join("\n"),
+    [ecosystemRun?.output, ecosystemRun?.stderr],
+  );
+  const inspectSummary = useMemo(
+    () => ({
+      skillItems: grokInspectSection(inspectOutput, "Skills", 10),
+      agentItems: grokInspectSection(inspectOutput, "Agents", 8),
+      pluginItems: grokInspectSection(inspectOutput, "Plugins", 8),
+      mcpItems: grokInspectSection(inspectOutput, "MCP Servers", 8),
+      hookItems: grokInspectSection(inspectOutput, "Hooks", 8),
+      permissionsSource: grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected"),
+    }),
+    [inspectOutput],
+  );
+  const { skillItems, agentItems, pluginItems, mcpItems, hookItems, permissionsSource } = inspectSummary;
+  const grokVersion = useMemo(
+    () => grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown"),
+    [inspectOutput, grokStatus?.version],
+  );
   const grokIsRunning = busyRunner === "grok";
   const grokRunBlocked =
-    prompt.trim().length === 0 ||
+    composerEmpty ||
     (mode === "coding" && grokStatus !== null && !grokStatus.authenticated);
   const grokControlDisabled = grokIsRunning
     ? activeGrokRunId === null
@@ -2433,11 +2474,16 @@ function App() {
             <div className="composer">
               <textarea
                 id="main-prompt"
+                ref={promptRef}
                 onKeyDown={handlePromptKeyDown}
-                onChange={(event) => updatePrompt(event.currentTarget.value)}
+                onChange={(event) => {
+                  const isEmpty = event.currentTarget.value.trim().length === 0;
+                  setComposerEmpty((current) => (current === isEmpty ? current : isEmpty));
+                  scheduleDraftSave();
+                }}
                 placeholder={modeCopy[mode].placeholder}
                 rows={1}
-                value={prompt}
+                defaultValue={initialPromptValue}
                 autoFocus
               />
               <div className="composer-footer">
