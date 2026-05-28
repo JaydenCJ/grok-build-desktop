@@ -5,6 +5,12 @@ export interface MessageRef {
   runId: string;
   role: 'user' | 'assistant';
   userText?: string;
+  /**
+   * Fallback content for assistant messages that have no live streamStore
+   * snapshot — typically legacy messages loaded from session_state.json
+   * before F shipped (no runId, no per-event events).
+   */
+  fallbackText?: string;
 }
 
 interface Props {
@@ -28,7 +34,7 @@ export function MessageList({ messages }: Props) {
         }
         return (
           <div className="message message-assistant">
-            <MessageItem runId={msg.runId} />
+            <MessageItem runId={msg.runId} fallbackText={msg.fallbackText} />
           </div>
         );
       }}

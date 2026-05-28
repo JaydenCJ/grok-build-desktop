@@ -1890,7 +1890,14 @@ function App() {
       messages.map((m) =>
         m.role === "user"
           ? { runId: "", role: "user" as const, userText: m.content }
-          : { runId: m.runId ?? "", role: "assistant" as const },
+          : {
+              runId: m.runId ?? "",
+              role: "assistant" as const,
+              // Legacy assistant messages (loaded from session_state.json) have
+              // no runId — pass content as fallbackText so MessageItem renders
+              // it even when there's no streamStore snapshot.
+              fallbackText: m.content,
+            },
       ),
     [messages],
   );
