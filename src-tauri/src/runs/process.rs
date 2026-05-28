@@ -100,12 +100,42 @@ pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<Sp
     Ok(SpawnedGrok { child, pgid })
 }
 
-#[cfg(not(unix))]
-pub fn spawn(_cmd_path: &Path, _args: &[String], _cwd: &Path) -> std::io::Result<SpawnedGrok> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "non-unix not supported in MVP",
-    ))
+/// Windows variant: no process groups, no cleanup_stale_grok_lock (HOME/.grok
+/// is a Unix-style path). We rely on `taskkill /F /T /PID <pid>` in
+/// `kill_group` to nuke the process tree at cancel time.
+#[cfg(windows)]
+pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<SpawnedGrok> {
+    if !cmd_path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("grok binary not found at {:?}", cmd_path),
+        ));
+    }
+    let resolved_cwd: std::path::PathBuf = if cwd.is_dir() {
+        cwd.to_path_buf()
+    } else {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        eprintln!(
+            "[grok-desktop] process: cwd {:?} does not exist, falling back to {}",
+            cwd, home
+        );
+        std::path::PathBuf::from(home)
+    };
+    let mut command = Command::new(cmd_path);
+    command
+        .args(args)
+        .current_dir(&resolved_cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = command.spawn()?;
+    // On Windows we'll use child.id() as the "pgid" — it's actually just the
+    // PID, but kill_group below uses `taskkill /T` which terminates the whole
+    // process tree rooted at that PID.
+    let pgid = child.id().expect("child has pid") as i32;
+    Ok(SpawnedGrok { child, pgid })
 }
 
 #[cfg(unix)]
@@ -113,6 +143,16 @@ pub async fn kill_group(pgid: i32) {
     let _ = killpg(Pid::from_raw(pgid), Signal::SIGTERM);
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let _ = killpg(Pid::from_raw(pgid), Signal::SIGKILL);
+}
+
+#[cfg(windows)]
+pub async fn kill_group(pgid: i32) {
+    // On Windows we use taskkill /F /T to terminate the whole process tree
+    // rooted at `pgid` (which is actually the PID — see spawn()).
+    use std::process::Command as SyncCommand;
+    let _ = SyncCommand::new("taskkill")
+        .args(["/F", "/T", "/PID", &pgid.to_string()])
+        .output();
 }
 
 pub fn read_stdout_lines(child: &mut Child) -> BufReader<tokio::process::ChildStdout> {

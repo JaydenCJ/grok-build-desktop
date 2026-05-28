@@ -273,6 +273,7 @@ BROWSER_USE_API_KEY=
 
 - Tauri desktop window launches.
 - macOS dev, app bundle, optional DMG, and stable local install scripts are available through `npm run mac:dev`, `npm run mac:build`, `npm run mac:build:dmg`, and `npm run mac:install`.
+- **Windows build target (v0.4.0).** `npm run tauri build` on `windows-latest` produces an MSI; process-tree termination uses `taskkill /F /T` instead of POSIX `killpg`. The Mac desktop bridge (osascript) is feature-gated out on non-macOS targets — the Desktop tab in the Tools dock shows "macOS-only" there. CI builds both `.app` and `.msi` per push (see `.github/workflows/ci.yml`).
 - Grok Chat/Grok Code mode switch is persisted and keeps separate drafts.
 - Grok Code starts as the default professional workflow.
 - The primary UI is a Claude Desktop/Codex-style developer workbench: spaces, projects, history, task conversation, Grok context inspector, approvals, and terminal dock.
