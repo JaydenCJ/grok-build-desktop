@@ -3955,6 +3955,88 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   background: var(--grok-bg-1);
 }
 
+/* ===== Tab bar (multi-session) ===== */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 0;
+  border-bottom: 1px solid var(--grok-border-1);
+  background: var(--grok-bg-1);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 7px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--grok-text-3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  max-width: 220px;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 100ms ease, color 100ms ease;
+}
+.tab-item:hover { background: var(--grok-bg-2); color: var(--grok-text-1); }
+.tab-item.is-active {
+  background: var(--grok-bg-2);
+  color: var(--grok-text-1);
+  border-color: var(--grok-border-1);
+  border-bottom-color: var(--grok-bg-2);
+}
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--grok-accent);
+  flex-shrink: 0;
+}
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.tab-rename {
+  font: inherit;
+  background: var(--grok-bg-3);
+  color: var(--grok-text-1);
+  border: 1px solid var(--grok-accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  width: 140px;
+  outline: none;
+}
+.tab-close {
+  background: transparent;
+  border: none;
+  color: var(--grok-text-4);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.tab-close:hover { color: var(--grok-text-1); background: var(--grok-bg-3); }
+.tab-add {
+  background: transparent;
+  border: none;
+  color: var(--grok-text-3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-left: 2px;
+}
+.tab-add:hover { color: var(--grok-text-1); background: var(--grok-bg-2); }
+
 /* ===== Trace timeline (tool / subagent / task cards) ===== */
 .trace-timeline {
   display: flex;
