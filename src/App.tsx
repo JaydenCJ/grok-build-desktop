@@ -2131,14 +2131,14 @@ function App() {
               >
                 {modelOptions.map((id) => {
                   const verified = availableModels.length === 0 || availableModels.includes(id);
+                  const label = verified ? id : `${id} · not in CLI`;
                   return (
                     <option key={id} value={id}>
-                      {id}
-                      {verified ? "" : " (not in CLI)"}
+                      {label}
                     </option>
                   );
                 })}
-                <option value="custom">Custom...</option>
+                <option value="custom">Custom…</option>
               </select>
               {!modelIsVerified ? <CircleAlert size={13} /> : null}
             </label>
