@@ -757,6 +757,28 @@ function CodeBlock({ inline, className, children }: { inline?: boolean; classNam
   );
 }
 
+function ThinkingIndicator({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setElapsed(Math.max(0, Date.now() - startedAt));
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [startedAt]);
+  const seconds = (elapsed / 1000).toFixed(1);
+  return (
+    <span className="thinking-indicator" aria-live="polite">
+      <span className="typing-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="thinking-label">Grok is thinking</span>
+      <span className="thinking-elapsed">· {seconds}s</span>
+    </span>
+  );
+}
+
 const markdownComponents = {
   // react-markdown passes `code` for both inline and block code; we hand both
   // off to CodeBlock so we can render copy affordances on fenced blocks.
@@ -807,18 +829,12 @@ const MessageItem = memo(function MessageItem({ message }: { message: ChatMessag
               </ReactMarkdown>
             </div>
           )
+        ) : showSpinner ? (
+          <div className="streaming-placeholder">
+            <ThinkingIndicator startedAt={message.ts} />
+          </div>
         ) : (
-          <p className="streaming-placeholder">
-            {showSpinner ? (
-              <span className="typing-dots" aria-label="Grok is typing">
-                <span />
-                <span />
-                <span />
-              </span>
-            ) : (
-              "(no output)"
-            )}
-          </p>
+          <p className="streaming-placeholder">(no output)</p>
         )}
         {message.role === "assistant" && message.status === "error" ? (
           <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
@@ -2188,10 +2204,13 @@ function App() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     if (!grokIsRunning) return;
-    const id = window.setInterval(() => setNowTick(Date.now()), 500);
+    const id = window.setInterval(() => setNowTick(Date.now()), 250);
     return () => window.clearInterval(id);
   }, [grokIsRunning]);
-  const elapsedSeconds = streamingMessage ? Math.max(0, Math.floor((nowTick - streamingMessage.ts) / 1000)) : 0;
+  const elapsedSeconds = streamingMessage
+    ? Math.max(0, (nowTick - streamingMessage.ts) / 1000)
+    : 0;
+  const elapsedLabel = elapsedSeconds.toFixed(1);
   const cancellingGrok = grokIsRunning && streamingMessage?.status === "stopped";
   const streamedLineCount = streamingMessage
     ? streamingMessage.content.split("\n").filter(Boolean).length
@@ -2554,7 +2573,7 @@ function App() {
                     <span />
                   </span>
                   <span className="activity-label">{activityLabel}</span>
-                  <span className="activity-time">{elapsedSeconds}s</span>
+                  <span className="activity-time">{elapsedLabel}s</span>
                   <button
                     className="activity-stop"
                     disabled={activeGrokRunId === null || cancellingGrok}
