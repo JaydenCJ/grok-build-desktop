@@ -38,14 +38,13 @@ import {
   Zap,
 } from "lucide-react";
 import "./App.css";
-import { cancelRun, enqueueRun } from "./lib/grok";
+import { cancelRun } from "./lib/grok";
 import { streamStore } from "./lib/streamStore";
 import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
-import { GuideBanner } from "./components/GuideBanner";
 import { TabBar } from "./components/TabBar";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
@@ -434,12 +433,6 @@ function recentPromptPreviews(messages: ChatMessage[]): HistoryPreview[] {
     };
   });
 }
-
-const placeholderHistory: HistoryPreview[] = [
-  { id: "p1", title: "Try: review this repository for risks", detail: "review", time: "" },
-  { id: "p2", title: "Try: add a failing test for the bug", detail: "tests", time: "" },
-  { id: "p3", title: "Try: implement a small focused fix", detail: "implement", time: "" },
-];
 
 const contextFiles = [
   "README.md",
@@ -973,6 +966,13 @@ function App() {
         }
         return current;
       });
+      // "Clean slate" — Claude-Desktop-style. Wipe the composer draft, any
+      // leftover banner / notice, and the last-run card. The user opened a
+      // new session because they wanted a *fresh* surface.
+      setDrafts({ standard: "", coding: "" });
+      composerRef.current?.setValue("");
+      setSessionNotice(null);
+      setLastRun(null);
     });
   }
   function handleTabClose(id: string) {
@@ -1195,6 +1195,13 @@ function App() {
     if (mode === "coding" && codingCwd.trim()) {
       args.push("--cwd", codingCwd.trim());
     }
+    // Auto-continue the current cwd's session when the conversation already
+    // has messages (the user is following up, not starting fresh). This is
+    // what Claude Desktop / Codex do — there's only ever one composer, and
+    // the second message in a conversation implicitly continues the first.
+    if (messages.length > 0) {
+      args.push("-c");
+    }
     return args;
   }
 
@@ -1263,29 +1270,6 @@ function App() {
     });
     if (info.position > 0) {
       console.log(`[grok-desktop] queued at position ${info.position}`);
-    }
-  }
-
-  // Codex-style "guide while it runs" submit. Mid-run, the user types a steer
-  // ("focus on the SQL query", "skip the explainer") and we enqueue it as the
-  // next run with `--continue`, so grok resumes the same session and folds the
-  // guidance into the existing context.
-  async function handleGuideSubmit(guidance: string) {
-    const trimmed = guidance.trim();
-    if (!trimmed) return;
-    const args = buildGrokArgs();
-    args.push("-c"); // continue last session for this cwd
-    const wrapped = `[Guidance — apply to the in-flight task]\n${trimmed}`;
-    args.push("-p", wrapped);
-    try {
-      const result = await enqueueRun({ prompt: wrapped, cwd: codingCwd, args });
-      handleEnqueued({ runId: result.runId, position: result.position, prompt: wrapped });
-      setPendingGuide("");
-    } catch (err) {
-      console.error("[grok-desktop] guide enqueue failed", err);
-      setSessionNotice(
-        `Failed to send guidance: ${err instanceof Error ? err.message : String(err)}`,
-      );
     }
   }
 
@@ -2124,7 +2108,6 @@ function App() {
 
   const [historyFilter, setHistoryFilter] = useState("");
   const historySearchInputRef = useRef<HTMLInputElement | null>(null);
-  const [pendingGuide, setPendingGuide] = useState<string>("");
   const recentPrompts = useMemo(() => {
     const all = recentPromptPreviews(messages);
     if (!historyFilter.trim()) return all;
@@ -2256,11 +2239,11 @@ function App() {
               const handle = () => {
                 if (item.label === "New Session") {
                   // CREATES a fresh tab (empty messages, clean cwd) and
-                  // switches to it. This is the user's mental model post-
-                  // v0.3.0 tabs — match it rather than "clear current".
+                  // switches to it. handleTabCreate already wipes drafts,
+                  // notices, and last-run card — Claude-Desktop-style
+                  // "clean slate". Then put the cursor in the composer.
                   handleTabCreate();
                   composerRef.current?.focus();
-                  setSessionNotice("New session ready.");
                 } else if (item.label === "Search") {
                   // Open the ⌘K command palette pre-focused. The host of
                   // visible "search-y" things (recent prompts, palette,
@@ -2328,19 +2311,29 @@ function App() {
             />
           </label>
           <div className="history-list">
-            {(recentPrompts.length > 0 ? recentPrompts : placeholderHistory).map((item, index) => {
-              const isPlaceholder = recentPrompts.length === 0;
-              return (
+            {recentPrompts.length === 0 ? (
+              // No fake "Try: …" placeholders. An empty state is honest and
+              // less misleading than disabled-looking rows that look real.
+              <div className="history-empty">
+                {historyFilter.trim() ? (
+                  <>
+                    <span>No matches for</span>
+                    <code>{historyFilter.trim()}</code>
+                  </>
+                ) : (
+                  <span>Your prompts will show up here.</span>
+                )}
+              </div>
+            ) : (
+              recentPrompts.map((item, index) => (
                 <button
-                  className={!isPlaceholder && index === 0 ? "active" : ""}
-                  disabled={isPlaceholder}
+                  className={index === 0 ? "active" : ""}
                   key={item.id}
                   onClick={() => {
-                    if (isPlaceholder) return;
                     const target = messages.find((message) => message.id === item.id);
                     if (target) updatePrompt(target.content);
                   }}
-                  title={isPlaceholder ? "Sample prompt" : "Restore this prompt to the composer"}
+                  title="Restore this prompt to the composer"
                   type="button"
                 >
                   <span>
@@ -2349,8 +2342,8 @@ function App() {
                   </span>
                   <time>{item.time || ""}</time>
                 </button>
-              );
-            })}
+              ))
+            )}
           </div>
         </section>
 
@@ -2615,7 +2608,6 @@ function App() {
             <StatusBar />
 
             <div className="composer-row">
-              <GuideBanner onSubmit={handleGuideSubmit} initialValue={pendingGuide} />
               <Composer
                 ref={composerRef}
                 cwd={codingCwd}
