@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -717,6 +717,65 @@ function grokTrust(output: string) {
   const match = output.match(/Project trusted:\s*(yes|no)/i);
   return match?.[1] ?? "unknown";
 }
+
+const MessageItem = memo(function MessageItem({ message }: { message: ChatMessage }) {
+  const isUser = message.role === "user";
+  const showSpinner = message.status === "streaming";
+  return (
+    <article
+      className={`message ${isUser ? "user-message" : "assistant-message"} ${message.status ? `status-${message.status}` : ""}`}
+    >
+      <div className={`message-avatar ${isUser ? "user-avatar" : "grok-avatar"}`}>
+        {isUser ? <span>You</span> : <Bot size={18} />}
+      </div>
+      <div className="message-body">
+        <div className="message-meta">
+          <strong>
+            {isUser ? "You" : "Grok"}
+            {!isUser && message.meta?.model ? <span>({message.meta.model})</span> : null}
+            {!isUser && message.meta?.workflow ? <small className="message-workflow">{message.meta.workflow}</small> : null}
+          </strong>
+          <time>
+            {showSpinner ? (
+              <Loader2 className="spin" size={13} />
+            ) : message.meta?.durationMs ? (
+              `${(message.meta.durationMs / 1000).toFixed(1)}s`
+            ) : (
+              timeLabel(message.ts)
+            )}
+          </time>
+        </div>
+        {isUser ? (
+          <p>{message.content || "(empty)"}</p>
+        ) : message.content ? (
+          <div className="markdown-body">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p className="streaming-placeholder">
+            {showSpinner ? (
+              <span className="typing-dots" aria-label="Grok is typing">
+                <span />
+                <span />
+                <span />
+              </span>
+            ) : (
+              "(no output)"
+            )}
+          </p>
+        )}
+        {message.role === "assistant" && message.status === "error" ? (
+          <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
+        ) : null}
+        {message.role === "assistant" && message.status === "stopped" ? (
+          <div className="message-error">Stopped by user.</div>
+        ) : null}
+      </div>
+    </article>
+  );
+});
 
 function App() {
   const [mode, setMode] = useState<Mode>(() => {
@@ -1739,7 +1798,10 @@ function App() {
   }, [mode]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.drafts, JSON.stringify(drafts));
+    const timer = setTimeout(() => {
+      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(drafts));
+    }, 250);
+    return () => clearTimeout(timer);
   }, [drafts]);
 
   useEffect(() => {
@@ -1835,11 +1897,17 @@ function App() {
   }, [drafts, lastRun, mode]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
+    const timer = setTimeout(() => {
+      window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [history]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.messages, JSON.stringify(messages));
+    const timer = setTimeout(() => {
+      window.localStorage.setItem(storageKeys.messages, JSON.stringify(messages));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   useEffect(() => {
@@ -2006,6 +2074,26 @@ function App() {
   const grokControlDisabled = grokIsRunning
     ? activeGrokRunId === null
     : busyRunner !== null || grokRunBlocked;
+
+  const streamingMessage = useMemo(
+    () => messages.find((m) => m.role === "assistant" && m.status === "streaming"),
+    [messages],
+  );
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!grokIsRunning) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [grokIsRunning]);
+  const elapsedSeconds = streamingMessage ? Math.max(0, Math.floor((nowTick - streamingMessage.ts) / 1000)) : 0;
+  const cancellingGrok = grokIsRunning && streamingMessage?.status === "stopped";
+  const activityLabel = cancellingGrok
+    ? "Stopping…"
+    : !streamingMessage
+      ? null
+      : streamingMessage.content.trim().length === 0
+        ? "Grok is thinking…"
+        : "Streaming response";
   function handlePromptKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -2283,67 +2371,29 @@ function App() {
                   </div>
                 </article>
               ) : (
-                messages.map((message) => {
-                  const isUser = message.role === "user";
-                  const showSpinner = message.status === "streaming";
-                  return (
-                    <article
-                      className={`message ${isUser ? "user-message" : "assistant-message"} ${message.status ? `status-${message.status}` : ""}`}
-                      key={message.id}
-                    >
-                      <div className={`message-avatar ${isUser ? "user-avatar" : "grok-avatar"}`}>
-                        {isUser ? <span>You</span> : <Bot size={18} />}
-                      </div>
-                      <div className="message-body">
-                        <div className="message-meta">
-                          <strong>
-                            {isUser ? "You" : "Grok"}
-                            {!isUser && message.meta?.model ? <span>({message.meta.model})</span> : null}
-                            {!isUser && message.meta?.workflow ? <small className="message-workflow">{message.meta.workflow}</small> : null}
-                          </strong>
-                          <time>
-                            {showSpinner ? (
-                              <Loader2 className="spin" size={13} />
-                            ) : message.meta?.durationMs ? (
-                              `${(message.meta.durationMs / 1000).toFixed(1)}s`
-                            ) : (
-                              timeLabel(message.ts)
-                            )}
-                          </time>
-                        </div>
-                        {isUser ? (
-                          <p>{message.content || "(empty)"}</p>
-                        ) : message.content ? (
-                          <div className="markdown-body">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {message.content}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <p className="streaming-placeholder">
-                            {showSpinner ? (
-                              <span className="typing-dots" aria-label="Grok is typing">
-                                <span />
-                                <span />
-                                <span />
-                              </span>
-                            ) : (
-                              "(no output)"
-                            )}
-                          </p>
-                        )}
-                        {message.role === "assistant" && message.status === "error" ? (
-                          <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
-                        ) : null}
-                        {message.role === "assistant" && message.status === "stopped" ? (
-                          <div className="message-error">Stopped by user.</div>
-                        ) : null}
-                      </div>
-                    </article>
-                  );
-                })
+                messages.map((message) => <MessageItem key={message.id} message={message} />)
               )}
             </div>
+
+            {grokIsRunning && activityLabel ? (
+              <div className={`activity-strip ${cancellingGrok ? "cancelling" : ""}`} role="status" aria-live="polite">
+                <span className="activity-pulse" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="activity-label">{activityLabel}</span>
+                <span className="activity-time">{elapsedSeconds}s</span>
+                <button
+                  className="activity-stop"
+                  disabled={activeGrokRunId === null || cancellingGrok}
+                  onClick={() => void cancelGrok()}
+                  type="button"
+                >
+                  Stop
+                </button>
+              </div>
+            ) : null}
 
             <div className="composer">
               <textarea
