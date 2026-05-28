@@ -2385,6 +2385,164 @@ select:focus {
   display: none;
 }
 
+/* Claude-style markdown rendering for chat messages */
+.markdown-body {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin-top: 6px;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  color: var(--text);
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 18px 0 8px;
+}
+
+.markdown-body h1 { font-size: 1.25rem; }
+.markdown-body h2 { font-size: 1.12rem; }
+.markdown-body h3 { font-size: 1rem; }
+.markdown-body h4 { font-size: 0.95rem; }
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 6px 0 12px;
+  padding-left: 22px;
+}
+
+.markdown-body li {
+  margin: 3px 0;
+}
+
+.markdown-body li > p {
+  margin: 0;
+}
+
+.markdown-body strong { font-weight: 750; }
+.markdown-body em { font-style: italic; }
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body code {
+  background: var(--field-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.86em;
+  padding: 1px 6px;
+}
+
+.markdown-body pre {
+  background: var(--field-strong);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  margin: 8px 0 14px;
+  overflow-x: auto;
+  padding: 12px 14px;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  padding: 0;
+  white-space: pre;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--line);
+  color: var(--text-muted);
+  margin: 8px 0 12px;
+  padding: 2px 0 2px 12px;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  margin: 16px 0;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 8px 0 14px;
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--line-soft);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--field-strong);
+  font-weight: 750;
+}
+
+/* Typing dots — Claude-style pulsing indicator while grok streams */
+.streaming-placeholder {
+  margin-top: 8px;
+  min-height: 22px;
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.typing-dots > span {
+  animation: typing-bounce 1.35s ease-in-out infinite;
+  background: var(--text-muted);
+  border-radius: 50%;
+  display: inline-block;
+  height: 6px;
+  opacity: 0.4;
+  width: 6px;
+}
+
+.typing-dots > span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.typing-dots > span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
 .inspector-drawer[open],
 .terminal-dock[open],
 .toolbelt[open] {
