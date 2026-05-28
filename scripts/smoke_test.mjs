@@ -190,4 +190,51 @@ assert.ok(read(".env.example").includes("TELEGRAM_BOT_TOKEN"),
 assert.ok(read(".env.example").includes("TELEGRAM_ALLOWED_CHAT_IDS"),
   ".env.example must document TELEGRAM_ALLOWED_CHAT_IDS");
 
+// v0.3.0: Prompt library (D MVP)
+assert.ok(existsSync(join(root, "src-tauri/src/prompts/mod.rs")),
+  "prompts module missing");
+assert.ok(existsSync(join(root, "src/lib/prompts.ts")),
+  "prompts TS wrapper missing");
+assert.ok(existsSync(join(root, "src/components/PromptLibrary.tsx")),
+  "PromptLibrary component missing");
+for (const cmd of ["list_prompts", "upsert_prompt", "delete_prompt"]) {
+  assert.ok(libRs.includes(cmd), `missing Tauri command for prompts: ${cmd}`);
+}
+assert.ok(libRs.includes("pub mod prompts"),
+  "lib.rs must export prompts module");
+assert.ok(libRs.includes("PromptStore::open_at"),
+  "lib.rs must open prompts.sqlite on setup");
+
+// v0.3.0: G2 agent overlay
+assert.ok(existsSync(join(root, "overlay.html")),
+  "overlay.html entry point missing");
+assert.ok(existsSync(join(root, "src/overlay.tsx")),
+  "src/overlay.tsx entry point missing");
+assert.ok(existsSync(join(root, "src/components/AgentOverlay.tsx")),
+  "AgentOverlay component missing");
+assert.ok(existsSync(join(root, "src/components/AgentOverlayDriver.tsx")),
+  "AgentOverlayDriver missing");
+assert.ok(existsSync(join(root, "src/lib/overlay.ts")),
+  "overlay TS wrapper missing");
+for (const cmd of ["set_agent_overlay", "set_agent_cursor"]) {
+  assert.ok(libRs.includes(cmd), `missing Tauri command for overlay: ${cmd}`);
+}
+const tauriConf = JSON.parse(read("src-tauri/tauri.conf.json"));
+const overlayWindow = (tauriConf.app?.windows ?? []).find((w) => w.label === "agent-overlay");
+assert.ok(overlayWindow, "tauri.conf.json must declare agent-overlay window");
+assert.equal(overlayWindow.transparent, true, "agent-overlay window must be transparent");
+assert.equal(overlayWindow.alwaysOnTop, true, "agent-overlay window must be alwaysOnTop");
+assert.equal(overlayWindow.decorations, false, "agent-overlay window must hide decorations");
+
+// Vite multi-entry build for overlay.
+const viteConfig = read("vite.config.ts");
+assert.ok(viteConfig.includes("overlay.html"),
+  "vite.config.ts must include overlay.html as a build entry");
+
+// v0.3.0: Grok-themed CSS tokens
+assert.ok(css.includes("--grok-bg-0"),
+  "Grok-themed CSS tokens missing (--grok-bg-0..4 expected)");
+assert.ok(css.includes("--grok-accent"),
+  "Grok accent color token missing");
+
 console.log("smoke: ok");

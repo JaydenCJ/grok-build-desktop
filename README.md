@@ -217,6 +217,29 @@ Authorization is enforced per command — chat IDs not in `TELEGRAM_ALLOWED_CHAT
 
 The bot reuses the same `RunQueue` as the desktop UI, so a run started in Telegram appears in the QueueDock and a run started in the desktop UI appears in `/queue`. Cancels work in both directions.
 
+### Prompt Library (v0.3.0+)
+
+Reusable prompt templates persisted in SQLite, with a panel supporting search-as-you-type, inline edit, category labels, and one-click insert into the composer.
+
+- Storage: `~/Library/Application Support/Grok Desktop/prompts.sqlite`
+- Tauri commands: `list_prompts`, `upsert_prompt`, `delete_prompt`
+- Each prompt has `id` (UUID v7), `name`, optional `category`, `body`, and timestamps. List is sorted by most-recently-updated.
+- 4 tokio unit tests in `src-tauri/src/prompts/mod.rs` plus smoke guards.
+
+### Agent Overlay (v0.3.0+)
+
+Visual feedback that's impossible to miss when Grok is doing something: a colored screen-edge border across the full display, plus a smoothly-animated agent cursor sprite.
+
+- Implemented as a second Tauri window (`agent-overlay`) configured with `transparent: true`, `alwaysOnTop: true`, `decorations: false`, `fullscreen: true`, and `set_ignore_cursor_events(true)` so it's click-through.
+- Toggled automatically by `AgentOverlayDriver` whenever a RunQueue run is in the `running` state. Set `grok-desktop-overlay-enabled=0` in localStorage to disable.
+- Tauri commands: `set_agent_overlay { visible, label?, mode?, action? }` and `set_agent_cursor { x, y, label?, action? }`.
+- Strictly visual — no OS input synthesis. The actual page interactions still go through the Chrome extension's DOM events.
+- Design rationale in `docs/superpowers/specs/2026-05-28-G2-G3-os-overlay-design.md`.
+
+### Grok Theme (v0.3.0+)
+
+Top-level `--grok-bg-0..4`, `--grok-text-1..4`, and `--grok-accent` CSS variables drive every surface. Dark by default, with a `[data-theme="light"]` override on root or body for light mode. Code blocks use a Catppuccin-inspired hljs palette tuned to match.
+
 ### Phone Control
 
 The app detects:
