@@ -3954,3 +3954,92 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   border-top: 1px solid var(--grok-border-1);
   background: var(--grok-bg-1);
 }
+
+/* ===== Trace timeline (tool / subagent / task cards) ===== */
+.trace-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.trace-card {
+  border: 1px solid var(--grok-border-1);
+  border-radius: 10px;
+  background: var(--grok-bg-2);
+  font-size: 12px;
+  overflow: hidden;
+}
+.trace-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  color: var(--grok-text-1);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.trace-card-head:hover { background: var(--grok-bg-3); }
+.trace-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.trace-tool .trace-icon { background: rgba(255,122,69,0.16); color: var(--grok-accent); }
+.trace-subagent .trace-icon { background: rgba(137,180,250,0.18); color: #89b4fa; }
+.trace-task .trace-icon { background: rgba(166,227,161,0.18); color: #a6e3a1; }
+.trace-other .trace-icon { background: var(--grok-bg-3); color: var(--grok-text-3); }
+.trace-status-done .trace-icon { background: rgba(166,227,161,0.18); color: #a6e3a1; }
+.trace-status-error .trace-icon { background: rgba(243,139,168,0.20); color: #f38ba8; }
+
+.trace-label {
+  flex: 1;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trace-meta {
+  color: var(--grok-text-4);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.trace-status-error .trace-meta { color: #f38ba8; }
+.trace-pulse {
+  display: inline-block;
+  animation: trace-pulse 1.0s ease-in-out infinite;
+}
+@keyframes trace-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1.0; }
+}
+.trace-detail {
+  padding: 0 10px 8px 36px;
+  color: var(--grok-text-3);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.trace-raw {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--grok-bg-1);
+  border-top: 1px solid var(--grok-border-1);
+  color: var(--grok-text-3);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow-y: auto;
+}

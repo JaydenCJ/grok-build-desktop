@@ -25,7 +25,14 @@ pub struct QueueMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum QueueMessageKind {
-    Event { event: GrokEvent },
+    Event {
+        event: GrokEvent,
+        /// Raw JSON line as emitted by `grok --output-format streaming-json`.
+        /// Carried alongside the strongly-typed `event` so the frontend can
+        /// recognize new event types (tool_use, subagent_*, etc.) without a
+        /// Rust round-trip every time grok extends its protocol.
+        raw: serde_json::Value,
+    },
     StateChanged {
         state: RunState,
         started_at: Option<i64>,
@@ -331,12 +338,23 @@ impl RunQueue {
                             if trimmed.is_empty() {
                                 continue;
                             }
+                            // Parse the line twice: once into the typed
+                            // GrokEvent enum (for existing Thought/Text/End
+                            // consumers), once as raw JSON Value (so the
+                            // frontend can introspect tool/subagent events
+                            // without us touching Rust for every new type).
+                            let raw_value: serde_json::Value =
+                                serde_json::from_str(&trimmed)
+                                    .unwrap_or(serde_json::Value::Null);
                             match parse_line(&trimmed) {
                                 Ok(ev) => {
                                     consecutive_fail = 0;
                                     let _ = self.tx.send(QueueMessage {
                                         run_id: rec.id.clone(),
-                                        kind: QueueMessageKind::Event { event: ev },
+                                        kind: QueueMessageKind::Event {
+                                            event: ev,
+                                            raw: raw_value,
+                                        },
                                     });
                                 }
                                 Err(_) => {
