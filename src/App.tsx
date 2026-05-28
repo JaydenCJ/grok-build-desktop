@@ -1,4 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  memo,
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1302,14 +1310,18 @@ function App() {
         selfCheck,
         onRunId: setActiveGrokRunId,
         onEvent: (event) => {
-          setTerminalLines((current) => [...current, formatGrokEvent(event)].slice(-500));
-          if (event.stream === "stdout") {
-            const incoming = event.line;
-            updateMessage(assistantMessageId, (current) => ({
-              ...current,
-              content: current.content ? `${current.content}\n${incoming}` : incoming,
-            }));
-          }
+          // Streaming updates are non-urgent — wrap in startTransition so React
+          // pauses them when the user is typing or interacting elsewhere.
+          startTransition(() => {
+            setTerminalLines((current) => [...current, formatGrokEvent(event)].slice(-500));
+            if (event.stream === "stdout") {
+              const incoming = event.line;
+              updateMessage(assistantMessageId, (current) => ({
+                ...current,
+                content: current.content ? `${current.content}\n${incoming}` : incoming,
+              }));
+            }
+          });
         },
       });
       recordRun(run);
