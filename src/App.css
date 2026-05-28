@@ -2481,6 +2481,73 @@ select:focus {
   white-space: pre;
 }
 
+/* Code block with Copy button — Claude-style fenced code fences */
+.markdown-body .code-block {
+  background: var(--field-strong);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  margin: 10px 0 14px;
+  overflow: hidden;
+}
+
+.markdown-body .code-block pre {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.code-block-head {
+  align-items: center;
+  background: var(--field);
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px 5px 14px;
+}
+
+.code-block-lang {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.code-block-copy {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-height: 22px;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.code-block-copy:hover:not(:disabled) {
+  background: var(--button);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* Streaming mode: raw <pre> to avoid re-parsing markdown every chunk */
+.markdown-body.streaming-raw {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin: 6px 0 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .markdown-body blockquote {
   border-left: 3px solid var(--line);
   color: var(--text-muted);
@@ -2622,14 +2689,30 @@ select:focus {
 
 /* Activity strip above composer — what Grok is doing right now */
 .activity-strip {
-  align-items: center;
   background: var(--field-strong);
   border-top: 1px solid var(--line-soft);
   color: var(--text);
   display: flex;
+  flex-direction: column;
   font-size: 0.82rem;
-  gap: 10px;
+  gap: 4px;
   padding: 8px 14px;
+}
+
+.activity-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.activity-tail {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.74rem;
+  overflow: hidden;
+  padding-left: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .activity-strip.cancelling {
