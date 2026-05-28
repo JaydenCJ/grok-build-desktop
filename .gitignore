@@ -31,3 +31,4 @@ absorbed/*
 *.njsproj
 *.sln
 *.sw?
+.claude/
