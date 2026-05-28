@@ -3722,3 +3722,16 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   cursor: not-allowed;
 }
 .prompt-library-save:not(:disabled):hover { filter: brightness(1.08); }
+
+/* v0.3.0 typing-jam fix: visual feedback during enqueue */
+.status-pending-dot {
+  animation: status-pending-pulse 0.9s ease-in-out infinite;
+  color: var(--grok-accent);
+}
+@keyframes status-pending-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.composer-submitting textarea {
+  opacity: 0.7;
+}
