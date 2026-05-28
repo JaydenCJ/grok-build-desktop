@@ -156,6 +156,31 @@ export function replaceQueue(q: QueueSnapshot): void {
   streamStore.setQueue(q);
 }
 
+/**
+ * Counter of pending `enqueue_run` invocations. The Composer increments this
+ * before calling invoke() and decrements after the run-id is returned (or
+ * the call fails). StatusBar reads it via a hook to render "preparing…" in
+ * the gap between Enter and the first run-state-changed event.
+ */
+let pendingSubmitCount = 0;
+const pendingSubmitListeners = new Set<() => void>();
+
+export function getPendingSubmitCount(): number {
+  return pendingSubmitCount;
+}
+export function subscribePendingSubmit(cb: () => void): () => void {
+  pendingSubmitListeners.add(cb);
+  return () => pendingSubmitListeners.delete(cb);
+}
+export function notePendingSubmitStart(): void {
+  pendingSubmitCount += 1;
+  pendingSubmitListeners.forEach((cb) => cb());
+}
+export function notePendingSubmitEnd(): void {
+  pendingSubmitCount = Math.max(0, pendingSubmitCount - 1);
+  pendingSubmitListeners.forEach((cb) => cb());
+}
+
 let unlistenFns: UnlistenFn[] = [];
 let attachInflight: Promise<void> | null = null;
 let attachUnavailable = false;

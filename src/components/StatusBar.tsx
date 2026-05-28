@@ -1,6 +1,7 @@
 import { useActiveRun } from '../hooks/useActiveRun';
 import { useElapsed } from '../hooks/useElapsed';
 import { useQueue } from '../hooks/useQueue';
+import { usePendingSubmitCount } from '../hooks/usePendingSubmit';
 import type { RunSnapshot } from '../lib/streamStore';
 
 function formatTokens(chars: number): string {
@@ -31,10 +32,25 @@ function stateText(snap: RunSnapshot | undefined): string {
 export function StatusBar() {
   const active = useActiveRun();
   const queue = useQueue();
+  const pending = usePendingSubmitCount();
   const elapsed = useElapsed(active?.startedAt ?? null, active?.endedAt ?? null);
   const chars = (active?.thoughtChars ?? 0) + (active?.textChars ?? 0);
   const queuedExtra = queue.items.length;
   if (!active) {
+    if (pending > 0) {
+      return (
+        <div className="status-bar">
+          <span className="status-elapsed status-pending-dot">●</span>
+          <span className="status-state">preparing run{pending > 1 ? ` (×${pending})` : ''}…</span>
+          {queuedExtra > 0 ? (
+            <>
+              <span className="status-sep">·</span>
+              <span className="status-queue">+{queuedExtra} queued</span>
+            </>
+          ) : null}
+        </div>
+      );
+    }
     if (queuedExtra > 0) {
       return (
         <div className="status-bar">
