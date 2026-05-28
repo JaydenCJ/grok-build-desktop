@@ -845,8 +845,18 @@ pre {
 
 .composer {
   border-top: 1px solid #dce3ea;
+  contain: layout style;
   display: grid;
   gap: 0;
+}
+
+.composer textarea {
+  contain: layout style;
+}
+
+.conversation-scroll {
+  contain: layout style paint;
+  -webkit-overflow-scrolling: touch;
 }
 
 .composer-tabs {
