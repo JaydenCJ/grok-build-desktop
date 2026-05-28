@@ -726,6 +726,45 @@ function grokTrust(output: string) {
   return match?.[1] ?? "unknown";
 }
 
+function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
+  const codeText = Array.isArray(children) ? children.join("") : String(children ?? "");
+  const [copied, setCopied] = useState(false);
+  if (inline) {
+    return <code className={className}>{children}</code>;
+  }
+  const lang = className?.replace(/^language-/, "") ?? "";
+  const handleCopy = () => {
+    void navigator.clipboard
+      .writeText(codeText.replace(/\n$/, ""))
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1400);
+      })
+      .catch(() => undefined);
+  };
+  return (
+    <div className="code-block">
+      <div className="code-block-head">
+        <span className="code-block-lang">{lang || "code"}</span>
+        <button className="code-block-copy" onClick={handleCopy} type="button">
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className={className}>
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
+const markdownComponents = {
+  // react-markdown passes `code` for both inline and block code; we hand both
+  // off to CodeBlock so we can render copy affordances on fenced blocks.
+  code: CodeBlock as never,
+  // Drop react-markdown's default <pre> wrapper because CodeBlock provides one.
+  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+};
+
 const MessageItem = memo(function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const showSpinner = message.status === "streaming";
@@ -756,11 +795,18 @@ const MessageItem = memo(function MessageItem({ message }: { message: ChatMessag
         {isUser ? (
           <p>{message.content || "(empty)"}</p>
         ) : message.content ? (
-          <div className="markdown-body">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content}
-            </ReactMarkdown>
-          </div>
+          showSpinner ? (
+            // While streaming, render raw text (white-space: pre-wrap) instead of
+            // re-parsing the entire accumulated markdown on every chunk. Markdown
+            // gets re-applied once status flips to done/error/stopped.
+            <pre className="markdown-body streaming-raw">{message.content}</pre>
+          ) : (
+            <div className="markdown-body">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )
         ) : (
           <p className="streaming-placeholder">
             {showSpinner ? (
@@ -2147,13 +2193,37 @@ function App() {
   }, [grokIsRunning]);
   const elapsedSeconds = streamingMessage ? Math.max(0, Math.floor((nowTick - streamingMessage.ts) / 1000)) : 0;
   const cancellingGrok = grokIsRunning && streamingMessage?.status === "stopped";
+  const streamedLineCount = streamingMessage
+    ? streamingMessage.content.split("\n").filter(Boolean).length
+    : 0;
   const activityLabel = cancellingGrok
     ? "Stopping…"
     : !streamingMessage
       ? null
       : streamingMessage.content.trim().length === 0
         ? "Grok is thinking…"
-        : "Streaming response";
+        : `Streaming · ${streamedLineCount} ${streamedLineCount === 1 ? "line" : "lines"}`;
+  // Latest non-empty line of activity — prefer the most recent stdout line from
+  // the streaming message (what Grok is actually saying right now). Fall back
+  // to the most recent terminal sys line so users see "Preparing Grok Build CLI"
+  // before the first stdout chunk arrives.
+  const activityTail = useMemo(() => {
+    if (cancellingGrok) return "Cancelling run · waiting for grok process to exit";
+    if (streamingMessage && streamingMessage.content.trim()) {
+      const lines = streamingMessage.content.split("\n");
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i].trim();
+        if (line) return line.length > 160 ? `${line.slice(0, 160)}…` : line;
+      }
+    }
+    for (let i = terminalLines.length - 1; i >= 0; i -= 1) {
+      const raw = terminalLines[i];
+      if (!raw) continue;
+      const clean = raw.replace(/^\[(sys|out|err)\]\s*/i, "").trim();
+      if (clean) return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean;
+    }
+    return "";
+  }, [cancellingGrok, streamingMessage, terminalLines]);
   function handlePromptKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -2477,21 +2547,28 @@ function App() {
 
             {grokIsRunning && activityLabel ? (
               <div className={`activity-strip ${cancellingGrok ? "cancelling" : ""}`} role="status" aria-live="polite">
-                <span className="activity-pulse" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                <span className="activity-label">{activityLabel}</span>
-                <span className="activity-time">{elapsedSeconds}s</span>
-                <button
-                  className="activity-stop"
-                  disabled={activeGrokRunId === null || cancellingGrok}
-                  onClick={() => void cancelGrok()}
-                  type="button"
-                >
-                  Stop
-                </button>
+                <div className="activity-row">
+                  <span className="activity-pulse" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  <span className="activity-label">{activityLabel}</span>
+                  <span className="activity-time">{elapsedSeconds}s</span>
+                  <button
+                    className="activity-stop"
+                    disabled={activeGrokRunId === null || cancellingGrok}
+                    onClick={() => void cancelGrok()}
+                    type="button"
+                  >
+                    Stop
+                  </button>
+                </div>
+                {activityTail ? (
+                  <div className="activity-tail" title={activityTail}>
+                    {activityTail}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

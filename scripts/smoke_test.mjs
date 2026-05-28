@@ -116,7 +116,16 @@ assert.ok(mainTsx.includes("Reset session and reload"), "Recovery action button 
 assert.ok(app.includes("MessageItem = memo"), "Chat messages must be memoized to keep typing snappy");
 assert.ok(app.includes("activity-strip"), "Activity strip above composer missing");
 assert.ok(app.includes("Grok is thinking"), "Thinking-state activity label missing");
-assert.ok(app.includes("Streaming response"), "Streaming activity label missing");
+assert.ok(
+  app.includes("Streaming response") ||
+    (app.includes("Streaming ·") && app.includes("streamedLineCount")),
+  "Streaming activity label missing",
+);
+assert.ok(
+  app.includes("markdownComponents") && app.includes("CodeBlock"),
+  "Code block copy affordance missing — fenced code must offer a Copy button",
+);
+assert.ok(app.includes("activity-tail"), "Activity tail (latest streamed line) missing");
 assert.ok(app.includes("setBusyRunner((current) => (current === \"grok\" ? null : current))"), "cancelGrok must clear busyRunner in finally");
 assert.ok(app.includes("setActiveGrokRunId((current) => (current === runIdSnapshot ? null : current))"), "cancelGrok must clear activeGrokRunId");
 
