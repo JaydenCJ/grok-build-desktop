@@ -1,6 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+// src/lib/grok.ts — F task 11: real wrappers around the new enqueue/cancel commands
+import { invoke } from '@tauri-apps/api/core';
+import { attachTauriListeners } from './streamStore';
 
+// --- Type re-exports kept for App.tsx compatibility ---
+// These are stub types matching the legacy shape. They will be removed when
+// App.tsx is rewritten in Task 21.
+// NOTE: fields kept required so App.tsx local ToolRun (also required) stays assignable.
 export type ToolRun = {
   ok: boolean;
   command: string;
@@ -14,7 +19,7 @@ export type ToolRun = {
 
 export type GrokStreamEvent = {
   runId: string;
-  stream: "stdout" | "stderr" | "system";
+  stream: 'stdout' | 'stderr' | 'system';
   line: string;
   done: boolean;
   ok: boolean | null;
@@ -25,7 +30,7 @@ export type GrokStreamEvent = {
 };
 
 export type CallGrokOptions = {
-  mode: "standard" | "coding";
+  mode?: 'standard' | 'coding';
   cwd?: string;
   model?: string;
   effort?: string;
@@ -38,42 +43,51 @@ export type CallGrokOptions = {
   selfCheck?: boolean;
   onRunId?: (runId: string) => void;
   onEvent?: (event: GrokStreamEvent) => void;
+  [k: string]: unknown;
 };
 
-function createRunId() {
-  return `grok-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// --- Throwing stubs for legacy call-sites (FIXME(F-task21) markers in App.tsx) ---
+export async function callGrokCLI(_prompt: string, _options?: CallGrokOptions): Promise<ToolRun> {
+  throw new Error('legacy callGrokCLI removed; use enqueueRun (wiring in Task 21)');
 }
 
-export async function callGrokCLI(prompt: string, options: CallGrokOptions) {
-  const runId = createRunId();
-  options.onRunId?.(runId);
-  const unlisten = await listen<GrokStreamEvent>("grok-desktop://grok-stream", (event) => {
-    if (event.payload.runId === runId) {
-      options.onEvent?.(event.payload);
-    }
-  });
-
-  try {
-    return await invoke<ToolRun>("run_grok_streaming_task", {
-      prompt,
-      mode: options.mode,
-      cwd: options.cwd || null,
-      model: options.model || null,
-      effort: options.effort || null,
-      reasoningEffort: options.reasoningEffort || null,
-      permissionMode: options.permissionMode || null,
-      bestOfN: options.bestOfN || null,
-      experimentalMemory: options.experimentalMemory ?? false,
-      webSearchEnabled: options.webSearchEnabled ?? false,
-      subagentsEnabled: options.subagentsEnabled ?? false,
-      selfCheck: options.selfCheck ?? false,
-      runId,
-    });
-  } finally {
-    unlisten();
-  }
+export async function cancelGrokCLI(_runId?: string): Promise<boolean> {
+  throw new Error('legacy cancelGrokCLI removed; use cancelRun (wiring in Task 21)');
 }
 
-export async function cancelGrokCLI(runId: string) {
-  return invoke<boolean>("cancel_grok_run", { runId });
+// --- New API ---
+
+export async function ensureStreamListenersAttached(): Promise<void> {
+  await attachTauriListeners();
+}
+
+export async function enqueueRun(opts: {
+  prompt: string;
+  cwd: string;
+  args: string[];
+}): Promise<{ runId: string; position: number }> {
+  return invoke('enqueue_run', opts);
+}
+
+export async function cancelRun(runId: string): Promise<boolean> {
+  return invoke('cancel_run', { runId });
+}
+
+export async function getQueue(): Promise<{
+  active: string | null;
+  queue: Array<{ id: string; prompt: string; cwd: string; state: string; enqueuedAt: number }>;
+}> {
+  return invoke('get_queue');
+}
+
+export async function clearQueue(): Promise<number> {
+  return invoke('clear_queue');
+}
+
+export async function resumePendingRuns(): Promise<number> {
+  return invoke('resume_pending_runs');
+}
+
+export async function cancelPendingRuns(): Promise<number> {
+  return invoke('cancel_pending_runs');
 }

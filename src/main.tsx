@@ -1,8 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ensureStreamListenersAttached } from "./lib/grok";
 
 const STORAGE_KEY_PREFIX = "grok-desktop-";
+
+// Wire up Tauri event listeners for the run queue + stream events.
+// Fire-and-forget; failures leave the store empty rather than blocking startup.
+void ensureStreamListenersAttached().catch((e) => {
+  console.warn("[grok-desktop] failed to attach Tauri stream listeners", e);
+});
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
