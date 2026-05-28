@@ -106,4 +106,36 @@ assert.ok(
   "10-point power-clean imagegen UIUX concept asset missing",
 );
 
+// Polish / ship-readiness guards
+const mainTsx = read("src/main.tsx");
+assert.ok(mainTsx.includes("AppErrorBoundary"), "Error boundary missing — corrupted state must not brick the app");
+assert.ok(mainTsx.includes("Reset session and reload"), "Recovery action button missing in error boundary");
+
+assert.ok(app.includes("MessageItem = memo"), "Chat messages must be memoized to keep typing snappy");
+assert.ok(app.includes("activity-strip"), "Activity strip above composer missing");
+assert.ok(app.includes("Grok is thinking"), "Thinking-state activity label missing");
+assert.ok(app.includes("Streaming response"), "Streaming activity label missing");
+assert.ok(app.includes("setBusyRunner((current) => (current === \"grok\" ? null : current))"), "cancelGrok must clear busyRunner in finally");
+assert.ok(app.includes("setActiveGrokRunId((current) => (current === runIdSnapshot ? null : current))"), "cancelGrok must clear activeGrokRunId");
+
+assert.ok(app.includes("ReactMarkdown"), "Markdown rendering missing — chat must render code/lists/headers");
+assert.ok(app.includes("remarkGfm"), "GFM plugin missing");
+assert.ok(app.includes("markdown-body"), "markdown-body wrapper missing");
+assert.ok(app.includes("typing-dots"), "Streaming typing dots missing");
+assert.ok(app.includes("stickToBottomRef"), "Smart sticky-bottom auto-scroll missing");
+
+assert.ok(css.includes(".markdown-body pre"), "Code block styling missing");
+assert.ok(css.includes(".markdown-body code"), "Inline code styling missing");
+assert.ok(css.includes(".activity-strip"), "Activity strip styles missing");
+assert.ok(css.includes(".activity-pulse"), "Activity pulse animation missing");
+assert.ok(css.includes(".typing-dots"), "Typing dots styles missing");
+assert.ok(css.includes(".repo-picker") && css.includes("min-width: 260px"), "Repo-picker min-width guard missing");
+
+assert.ok(app.includes("setTimeout"), "Debounced localStorage writes missing");
+assert.ok(app.includes("grok-desktop-run-count-total"), "Lifetime run counter key missing");
+
+const packageJsonText = read("package.json");
+assert.ok(packageJsonText.includes('"react-markdown"'), "react-markdown dependency missing");
+assert.ok(packageJsonText.includes('"remark-gfm"'), "remark-gfm dependency missing");
+
 console.log("smoke: ok");

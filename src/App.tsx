@@ -1156,6 +1156,7 @@ function App() {
 
   async function cancelGrok() {
     if (!activeGrokRunId) return;
+    const runIdSnapshot = activeGrokRunId;
     setTerminalLines((current) => [...current, "[sys] Stopping Grok run..."].slice(-500));
     setMessages((current) =>
       current.map((message) =>
@@ -1165,13 +1166,20 @@ function App() {
       ),
     );
     try {
-      const cancelled = await cancelGrokCLI(activeGrokRunId);
+      const cancelled = await cancelGrokCLI(runIdSnapshot);
       if (!cancelled) {
         setTerminalLines((current) => [...current, "[sys] Grok run already finished or was not registered."].slice(-500));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTerminalLines((current) => [...current, `[err] ${message}`].slice(-500));
+    } finally {
+      // Safety net: if the run is still marked active in React state after we
+      // tried to cancel (cancel returned false, or runGrok's finally hasn't
+      // fired yet), force-clear so the Run Grok button reactivates instead of
+      // getting stuck in "Stop" mode forever.
+      setActiveGrokRunId((current) => (current === runIdSnapshot ? null : current));
+      setBusyRunner((current) => (current === "grok" ? null : current));
     }
   }
 
