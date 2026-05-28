@@ -47,6 +47,7 @@ import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
 import { GuideBanner } from "./components/GuideBanner";
 import { TabBar } from "./components/TabBar";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
+import { DesktopPanel } from "./components/DesktopPanel";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -64,7 +65,7 @@ type Runner =
   | "plugins"
   | "sessions";
 type ActionPolicy = "review" | "patch" | "autopilot";
-type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions";
+type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions" | "desktop";
 type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 type PermissionMode = "default" | "acceptEdits" | "auto" | "dontAsk" | "plan";
@@ -394,6 +395,7 @@ const inspectorTabs: { id: InspectorTab; label: string }[] = [
   { id: "plugins", label: "Plugins" },
   { id: "hooks", label: "Hooks" },
   { id: "permissions", label: "Perms" },
+  { id: "desktop", label: "Desktop" },
 ];
 
 const defaultStatuses: ToolStatus[] = [
@@ -2975,6 +2977,19 @@ function App() {
                     </div>
                   </section>
                 </>
+              ) : null}
+
+              {inspectorTab === "desktop" ? (
+                <DesktopPanel
+                  onInsertContext={(text) => {
+                    // Append into the active mode's draft so it lands in
+                    // Composer on next render.
+                    const next = (drafts[mode] ?? "") + text;
+                    setDrafts((current) => ({ ...current, [mode]: next }));
+                    composerRef.current?.setValue(next);
+                    setSessionNotice("Desktop context appended to your draft.");
+                  }}
+                />
               ) : null}
             </div>
           </aside>

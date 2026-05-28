@@ -4037,6 +4037,111 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 }
 .tab-add:hover { color: var(--grok-text-1); background: var(--grok-bg-2); }
 
+/* ===== Mac desktop bridge panel ===== */
+.desktop-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--grok-text-1);
+}
+.desktop-head { display: flex; flex-direction: column; gap: 4px; }
+.desktop-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--grok-text-1);
+}
+.desktop-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--grok-text-3);
+  line-height: 1.5;
+}
+.desktop-sub code, .desktop-foot code {
+  background: var(--grok-bg-3);
+  color: var(--grok-text-1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.desktop-error {
+  background: rgba(243, 139, 168, 0.12);
+  border: 1px solid #f38ba8;
+  color: #f38ba8;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.desktop-apps { display: flex; flex-direction: column; gap: 8px; }
+.desktop-app {
+  border: 1px solid var(--grok-border-1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--grok-bg-2);
+}
+.desktop-app.is-running { border-color: var(--grok-border-2); }
+.desktop-app-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.desktop-app-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--grok-text-4);
+  flex-shrink: 0;
+}
+.desktop-app.is-running .desktop-app-dot { background: var(--grok-accent); }
+.desktop-app-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+.desktop-app-state {
+  font-size: 11px;
+  color: var(--grok-text-4);
+}
+.desktop-activate {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--grok-border-2);
+  background: var(--grok-bg-3);
+  color: var(--grok-text-1);
+  cursor: pointer;
+}
+.desktop-activate:hover { background: var(--grok-bg-1); }
+.desktop-app-empty {
+  font-size: 11px;
+  color: var(--grok-text-4);
+  font-style: italic;
+}
+.desktop-caps { display: flex; flex-wrap: wrap; gap: 6px; }
+.desktop-cap {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--grok-border-1);
+  background: var(--grok-bg-3);
+  color: var(--grok-text-1);
+  cursor: pointer;
+}
+.desktop-cap:hover { border-color: var(--grok-accent); }
+.desktop-cap:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.desktop-foot {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--grok-text-4);
+  line-height: 1.5;
+}
+
 /* ===== Trace timeline (tool / subagent / task cards) ===== */
 .trace-timeline {
   display: flex;

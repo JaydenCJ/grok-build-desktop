@@ -1,3 +1,4 @@
+pub mod desktop;
 pub mod prompts;
 pub mod runs;
 pub mod telegram;
@@ -2071,6 +2072,9 @@ pub fn run() {
             delete_prompt,
             glob_files,
             read_file_safe,
+            desktop::desktop_list_apps,
+            desktop::desktop_query,
+            desktop::desktop_activate,
             set_agent_overlay,
             set_agent_cursor
         ])
