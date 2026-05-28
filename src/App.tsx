@@ -1,15 +1,10 @@
 import {
-  memo,
-  startTransition,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   Bot,
   ChevronDown,
@@ -43,7 +38,12 @@ import {
   Zap,
 } from "lucide-react";
 import "./App.css";
-import { callGrokCLI, cancelGrokCLI, type GrokStreamEvent } from "./lib/grok";
+import { cancelRun } from "./lib/grok";
+import { MessageList, type MessageRef } from "./components/MessageList";
+import { Composer, type ComposerHandle } from "./components/Composer";
+import { StatusBar } from "./components/StatusBar";
+import { QueueDock } from "./components/QueueDock";
+import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
 type Runner =
@@ -180,6 +180,7 @@ type ChatMessage = {
   content: string;
   ts: number;
   status?: ChatMessageStatus;
+  runId?: string;
   meta?: {
     model?: string;
     durationMs?: number;
@@ -613,16 +614,6 @@ function formatOutput(run: ToolRun | null, terminalOutput = "") {
   return `${output}\n\nstderr:\n${stderr}`;
 }
 
-function compactRunPreview(value: string) {
-  return value
-    .replace(/\r/g, "")
-    .replace(/\*\*/g, "")
-    .replace(/^#{1,6}\s*/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 5000);
-}
-
 function formatBridgeAge(timestamp?: number | null) {
   if (!timestamp) return "not connected";
   const seconds = Math.max(1, Math.round((Date.now() - timestamp) / 1000));
@@ -635,16 +626,6 @@ function formatBridgeAge(timestamp?: number | null) {
 function snapshotLead(tab: ChromeTabState) {
   const firstHeading = tab.snapshot?.headings?.find((heading) => heading.text)?.text;
   return firstHeading || tab.snapshot?.description || tab.snapshot?.textSample || tab.url;
-}
-
-function formatGrokEvent(event: GrokStreamEvent) {
-  const prefix =
-    event.stream === "stderr"
-      ? "err"
-      : event.stream === "system"
-        ? "sys"
-        : "out";
-  return `[${prefix}] ${event.line}`;
 }
 
 function terminalClass(line: string) {
@@ -726,127 +707,6 @@ function grokTrust(output: string) {
   return match?.[1] ?? "unknown";
 }
 
-function CodeBlock({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) {
-  const codeText = Array.isArray(children) ? children.join("") : String(children ?? "");
-  const [copied, setCopied] = useState(false);
-  if (inline) {
-    return <code className={className}>{children}</code>;
-  }
-  const lang = className?.replace(/^language-/, "") ?? "";
-  const handleCopy = () => {
-    void navigator.clipboard
-      .writeText(codeText.replace(/\n$/, ""))
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1400);
-      })
-      .catch(() => undefined);
-  };
-  return (
-    <div className="code-block">
-      <div className="code-block-head">
-        <span className="code-block-lang">{lang || "code"}</span>
-        <button className="code-block-copy" onClick={handleCopy} type="button">
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <pre className={className}>
-        <code className={className}>{children}</code>
-      </pre>
-    </div>
-  );
-}
-
-function ThinkingIndicator({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setElapsed(Math.max(0, Date.now() - startedAt));
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [startedAt]);
-  const seconds = (elapsed / 1000).toFixed(1);
-  return (
-    <span className="thinking-indicator" aria-live="polite">
-      <span className="typing-dots" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-      <span className="thinking-label">Grok is thinking</span>
-      <span className="thinking-elapsed">· {seconds}s</span>
-    </span>
-  );
-}
-
-const markdownComponents = {
-  // react-markdown passes `code` for both inline and block code; we hand both
-  // off to CodeBlock so we can render copy affordances on fenced blocks.
-  code: CodeBlock as never,
-  // Drop react-markdown's default <pre> wrapper because CodeBlock provides one.
-  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-};
-
-const MessageItem = memo(function MessageItem({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user";
-  const showSpinner = message.status === "streaming";
-  return (
-    <article
-      className={`message ${isUser ? "user-message" : "assistant-message"} ${message.status ? `status-${message.status}` : ""}`}
-    >
-      <div className={`message-avatar ${isUser ? "user-avatar" : "grok-avatar"}`}>
-        {isUser ? <span>You</span> : <Bot size={18} />}
-      </div>
-      <div className="message-body">
-        <div className="message-meta">
-          <strong>
-            {isUser ? "You" : "Grok"}
-            {!isUser && message.meta?.model ? <span>({message.meta.model})</span> : null}
-            {!isUser && message.meta?.workflow ? <small className="message-workflow">{message.meta.workflow}</small> : null}
-          </strong>
-          <time>
-            {showSpinner ? (
-              <Loader2 className="spin" size={13} />
-            ) : message.meta?.durationMs ? (
-              `${(message.meta.durationMs / 1000).toFixed(1)}s`
-            ) : (
-              timeLabel(message.ts)
-            )}
-          </time>
-        </div>
-        {isUser ? (
-          <p>{message.content || "(empty)"}</p>
-        ) : message.content ? (
-          showSpinner ? (
-            // While streaming, render raw text (white-space: pre-wrap) instead of
-            // re-parsing the entire accumulated markdown on every chunk. Markdown
-            // gets re-applied once status flips to done/error/stopped.
-            <pre className="markdown-body streaming-raw">{message.content}</pre>
-          ) : (
-            <div className="markdown-body">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
-          )
-        ) : showSpinner ? (
-          <div className="streaming-placeholder">
-            <ThinkingIndicator startedAt={message.ts} />
-          </div>
-        ) : (
-          <p className="streaming-placeholder">(no output)</p>
-        )}
-        {message.role === "assistant" && message.status === "error" ? (
-          <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
-        ) : null}
-        {message.role === "assistant" && message.status === "stopped" ? (
-          <div className="message-error">Stopped by user.</div>
-        ) : null}
-      </div>
-    </article>
-  );
-});
-
 function App() {
   const [mode, setMode] = useState<Mode>(() => {
     const stored = window.localStorage.getItem(storageKeys.mode);
@@ -862,31 +722,11 @@ function App() {
       return defaultDrafts;
     }
   });
-  const initialPromptValue = useMemo(() => {
-    const stored = window.localStorage.getItem(storageKeys.mode);
-    const initialMode = stored === "coding" || stored === "standard" ? stored : "coding";
-    try {
-      const storedDrafts = JSON.parse(window.localStorage.getItem(storageKeys.drafts) ?? "{}");
-      return storedDrafts[initialMode] ?? defaultDrafts[initialMode];
-    } catch {
-      return defaultDrafts[initialMode];
-    }
-  }, []);
-  const promptRef = useRef<HTMLTextAreaElement>(null);
-  const composingRef = useRef(false);
-  const [composerEmpty, setComposerEmpty] = useState(() => initialPromptValue.trim().length === 0);
-  const draftsTimerRef = useRef<number | null>(null);
+  // The textarea lives inside Composer (uncontrolled ref). We hold a
+  // ComposerHandle so starter cards / history clicks / drafts can seed it.
+  const composerRef = useRef<ComposerHandle | null>(null);
   const setComposerValue = (value: string) => {
-    if (promptRef.current) {
-      promptRef.current.value = value;
-    }
-    setComposerEmpty(value.trim().length === 0);
-  };
-  const readComposerValue = () => promptRef.current?.value ?? "";
-  const syncComposerEmpty = () => {
-    const value = promptRef.current?.value ?? "";
-    const isEmpty = value.trim().length === 0;
-    setComposerEmpty((current) => (current === isEmpty ? current : isEmpty));
+    composerRef.current?.setValue(value);
   };
   const [browserTask, setBrowserTask] = useState(
     "Open https://example.com and report the main heading.",
@@ -955,7 +795,6 @@ function App() {
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [busyRunner, setBusyRunner] = useState<Runner | "status" | null>(null);
-  const [activeGrokRunId, setActiveGrokRunId] = useState<string | null>(null);
   const [contextBusy, setContextBusy] = useState<"models" | "inspect" | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(() => {
     const stored = window.localStorage.getItem(storageKeys.inspectorTab);
@@ -1029,12 +868,6 @@ function App() {
     setMessages((current) => [...current, message].slice(-120));
   }
 
-  function updateMessage(id: string, mutate: (message: ChatMessage) => ChatMessage) {
-    setMessages((current) =>
-      current.map((message) => (message.id === id ? mutate(message) : message)),
-    );
-  }
-
   function clearRunHistory() {
     setLastRun(null);
     setHistory([]);
@@ -1049,61 +882,10 @@ function App() {
     setComposerValue(value);
     setDrafts((current) => ({ ...current, [mode]: value }));
   }
-  function scheduleDraftSave() {
-    if (draftsTimerRef.current !== null) {
-      window.clearTimeout(draftsTimerRef.current);
-    }
-    draftsTimerRef.current = window.setTimeout(() => {
-      const value = readComposerValue();
-      setDrafts((current) =>
-        current[mode] === value ? current : { ...current, [mode]: value },
-      );
-    }, 300);
-  }
 
   function applyCodingPreset(preset: (typeof codingPresets)[number]) {
     setCodingWorkflow(preset.id);
     updatePrompt(preset.prompt);
-  }
-
-  function buildGrokTaskPrompt(userPrompt: string) {
-    if (mode !== "coding") return userPrompt;
-
-    const workflow = codingPresets.find((preset) => preset.id === codingWorkflow);
-    const policy = actionPolicies[actionPolicy];
-    return [
-      "Grok Desktop Professional Coding Session",
-      "",
-      `Workflow: ${workflow?.label ?? "Custom"} - ${workflow?.description ?? "User-defined task"}`,
-      `Action policy: ${policy.label} - ${policy.detail}`,
-      `Model engine: ${activeModel} - ${activeModelMeta.detail}`,
-      `Grok effort: ${effortLevels[effortLevel].label} - ${effortLevels[effortLevel].detail}`,
-      `Reasoning effort: ${activeReasoningLabel} - ${reasoningEfforts[reasoningEffort].detail}`,
-      `Permission mode: ${permissionModes[permissionMode].label} - ${permissionModes[permissionMode].detail}`,
-      `Best-of-N: ${bestOfN}`,
-      `Experimental memory: ${experimentalMemory ? "enabled" : "off"}`,
-      `Web search: ${webSearchEnabled ? "enabled for current docs and version-sensitive facts" : "disabled"}`,
-      `Subagents: ${subagentsEnabled ? "enabled" : "disabled"}`,
-      `Self-check: ${selfCheck ? "enabled with grok --check" : "disabled"}`,
-      `Project path from UI: ${codingCwd.trim() || "default Grok Desktop project root"}`,
-      `Grok ecosystem: ${grokInspectCount(ecosystemRun?.output ?? "", "Skills")} skills, ${grokInspectCount(ecosystemRun?.output ?? "", "MCP Servers")} MCP servers, ${grokInspectCount(ecosystemRun?.output ?? "", "Agents")} agents, ${grokInspectCount(ecosystemRun?.output ?? "", "Plugins")} plugins discovered by grok inspect.`,
-      "",
-      "Professional expectations:",
-      "- If the user asks for a simple, short, one-sentence, read-only, or exact-format answer, obey that request directly and skip repository mapping, long reports, and section templates.",
-      "- Optimize for a senior programmer who wants high signal and minimal ceremony.",
-      "- For repository implementation, review, debugging, or architecture tasks, start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
-      "- Prefer exact file paths, exact commands, and concrete implementation details.",
-      "- If the user includes this repository's GitHub URL, prefer the selected local working directory over fetching the remote repository unless they explicitly ask for remote state.",
-      "- If changing code, keep edits narrow and make verification easy.",
-      "- If the request is ambiguous, make the safest useful assumption and state it briefly.",
-      "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents only when they clearly improve the result; do not start unrelated MCP workflows for ordinary repository analysis.",
-      "- When web search is enabled, use it only for unstable/version-sensitive facts and cite sources in the response.",
-      "- For hard implementation or debugging, reason privately, then return crisp evidence, changes, and verification.",
-      "- For normal coding tasks, use this report format: 1. Summary 2. Files / Evidence 3. Changes or Recommendation 4. Verification commands 5. Next step. For simple tasks, do not use it.",
-      "",
-      "Task:",
-      userPrompt,
-    ].join("\n");
   }
 
   function switchMode(nextMode: Mode) {
@@ -1251,63 +1033,74 @@ function App() {
     }
   }
 
-  async function cancelGrok() {
-    if (!activeGrokRunId) return;
-    const runIdSnapshot = activeGrokRunId;
-    setTerminalLines((current) => [...current, "[sys] Stopping Grok run..."].slice(-500));
-    setMessages((current) =>
-      current.map((message) =>
-        message.role === "assistant" && message.status === "streaming"
-          ? { ...message, status: "stopped" as ChatMessageStatus }
-          : message,
-      ),
-    );
-    try {
-      const cancelled = await cancelGrokCLI(runIdSnapshot);
-      if (!cancelled) {
-        setTerminalLines((current) => [...current, "[sys] Grok run already finished or was not registered."].slice(-500));
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setTerminalLines((current) => [...current, `[err] ${message}`].slice(-500));
-    } finally {
-      // Safety net: if the run is still marked active in React state after we
-      // tried to cancel (cancel returned false, or runGrok's finally hasn't
-      // fired yet), force-clear so the Run Grok button reactivates instead of
-      // getting stuck in "Stop" mode forever.
-      setActiveGrokRunId((current) => (current === runIdSnapshot ? null : current));
-      setBusyRunner((current) => (current === "grok" ? null : current));
+  function buildGrokArgs(): string[] {
+    const args: string[] = ["--no-alt-screen", "--output-format", "streaming-json"];
+    if (activeModel) args.push("--model", activeModel);
+    if (effortLevel) args.push("--effort", effortLevel);
+    if (reasoningEffort && reasoningEffort !== "off") {
+      args.push("--reasoning-effort", reasoningEffort);
     }
+    if (permissionMode && permissionMode !== "default") {
+      args.push("--permission-mode", permissionMode);
+    }
+    if (bestOfN > 1) args.push("--best-of-n", String(bestOfN));
+    if (experimentalMemory) args.push("--experimental-memory");
+    if (!webSearchEnabled) args.push("--disable-web-search");
+    if (!subagentsEnabled) args.push("--no-subagents");
+    if (selfCheck) args.push("--check");
+    args.push("--max-turns", "12");
+    if (mode === "coding" && codingCwd.trim()) {
+      args.push("--cwd", codingCwd.trim());
+    }
+    return args;
   }
 
-  async function runGrok() {
-    const userPrompt = readComposerValue().trim();
-    if (!userPrompt) return;
-    const taskPrompt = buildGrokTaskPrompt(userPrompt);
-    setComposerValue("");
-    setDrafts((current) =>
-      current[mode] === "" ? current : { ...current, [mode]: "" },
-    );
-    if (draftsTimerRef.current !== null) {
-      window.clearTimeout(draftsTimerRef.current);
-      draftsTimerRef.current = null;
-    }
-    const reasoningFlag = reasoningEffort === "off" ? "" : ` --reasoning-effort ${reasoningEffort}`;
-    const permissionFlag = permissionMode === "default" ? "" : ` --permission-mode ${permissionMode}`;
-    const bestOfNFlag = bestOfN > 1 ? ` --best-of-n ${bestOfN}` : "";
-    const memoryFlag = experimentalMemory ? " --experimental-memory" : "";
-    const webFlag = webSearchEnabled ? "" : " --disable-web-search";
-    const subagentsFlag = subagentsEnabled ? "" : " --no-subagents";
-    const checkFlag = selfCheck ? " --check" : "";
-    const maxTurnsFlag = " --max-turns 12";
+  // Wraps the raw user prompt with a coding-session preamble in coding mode.
+  // Chat mode passes through unchanged.
+  function buildPromptWithPreamble(raw: string): string {
+    if (mode !== "coding") return raw;
+    const workflow = codingPresets.find((preset) => preset.id === codingWorkflow);
+    const policy = actionPolicies[actionPolicy];
+    return [
+      "Grok Desktop Professional Coding Session",
+      "",
+      `Workflow: ${workflow?.label ?? "Custom"} - ${workflow?.description ?? "User-defined task"}`,
+      `Action policy: ${policy.label} - ${policy.detail}`,
+      `Model engine: ${activeModel} - ${activeModelMeta.detail}`,
+      `Grok effort: ${effortLevels[effortLevel].label} - ${effortLevels[effortLevel].detail}`,
+      `Reasoning effort: ${activeReasoningLabel} - ${reasoningEfforts[reasoningEffort].detail}`,
+      `Permission mode: ${permissionModes[permissionMode].label} - ${permissionModes[permissionMode].detail}`,
+      `Best-of-N: ${bestOfN}`,
+      `Experimental memory: ${experimentalMemory ? "enabled" : "off"}`,
+      `Web search: ${webSearchEnabled ? "enabled for current docs and version-sensitive facts" : "disabled"}`,
+      `Subagents: ${subagentsEnabled ? "enabled" : "disabled"}`,
+      `Self-check: ${selfCheck ? "enabled with grok --check" : "disabled"}`,
+      `Project path from UI: ${codingCwd.trim() || "default Grok Desktop project root"}`,
+      `Grok ecosystem: ${grokInspectCount(ecosystemRun?.output ?? "", "Skills")} skills, ${grokInspectCount(ecosystemRun?.output ?? "", "MCP Servers")} MCP servers, ${grokInspectCount(ecosystemRun?.output ?? "", "Agents")} agents, ${grokInspectCount(ecosystemRun?.output ?? "", "Plugins")} plugins discovered by grok inspect.`,
+      "",
+      "Professional expectations:",
+      "- Optimize for a senior programmer who wants high signal and minimal ceremony.",
+      "- Start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
+      "- Prefer exact file paths, exact commands, and concrete implementation details.",
+      "- If changing code, keep edits narrow and make verification easy.",
+      "- If the request is ambiguous, make the safest useful assumption and state it briefly.",
+      "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents when they clearly improve the result.",
+      "- When web search is enabled, use it only for unstable/version-sensitive facts and cite sources in the response.",
+      "- For hard implementation or debugging, reason privately, then return crisp evidence, changes, and verification.",
+      "",
+      "Task:",
+      raw,
+    ].join("\n");
+  }
 
+  function handleEnqueued(info: { runId: string; position: number; prompt: string }) {
+    const now = Date.now();
     const userMessageId = makeId("u");
     const assistantMessageId = makeId("a");
-    const now = Date.now();
     appendMessage({
       id: userMessageId,
       role: "user",
-      content: userPrompt,
+      content: info.prompt,
       ts: now,
       meta: { workflow: mode === "coding" ? codingWorkflow : "chat" },
     });
@@ -1316,115 +1109,17 @@ function App() {
       role: "assistant",
       content: "",
       ts: now,
+      runId: info.runId,
       status: "streaming",
       meta: { model: activeModel, workflow: mode === "coding" ? codingWorkflow : "chat" },
     });
-
-    setBusyRunner("grok");
-    setActiveGrokRunId(null);
-    setTerminalLines([
-      "[sys] Preparing Grok Build CLI.",
-      `[sys] Working directory: ${codingCwd.trim() || "project root"}`,
-      `[sys] Command mode: grok --model ${activeModel} --effort ${effortLevel}${permissionFlag}${reasoningFlag}${bestOfNFlag}${memoryFlag}${webFlag}${subagentsFlag}${checkFlag}${maxTurnsFlag} -p <prompt>`,
-    ]);
-
-    function failAssistant(message: string) {
-      updateMessage(assistantMessageId, (current) => ({
-        ...current,
-        content: current.content || message,
-        status: "error",
-      }));
-    }
-
-    try {
-      if (!hasTauriRuntime()) {
-        const unavailable = nativeUnavailable("grok -p");
-        setTerminalLines((current) => [...current, `[err] ${unavailable.stderr}`]);
-        failAssistant(unavailable.stderr);
-        recordRun(unavailable);
-        return;
-      }
-
-      if (grokStatus && (!grokStatus.installed || !grokStatus.authenticated)) {
-        const message = !grokStatus.installed
-          ? "Grok CLI is not installed yet. Click Connect Grok to install and log in."
-          : "Grok CLI is not authenticated. Click Connect Grok or set GROK_CODE_XAI_API_KEY / XAI_API_KEY.";
-        setTerminalLines((current) => [...current, `[err] ${message}`]);
-        failAssistant(message);
-        recordRun({
-          ok: false,
-          command: "grok -p",
-          cwd: codingCwd,
-          exit_code: null,
-          duration_ms: 0,
-          timed_out: false,
-          output: "",
-          stderr: message,
-        });
-        return;
-      }
-
-      const run = await callGrokCLI(taskPrompt, {
-        mode,
-        cwd: codingCwd,
-        model: activeModel,
-        effort: effortLevel,
-        reasoningEffort,
-        permissionMode,
-        bestOfN,
-        experimentalMemory,
-        webSearchEnabled,
-        subagentsEnabled,
-        selfCheck,
-        onRunId: setActiveGrokRunId,
-        onEvent: (event) => {
-          // Streaming updates are non-urgent — wrap in startTransition so React
-          // pauses them when the user is typing or interacting elsewhere.
-          startTransition(() => {
-            setTerminalLines((current) => [...current, formatGrokEvent(event)].slice(-500));
-            if (event.stream === "stdout") {
-              const incoming = event.line;
-              updateMessage(assistantMessageId, (current) => ({
-                ...current,
-                content: current.content ? `${current.content}\n${incoming}` : incoming,
-              }));
-            }
-          });
-        },
-      });
-      recordRun(run);
-      const finalText =
-        compactRunPreview(run.output || "").trim() ||
-        (run.ok ? "Command finished without output." : compactRunPreview(run.stderr || "")) ||
-        "Grok run did not produce output.";
-      updateMessage(assistantMessageId, (current) => ({
-        ...current,
-        content: finalText,
-        status: run.ok ? "done" : run.timed_out ? "stopped" : "error",
-        meta: {
-          ...current.meta,
-          durationMs: run.duration_ms,
-          exitCode: run.exit_code,
-        },
-      }));
-      await refreshGrokAuthStatus();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setTerminalLines((current) => [...current, `[err] ${message}`]);
-      failAssistant(message);
-      recordRun({
-        ok: false,
-        command: "grok -p",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: message,
-      });
-    } finally {
-      setActiveGrokRunId(null);
-      setBusyRunner(null);
+    setTotalRuns((current) => {
+      const next = current + 1;
+      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      return next;
+    });
+    if (info.position > 0) {
+      console.log(`[grok-desktop] queued at position ${info.position}`);
     }
   }
 
@@ -2091,10 +1786,6 @@ function App() {
         event.preventDefault();
         switchMode("coding");
       }
-      if (event.key === "Enter" && mode === "coding" && !composerEmpty) {
-        event.preventDefault();
-        runGrok();
-      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -2189,77 +1880,19 @@ function App() {
     () => grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown"),
     [inspectOutput, grokStatus?.version],
   );
-  const grokIsRunning = busyRunner === "grok";
-  const grokRunBlocked =
-    composerEmpty ||
-    (mode === "coding" && grokStatus !== null && !grokStatus.authenticated);
-  const grokControlDisabled = grokIsRunning
-    ? activeGrokRunId === null
-    : busyRunner !== null || grokRunBlocked;
+  const activeRun = useActiveRun();
+  const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
+  const activeRunId = activeRun?.id ?? null;
 
-  const streamingMessage = useMemo(
-    () => messages.find((m) => m.role === "assistant" && m.status === "streaming"),
+  const messageRefs: MessageRef[] = useMemo(
+    () =>
+      messages.map((m) =>
+        m.role === "user"
+          ? { runId: "", role: "user" as const, userText: m.content }
+          : { runId: m.runId ?? "", role: "assistant" as const },
+      ),
     [messages],
   );
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (!grokIsRunning) return;
-    const id = window.setInterval(() => setNowTick(Date.now()), 250);
-    return () => window.clearInterval(id);
-  }, [grokIsRunning]);
-  const elapsedSeconds = streamingMessage
-    ? Math.max(0, (nowTick - streamingMessage.ts) / 1000)
-    : 0;
-  const elapsedLabel = elapsedSeconds.toFixed(1);
-  const cancellingGrok = grokIsRunning && streamingMessage?.status === "stopped";
-  const streamedLineCount = streamingMessage
-    ? streamingMessage.content.split("\n").filter(Boolean).length
-    : 0;
-  const activityLabel = cancellingGrok
-    ? "Stopping…"
-    : !streamingMessage
-      ? null
-      : streamingMessage.content.trim().length === 0
-        ? "Grok is thinking…"
-        : `Streaming · ${streamedLineCount} ${streamedLineCount === 1 ? "line" : "lines"}`;
-  // Latest non-empty line of activity — prefer the most recent stdout line from
-  // the streaming message (what Grok is actually saying right now). Fall back
-  // to the most recent terminal sys line so users see "Preparing Grok Build CLI"
-  // before the first stdout chunk arrives.
-  const activityTail = useMemo(() => {
-    if (cancellingGrok) return "Cancelling run · waiting for grok process to exit";
-    if (streamingMessage && streamingMessage.content.trim()) {
-      const lines = streamingMessage.content.split("\n");
-      for (let i = lines.length - 1; i >= 0; i -= 1) {
-        const line = lines[i].trim();
-        if (line) return line.length > 160 ? `${line.slice(0, 160)}…` : line;
-      }
-    }
-    for (let i = terminalLines.length - 1; i >= 0; i -= 1) {
-      const raw = terminalLines[i];
-      if (!raw) continue;
-      const clean = raw.replace(/^\[(sys|out|err)\]\s*/i, "").trim();
-      if (clean) return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean;
-    }
-    return "";
-  }, [cancellingGrok, streamingMessage, terminalLines]);
-  function handlePromptKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    if (grokIsRunning) {
-      void cancelGrok();
-      return;
-    }
-    // Read the value directly instead of relying on composerEmpty state.
-    // composerEmpty can be stale right after a fast paste or an IME engine
-    // that fired input events without a clean compositionend — we want
-    // Enter to always send when there IS text, even if state lags.
-    const value = event.currentTarget.value.trim();
-    if (!value) return;
-    if (busyRunner !== null) return;
-    if (mode === "coding" && grokStatus !== null && !grokStatus.authenticated) return;
-    void runGrok();
-  }
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
@@ -2493,15 +2126,17 @@ function App() {
               {isGrokReady ? <CheckCircle2 size={15} /> : <CircleAlert size={15} />}
               {statusLabel}
             </span>
-            <button
-              className="primary-run"
-              disabled={grokControlDisabled}
-              onClick={grokIsRunning ? cancelGrok : runGrok}
-              type="button"
-            >
-              {grokIsRunning ? <X size={17} /> : <Play size={17} />}
-              <span>{grokIsRunning ? "Stop" : mode === "coding" ? "Run Grok" : "Ask Grok"}</span>
-            </button>
+            {grokIsRunning && activeRunId ? (
+              <button
+                className="primary-run"
+                onClick={() => void cancelRun(activeRunId)}
+                type="button"
+                title="Stop the current run"
+              >
+                <X size={17} />
+                <span>Stop</span>
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -2560,70 +2195,25 @@ function App() {
                   </p>
                 </div>
               ) : (
-                messages.map((message) => <MessageItem key={message.id} message={message} />)
+                <MessageList messages={messageRefs} />
               )}
             </div>
 
-            {grokIsRunning && activityLabel ? (
-              <div className={`activity-strip ${cancellingGrok ? "cancelling" : ""}`} role="status" aria-live="polite">
-                <div className="activity-row">
-                  <span className="activity-pulse" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                  <span className="activity-label">{activityLabel}</span>
-                  <span className="activity-time">{elapsedLabel}s</span>
-                  <button
-                    className="activity-stop"
-                    disabled={activeGrokRunId === null || cancellingGrok}
-                    onClick={() => void cancelGrok()}
-                    type="button"
-                  >
-                    Stop
-                  </button>
-                </div>
-                {activityTail ? (
-                  <div className="activity-tail" title={activityTail}>
-                    {activityTail}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            <QueueDock />
+            <StatusBar />
 
-            <div className="composer">
-              <textarea
-                id="main-prompt"
-                ref={promptRef}
-                onKeyDown={handlePromptKeyDown}
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                }}
-                onCompositionEnd={() => {
-                  composingRef.current = false;
-                  syncComposerEmpty();
-                  scheduleDraftSave();
-                }}
-                onChange={() => {
-                  // Always keep composerEmpty in sync with the actual textarea
-                  // value — setState bails out on no-change, so this is free
-                  // when the boundary hasn't moved. We MUST update outside
-                  // composition events too: programmatic typing (paste, IME
-                  // engines that skip composition, computer-use) never fires
-                  // compositionend, and skipping the sync used to leave
-                  // composerEmpty=true forever so Enter would never send.
-                  syncComposerEmpty();
-                  // Only schedule the localStorage draft save when the IME is
-                  // NOT mid-composition. Pinyin/kana candidates fire onChange
-                  // on every keystroke; we don't want to burn 300ms timers on
-                  // intermediate composition state.
-                  if (composingRef.current) return;
-                  scheduleDraftSave();
-                }}
+            <div className="composer-row">
+              <Composer
+                ref={composerRef}
+                cwd={codingCwd}
+                argsBuilder={buildGrokArgs}
+                promptWrapper={buildPromptWithPreamble}
+                initialValue={drafts[mode] || defaultDrafts[mode]}
                 placeholder={modeCopy[mode].placeholder}
-                rows={1}
-                defaultValue={initialPromptValue}
-                autoFocus
+                onTextChange={(text) => {
+                  setDrafts((current) => ({ ...current, [mode]: text }));
+                }}
+                onEnqueued={handleEnqueued}
               />
               <div className="composer-footer">
                 <select
@@ -2667,15 +2257,16 @@ function App() {
                 <span className="composer-hint" aria-hidden="true">
                   ↵ Send · ⇧↵ Newline · ⌘↵ Force
                 </span>
-                <button
-                  className="mini-run"
-                  disabled={grokControlDisabled}
-                  onClick={grokIsRunning ? cancelGrok : runGrok}
-                  type="button"
-                  title={grokIsRunning ? "Stop run" : "Send to Grok (Enter)"}
-                >
-                  {grokIsRunning ? <X size={16} /> : <Play size={16} />}
-                </button>
+                {grokIsRunning && activeRunId ? (
+                  <button
+                    className="mini-run"
+                    onClick={() => void cancelRun(activeRunId)}
+                    type="button"
+                    title="Stop run"
+                  >
+                    <X size={16} />
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

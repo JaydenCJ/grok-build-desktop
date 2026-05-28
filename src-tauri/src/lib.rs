@@ -1,24 +1,26 @@
+pub mod runs;
+
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env, fs,
     io::{BufRead, BufReader},
     path::PathBuf,
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use tauri::{AppHandle, Emitter};
+use tauri::Manager;
+use crate::runs::db::Db;
+use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
 
 #[cfg(unix)]
 extern "C" {
     fn setpgid(pid: i32, pgid: i32) -> i32;
 }
-
-static GROK_RUNS: OnceLock<Arc<Mutex<HashMap<String, u32>>>> = OnceLock::new();
 
 #[derive(Serialize)]
 struct ToolStatus {
@@ -73,20 +75,6 @@ struct GrokAuthStatus {
     npm_install_command: String,
     auth_path: String,
     config_path: String,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct GrokStreamEvent {
-    run_id: String,
-    stream: String,
-    line: String,
-    done: bool,
-    ok: Option<bool>,
-    exit_code: Option<i32>,
-    duration_ms: Option<u128>,
-    cwd: String,
-    command: String,
 }
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -343,20 +331,6 @@ fn command_timeout_secs(default_secs: u64) -> u64 {
         .unwrap_or(default_secs)
 }
 
-fn grok_startup_timeout_secs(default_secs: u64) -> u64 {
-    env::var("GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(default_secs)
-}
-
-fn grok_silent_answer_timeout_secs(default_secs: u64) -> u64 {
-    env::var("GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(default_secs)
-}
-
 fn grok_max_turns(default_turns: u8) -> u8 {
     env::var("GROK_DESKTOP_GROK_MAX_TURNS")
         .ok()
@@ -433,31 +407,6 @@ fn terminate_child_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
-fn grok_run_registry() -> &'static Arc<Mutex<HashMap<String, u32>>> {
-    GROK_RUNS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
-}
-
-fn register_grok_run(run_id: &str, pid: u32) {
-    if let Ok(mut registry) = grok_run_registry().lock() {
-        registry.insert(run_id.to_string(), pid);
-    }
-}
-
-fn unregister_grok_run(run_id: &str) {
-    if let Ok(mut registry) = grok_run_registry().lock() {
-        registry.remove(run_id);
-    }
-}
-
-struct GrokRunGuard {
-    run_id: String,
-}
-
-impl Drop for GrokRunGuard {
-    fn drop(&mut self) {
-        unregister_grok_run(&self.run_id);
-    }
-}
 
 fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -1266,383 +1215,6 @@ fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
     )
 }
 
-fn emit_grok_event(app: &AppHandle, event: GrokStreamEvent) {
-    let _ = app.emit("grok-desktop://grok-stream", event);
-}
-
-fn grok_missing_error(
-    program: &str,
-    command: &str,
-    cwd: &PathBuf,
-    error: std::io::Error,
-) -> ToolRun {
-    ToolRun {
-        ok: false,
-        command: command.to_string(),
-        cwd: cwd.to_string_lossy().to_string(),
-        exit_code: None,
-        duration_ms: 0,
-        timed_out: false,
-        output: String::new(),
-        stderr: format!(
-            "{error}. Grok Build CLI was not launched. Install the official CLI, run its login/API key setup, or set GROK_DESKTOP_GROK_CMD to the executable path. Tried `{program}`."
-        ),
-    }
-}
-
-fn run_external_command_streaming(
-    app: AppHandle,
-    run_id: String,
-    program: &str,
-    args: Vec<String>,
-    cwd: Option<PathBuf>,
-    timeout_secs: u64,
-) -> ToolRun {
-    let display_command = command_line(program, &args);
-    let cwd = cwd.unwrap_or_else(project_root);
-    let cwd_string = cwd.to_string_lossy().to_string();
-    let start = Instant::now();
-
-    emit_grok_event(
-        &app,
-        GrokStreamEvent {
-            run_id: run_id.clone(),
-            stream: "system".to_string(),
-            line: format!("Starting {display_command}"),
-            done: false,
-            ok: None,
-            exit_code: None,
-            duration_ms: Some(0),
-            cwd: cwd_string.clone(),
-            command: display_command.clone(),
-        },
-    );
-
-    if !cwd.exists() || !cwd.is_dir() {
-        let message =
-            format!("Working directory does not exist or is not a directory: {cwd_string}");
-        emit_grok_event(
-            &app,
-            GrokStreamEvent {
-                run_id,
-                stream: "system".to_string(),
-                line: message.clone(),
-                done: true,
-                ok: Some(false),
-                exit_code: None,
-                duration_ms: Some(start.elapsed().as_millis()),
-                cwd: cwd_string.clone(),
-                command: display_command.clone(),
-            },
-        );
-        return ToolRun {
-            ok: false,
-            command: display_command,
-            cwd: cwd_string,
-            exit_code: None,
-            duration_ms: start.elapsed().as_millis(),
-            timed_out: false,
-            output: String::new(),
-            stderr: message,
-        };
-    }
-
-    let mut command = Command::new(program);
-    command
-        .args(&args)
-        .current_dir(&cwd)
-        .env("PATH", command_path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    prepare_child_process(&mut command);
-    let spawn_result = command.spawn();
-
-    let mut child = match spawn_result {
-        Ok(child) => child,
-        Err(error) => {
-            let run = grok_missing_error(program, &display_command, &cwd, error);
-            emit_grok_event(
-                &app,
-                GrokStreamEvent {
-                    run_id,
-                    stream: "system".to_string(),
-                    line: run.stderr.clone(),
-                    done: true,
-                    ok: Some(false),
-                    exit_code: None,
-                    duration_ms: Some(run.duration_ms),
-                    cwd: run.cwd.clone(),
-                    command: run.command.clone(),
-                },
-            );
-            return run;
-        }
-    };
-    register_grok_run(&run_id, child.id());
-    let _run_guard = GrokRunGuard {
-        run_id: run_id.clone(),
-    };
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let output = Arc::new(Mutex::new(String::new()));
-    let error_output = Arc::new(Mutex::new(String::new()));
-    let last_activity = Arc::new(Mutex::new(Instant::now()));
-    let last_stdout_activity = Arc::new(Mutex::new(Instant::now()));
-    let mut stream_threads = Vec::new();
-
-    if let Some(stdout) = stdout {
-        let app = app.clone();
-        let run_id = run_id.clone();
-        let cwd = cwd_string.clone();
-        let command = display_command.clone();
-        let output = Arc::clone(&output);
-        let last_activity = Arc::clone(&last_activity);
-        let last_stdout_activity = Arc::clone(&last_stdout_activity);
-        stream_threads.push(thread::spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                let line = strip_ansi_codes(&line);
-                if let Ok(mut buffer) = output.lock() {
-                    buffer.push_str(&line);
-                    buffer.push('\n');
-                }
-                if let Ok(mut timestamp) = last_activity.lock() {
-                    *timestamp = Instant::now();
-                }
-                if let Ok(mut timestamp) = last_stdout_activity.lock() {
-                    *timestamp = Instant::now();
-                }
-                emit_grok_event(
-                    &app,
-                    GrokStreamEvent {
-                        run_id: run_id.clone(),
-                        stream: "stdout".to_string(),
-                        line,
-                        done: false,
-                        ok: None,
-                        exit_code: None,
-                        duration_ms: None,
-                        cwd: cwd.clone(),
-                        command: command.clone(),
-                    },
-                );
-            }
-        }));
-    }
-
-    if let Some(stderr) = stderr {
-        let app = app.clone();
-        let run_id = run_id.clone();
-        let cwd = cwd_string.clone();
-        let command = display_command.clone();
-        let error_output = Arc::clone(&error_output);
-        let last_activity = Arc::clone(&last_activity);
-        let verbose = verbose_grok_stderr();
-        stream_threads.push(thread::spawn(move || {
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                let line = strip_ansi_codes(&line);
-                if !verbose && is_noisy_grok_line(&line) {
-                    continue;
-                }
-                if let Ok(mut buffer) = error_output.lock() {
-                    buffer.push_str(&line);
-                    buffer.push('\n');
-                }
-                if let Ok(mut timestamp) = last_activity.lock() {
-                    *timestamp = Instant::now();
-                }
-                emit_grok_event(
-                    &app,
-                    GrokStreamEvent {
-                        run_id: run_id.clone(),
-                        stream: "stderr".to_string(),
-                        line,
-                        done: false,
-                        ok: None,
-                        exit_code: None,
-                        duration_ms: None,
-                        cwd: cwd.clone(),
-                        command: command.clone(),
-                    },
-                );
-            }
-        }));
-    }
-
-    let timeout = Duration::from_secs(timeout_secs);
-    let startup_timeout_secs = grok_startup_timeout_secs(240);
-    let startup_timeout = Duration::from_secs(startup_timeout_secs);
-    let silent_answer_timeout_secs = grok_silent_answer_timeout_secs(180);
-    let silent_answer_timeout = Duration::from_secs(silent_answer_timeout_secs);
-    let mut timed_out = false;
-    let mut timeout_note: Option<String> = None;
-    let mut last_heartbeat = Instant::now();
-
-    loop {
-        let has_stdout_output = output
-            .lock()
-            .map(|buffer| !buffer.trim().is_empty())
-            .unwrap_or(false);
-        let has_any_output = has_stdout_output
-            || error_output
-                .lock()
-                .map(|buffer| !buffer.trim().is_empty())
-                .unwrap_or(false);
-        let no_startup_activity = !has_any_output
-            && last_activity
-                .lock()
-                .map(|timestamp| timestamp.elapsed() >= startup_timeout)
-                .unwrap_or(false);
-        let no_stdout_answer = !has_stdout_output
-            && last_stdout_activity
-                .lock()
-                .map(|timestamp| timestamp.elapsed() >= silent_answer_timeout)
-                .unwrap_or(false);
-
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if no_startup_activity => {
-                timed_out = true;
-                timeout_note = Some(format!(
-                    "Grok produced no output for {startup_timeout_secs}s during startup. The CLI may be waiting on an internal network or package check."
-                ));
-                terminate_child_tree(&mut child);
-                break;
-            }
-            Ok(None) if no_stdout_answer => {
-                timed_out = true;
-                timeout_note = Some(format!(
-                    "Grok produced no user-visible answer for {silent_answer_timeout_secs}s. The run was stopped so the desktop UI can recover."
-                ));
-                terminate_child_tree(&mut child);
-                break;
-            }
-            Ok(None) if start.elapsed() >= timeout => {
-                timed_out = true;
-                timeout_note = Some(format!("Command timed out after {timeout_secs}s."));
-                terminate_child_tree(&mut child);
-                break;
-            }
-            Ok(None) => {
-                if last_heartbeat.elapsed() >= Duration::from_secs(8) {
-                    let elapsed = start.elapsed().as_secs();
-                    emit_grok_event(
-                        &app,
-                        GrokStreamEvent {
-                            run_id: run_id.clone(),
-                            stream: "system".to_string(),
-                            line: format!(
-                                "Grok is still working ({elapsed}s elapsed). Use Stop if this run is no longer useful."
-                            ),
-                            done: false,
-                            ok: None,
-                            exit_code: None,
-                            duration_ms: Some(start.elapsed().as_millis()),
-                            cwd: cwd_string.clone(),
-                            command: display_command.clone(),
-                        },
-                    );
-                    last_heartbeat = Instant::now();
-                }
-                thread::sleep(Duration::from_millis(120));
-            }
-            Err(error) => {
-                let stderr = error.to_string();
-                emit_grok_event(
-                    &app,
-                    GrokStreamEvent {
-                        run_id,
-                        stream: "system".to_string(),
-                        line: stderr.clone(),
-                        done: true,
-                        ok: Some(false),
-                        exit_code: None,
-                        duration_ms: Some(start.elapsed().as_millis()),
-                        cwd: cwd_string.clone(),
-                        command: display_command.clone(),
-                    },
-                );
-                return ToolRun {
-                    ok: false,
-                    command: display_command,
-                    cwd: cwd_string,
-                    exit_code: None,
-                    duration_ms: start.elapsed().as_millis(),
-                    timed_out: false,
-                    output: String::new(),
-                    stderr,
-                };
-            }
-        }
-    }
-
-    let wait_result = child.wait();
-    for handle in stream_threads {
-        let _ = handle.join();
-    }
-
-    let exit_code = wait_result.as_ref().ok().and_then(|status| status.code());
-    let mut stderr = error_output
-        .lock()
-        .map(|buffer| buffer.clone())
-        .unwrap_or_default();
-    if timed_out {
-        let timeout_note =
-            timeout_note.unwrap_or_else(|| format!("Command timed out after {timeout_secs}s."));
-        stderr = if stderr.trim().is_empty() {
-            timeout_note
-        } else {
-            format!("{stderr}\n{timeout_note}")
-        };
-    }
-
-    let ok = wait_result
-        .as_ref()
-        .map(|status| status.success())
-        .unwrap_or(false)
-        && !timed_out;
-    let duration_ms = start.elapsed().as_millis();
-    let final_line = if ok {
-        "Grok command finished.".to_string()
-    } else if timed_out {
-        format!("Grok command timed out after {timeout_secs}s.")
-    } else {
-        format!("Grok command exited with {:?}.", exit_code)
-    };
-
-    emit_grok_event(
-        &app,
-        GrokStreamEvent {
-            run_id,
-            stream: "system".to_string(),
-            line: final_line,
-            done: true,
-            ok: Some(ok),
-            exit_code,
-            duration_ms: Some(duration_ms),
-            cwd: cwd_string.clone(),
-            command: display_command.clone(),
-        },
-    );
-
-    ToolRun {
-        ok,
-        command: display_command,
-        cwd: cwd_string,
-        exit_code,
-        duration_ms,
-        timed_out,
-        output: truncate_text(
-            output
-                .lock()
-                .map(|buffer| buffer.clone())
-                .unwrap_or_default(),
-        ),
-        stderr: truncate_text(stderr),
-    }
-}
-
 fn collect_tool_statuses() -> Vec<ToolStatus> {
     let grok = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     vec![version_status("grok", "Grok Build", &grok, &["--version"])]
@@ -1665,63 +1237,6 @@ fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> ToolRun {
         Some(cwd),
         command_timeout_secs(240),
     )
-}
-
-#[tauri::command]
-fn run_grok_streaming_task(
-    app: AppHandle,
-    prompt: String,
-    mode: String,
-    cwd: Option<String>,
-    model: Option<String>,
-    effort: Option<String>,
-    reasoning_effort: Option<String>,
-    permission_mode: Option<String>,
-    best_of_n: Option<u8>,
-    experimental_memory: bool,
-    web_search_enabled: bool,
-    subagents_enabled: bool,
-    self_check: bool,
-    run_id: String,
-) -> ToolRun {
-    let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    let cwd = normalized_cwd(cwd);
-    run_external_command_streaming(
-        app,
-        run_id,
-        &program,
-        grok_args(
-            &prompt,
-            &mode,
-            &cwd,
-            model,
-            effort,
-            reasoning_effort,
-            permission_mode,
-            best_of_n,
-            experimental_memory,
-            web_search_enabled,
-            subagents_enabled,
-            self_check,
-        ),
-        Some(cwd),
-        command_timeout_secs(600),
-    )
-}
-
-#[tauri::command]
-fn cancel_grok_run(run_id: String) -> bool {
-    let pid = grok_run_registry()
-        .lock()
-        .ok()
-        .and_then(|registry| registry.get(&run_id).copied());
-
-    if let Some(pid) = pid {
-        terminate_pid_tree(pid);
-        true
-    } else {
-        false
-    }
 }
 
 #[tauri::command]
@@ -2094,10 +1609,188 @@ fn install_chrome_native_host(extension_id: String) -> ToolRun {
     )
 }
 
+// ── New queue commands ──────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn enqueue_run(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+    prompt: String,
+    cwd: String,
+    args: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let (run_id, position) = queue
+        .enqueue(prompt, cwd, args)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "runId": run_id, "position": position }))
+}
+
+#[tauri::command]
+async fn cancel_run(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+    run_id: String,
+) -> Result<bool, String> {
+    queue.cancel(&run_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_queue(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+) -> Result<serde_json::Value, String> {
+    let (active, waiting) = queue.snapshot().await;
+    Ok(serde_json::json!({
+        "active": active,
+        "queue": waiting.iter().map(|r| serde_json::json!({
+            "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
+            "state": r.state, "enqueuedAt": r.enqueued_at,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+#[tauri::command]
+async fn clear_queue(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+) -> Result<u64, String> {
+    queue.clear_waiting().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn resume_pending_runs(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+) -> Result<u64, String> {
+    let count = queue.pending_count().await;
+    queue.notify_worker();
+    Ok(count as u64)
+}
+
+#[tauri::command]
+async fn cancel_pending_runs(
+    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
+) -> Result<u64, String> {
+    queue.cancel_all_pending().await.map_err(|e| e.to_string())
+}
+
+// ── Event forwarder ─────────────────────────────────────────────────────────
+
+fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
+    use tauri::Emitter as _;
+    match &msg.kind {
+        QueueMessageKind::Event { event } => {
+            let _ = app.emit("grok-desktop://run-event", serde_json::json!({
+                "runId": msg.run_id,
+                "event": event,
+            }));
+        }
+        QueueMessageKind::StateChanged { state, started_at, ended_at, error } => {
+            let _ = app.emit("grok-desktop://run-state-changed", serde_json::json!({
+                "runId": msg.run_id,
+                "state": state,
+                "startedAt": started_at,
+                "endedAt": ended_at,
+                "error": error,
+            }));
+        }
+        QueueMessageKind::QueueChanged => {
+            let q = app.state::<std::sync::Arc<RunQueue>>().inner().clone();
+            let app_cloned = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let (active, waiting) = q.snapshot().await;
+                let _ = app_cloned.emit("grok-desktop://queue-changed", serde_json::json!({
+                    "active": active,
+                    "queue": waiting.iter().map(|r| serde_json::json!({
+                        "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
+                        "state": r.state, "enqueuedAt": r.enqueued_at,
+                    })).collect::<Vec<_>>(),
+                }));
+            });
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            let resource_dir = app.path().app_data_dir().expect("app_data_dir");
+            std::fs::create_dir_all(&resource_dir).ok();
+            let db_path = resource_dir.join("runs.sqlite");
+
+            tauri::async_runtime::block_on(async {
+                let db = Db::open_at(&db_path).await.expect("open runs.sqlite");
+
+                // One-shot migration: if session_state.json has a non-empty history array,
+                // import as Done runs in SQLite, then clear the field.
+                // ToolRun fields in JSON are snake_case: ok, command, cwd, exit_code, duration_ms, timed_out, output, stderr
+                // There is no timestamp field — use current time as approximation.
+                let session_path = app_support_dir().join("session_state.json");
+                if let Ok(content) = std::fs::read_to_string(&session_path) {
+                    if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(history) = v.get("history").and_then(|h| h.as_array()).cloned() {
+                            if !history.is_empty() {
+                                let now_ms = chrono::Utc::now().timestamp_millis();
+                                for item in &history {
+                                    let id = uuid::Uuid::now_v7().to_string();
+                                    let prompt = item.get("command").and_then(|p| p.as_str()).unwrap_or("").to_string();
+                                    let cwd = item.get("cwd").and_then(|c| c.as_str()).unwrap_or("/").to_string();
+                                    let rec = crate::runs::db::RunRecord {
+                                        id,
+                                        prompt,
+                                        cwd,
+                                        args_json: "[]".into(),
+                                        state: crate::runs::db::RunState::Done,
+                                        enqueued_at: now_ms,
+                                        started_at: Some(now_ms),
+                                        ended_at: Some(now_ms),
+                                        stop_reason: Some("legacy".into()),
+                                        error: None,
+                                    };
+                                    let _ = db.insert_run(&rec).await;
+                                }
+                            }
+                            v.as_object_mut().and_then(|o| o.remove("history"));
+                            let _ = std::fs::write(
+                                &session_path,
+                                serde_json::to_string_pretty(&v).unwrap_or_default(),
+                            );
+                        }
+                    }
+                }
+
+                let grok_path = std::path::PathBuf::from(
+                    std::env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| {
+                        let home = std::env::var("HOME").unwrap_or_default();
+                        format!("{}/.grok/bin/grok", home)
+                    })
+                );
+                let (queue, mut rx) = RunQueue::new(db.clone(), grok_path).await;
+                let queue = std::sync::Arc::new(queue);
+                queue.clone().spawn_worker();
+
+                // Event forwarder: queue messages → Tauri events.
+                let app_for_events = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(msg) = rx.recv().await {
+                        forward_queue_message(&app_for_events, &msg);
+                    }
+                });
+
+                // 6-hour vacuum loop.
+                let db_for_vacuum = db.clone();
+                tauri::async_runtime::spawn(async move {
+                    let week_ms: i64 = 7 * 24 * 60 * 60 * 1000;
+                    loop {
+                        let _ = db_for_vacuum.vacuum(week_ms).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+                    }
+                });
+
+                app_handle.manage(queue);
+            });
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_tool_statuses,
             load_session_state,
@@ -2105,8 +1798,6 @@ pub fn run() {
             get_grok_auth_status,
             start_grok_login,
             run_grok_task,
-            run_grok_streaming_task,
-            cancel_grok_run,
             run_shell_command,
             get_static_preview,
             inspect_grok_environment,
@@ -2120,7 +1811,13 @@ pub fn run() {
             run_doctor,
             get_chrome_bridge_state,
             install_chrome_native_host,
-            pick_project_folder
+            pick_project_folder,
+            enqueue_run,
+            cancel_run,
+            get_queue,
+            clear_queue,
+            resume_pending_runs,
+            cancel_pending_runs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
