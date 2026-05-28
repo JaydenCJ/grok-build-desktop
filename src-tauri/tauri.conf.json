@@ -12,11 +12,26 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Grok Desktop",
         "width": 1420,
         "height": 900,
         "minWidth": 1120,
         "minHeight": 720
+      },
+      {
+        "label": "agent-overlay",
+        "title": "Grok Agent Overlay",
+        "url": "overlay.html",
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "fullscreen": true,
+        "shadow": false
       }
     ],
     "security": {

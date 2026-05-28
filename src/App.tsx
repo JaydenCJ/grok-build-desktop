@@ -43,6 +43,7 @@ import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
+import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -2199,6 +2200,7 @@ function App() {
               )}
             </div>
 
+            <AgentOverlayDriver />
             <QueueDock />
             <StatusBar />
 

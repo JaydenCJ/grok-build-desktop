@@ -1730,6 +1730,60 @@ async fn delete_prompt(
     store.delete(&id).await.map_err(|e| e.to_string())
 }
 
+// ── Agent overlay (G2) ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OverlayState {
+    visible: bool,
+    label: Option<String>,
+    mode: Option<String>,
+    action: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OverlayCursor {
+    x: f64,
+    y: f64,
+    label: Option<String>,
+    action: Option<String>,
+}
+
+/// Show or hide the always-on-top agent overlay window and push state to it.
+#[tauri::command]
+async fn set_agent_overlay(
+    app: tauri::AppHandle,
+    payload: OverlayState,
+) -> Result<(), String> {
+    use tauri::{Emitter as _, Manager as _};
+    let window = app
+        .get_webview_window("agent-overlay")
+        .ok_or_else(|| "agent-overlay window not configured".to_string())?;
+
+    if payload.visible {
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_ignore_cursor_events(true);
+    } else {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+
+    let _ = window.emit("grok-desktop://overlay-state", &payload);
+    Ok(())
+}
+
+/// Update the position/label/action of the agent cursor sprite in the overlay.
+#[tauri::command]
+async fn set_agent_cursor(
+    app: tauri::AppHandle,
+    payload: OverlayCursor,
+) -> Result<(), String> {
+    use tauri::{Emitter as _, Manager as _};
+    let window = app
+        .get_webview_window("agent-overlay")
+        .ok_or_else(|| "agent-overlay window not configured".to_string())?;
+    let _ = window.emit("grok-desktop://overlay-cursor", &payload);
+    Ok(())
+}
+
 // ── Event forwarder ─────────────────────────────────────────────────────────
 
 fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
@@ -1898,7 +1952,9 @@ pub fn run() {
             cancel_pending_runs,
             list_prompts,
             upsert_prompt,
-            delete_prompt
+            delete_prompt,
+            set_agent_overlay,
+            set_agent_cursor
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
