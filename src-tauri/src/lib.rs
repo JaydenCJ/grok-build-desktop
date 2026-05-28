@@ -1,4 +1,31 @@
+// `desktop` uses osascript so it only compiles on macOS. On other targets we
+// expose a stub with the same signatures returning "unsupported" errors, so
+// the Tauri command registration stays portable.
+#[cfg(target_os = "macos")]
 pub mod desktop;
+#[cfg(not(target_os = "macos"))]
+pub mod desktop {
+    use serde::Serialize;
+    #[derive(Debug, Clone, Serialize)]
+    pub struct AppInfo {
+        pub name: String,
+        pub bundle_id: String,
+        pub running: bool,
+        pub capabilities: Vec<String>,
+    }
+    #[tauri::command]
+    pub fn desktop_list_apps() -> Vec<AppInfo> {
+        Vec::new()
+    }
+    #[tauri::command]
+    pub fn desktop_query(_action: String) -> Result<String, String> {
+        Err("desktop bridge is macOS-only".into())
+    }
+    #[tauri::command]
+    pub fn desktop_activate(_app: String) -> Result<(), String> {
+        Err("desktop bridge is macOS-only".into())
+    }
+}
 pub mod prompts;
 pub mod runs;
 pub mod telegram;
