@@ -27,7 +27,7 @@ async fn enqueue_runs_serial_and_emits_events() {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
         match tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await {
-            Ok(Some(msg)) => events.push(msg),
+            Ok(Ok(msg)) => events.push(msg),
             _ => {
                 if events
                     .iter()

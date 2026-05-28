@@ -183,6 +183,40 @@ The script writes:
 - `absorbed/<repo>/summary.md`
 - `absorbed/<repo>/files/` when `--copy-text` is enabled
 
+### Telegram Remote (v0.2.0+)
+
+Drive Grok runs from your phone via a Telegram bot. The desktop app spawns a long-polling bot daemon when `TELEGRAM_BOT_TOKEN` is set in `.env`.
+
+**Setup:**
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) → `/newbot` → grab the token.
+2. Send `/start` to your new bot, then call `curl "https://api.telegram.org/bot<TOKEN>/getUpdates"` and copy the `chat.id` field (an i64).
+3. Add to `.env`:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:ABCDEF...
+TELEGRAM_ALLOWED_CHAT_IDS=12345678
+# optional:
+TELEGRAM_DEFAULT_CWD=/Users/you/code/some-project
+```
+
+4. Restart the desktop app. The console shows `telegram: daemon online, N chat(s) allowlisted`.
+
+**Commands:**
+
+| Command | What it does |
+|---|---|
+| `/grok <prompt>` | Enqueue a run. Bot edits the message in place as text streams (~1 Hz cadence) and finalises with `✓ done` or `✗ failed`. |
+| `/queue` | Active run ID + the waiting list. |
+| `/cancel` | Cancel the active run. |
+| `/cancel <prefix>` | Cancel by UUID prefix. |
+| `/status` | Bot uptime, allowlist size, active run, queue depth, default cwd. |
+| `/help` | Command list. |
+
+Authorization is enforced per command — chat IDs not in `TELEGRAM_ALLOWED_CHAT_IDS` get `🚫 Not authorized.` and a warning is logged. The daemon refuses to start with an empty allowlist.
+
+The bot reuses the same `RunQueue` as the desktop UI, so a run started in Telegram appears in the QueueDock and a run started in the desktop UI appears in `/queue`. Cancels work in both directions.
+
 ### Phone Control
 
 The app detects:

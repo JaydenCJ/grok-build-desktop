@@ -7,7 +7,14 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{broadcast, Mutex, Notify};
+
+/// Capacity of the broadcast channel that fans queue messages out to consumers
+/// (Tauri event forwarder, optional Telegram daemon, future subscribers).
+/// Large enough to absorb a burst of streaming-json events without lag for
+/// the slowest realistic consumer (a Telegram bot bounded by Telegram's
+/// 1 edit/sec recommendation).
+const BROADCAST_CAPACITY: usize = 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct QueueMessage {
@@ -32,7 +39,7 @@ pub struct RunQueue {
     pub db: Db,
     inner: Arc<Mutex<Inner>>,
     notify: Arc<Notify>,
-    pub tx: mpsc::UnboundedSender<QueueMessage>,
+    pub tx: broadcast::Sender<QueueMessage>,
 }
 
 struct Inner {
@@ -45,7 +52,7 @@ struct Inner {
 }
 
 impl RunQueue {
-    pub async fn new(db: Db, grok_path: PathBuf) -> (Self, mpsc::UnboundedReceiver<QueueMessage>) {
+    pub async fn new(db: Db, grok_path: PathBuf) -> (Self, broadcast::Receiver<QueueMessage>) {
         // On startup: cancel any Running rows (subprocess died with the previous app).
         let _ = db.cancel_orphans("app restarted").await;
         // Recover Queued rows into memory (do not auto-start — banner handles resume).
@@ -58,7 +65,7 @@ impl RunQueue {
             active_pgid: None,
             grok_path,
         };
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = broadcast::channel(BROADCAST_CAPACITY);
         let queue = Self {
             db,
             inner: Arc::new(Mutex::new(inner)),
@@ -66,6 +73,14 @@ impl RunQueue {
             tx,
         };
         (queue, rx)
+    }
+
+    /// Subscribe a fresh receiver to the queue's broadcast channel.
+    /// Used to attach additional consumers (e.g. Telegram daemon) after the
+    /// queue is already running. Each receiver gets every event from the
+    /// moment of subscription; previously emitted events are not replayed.
+    pub fn subscribe(&self) -> broadcast::Receiver<QueueMessage> {
+        self.tx.subscribe()
     }
 
     pub async fn enqueue(
