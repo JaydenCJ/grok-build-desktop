@@ -90,9 +90,9 @@ pre {
 }
 
 .app-sidebar {
-  background: #05080c;
-  border-right: 1px solid #16202a;
-  color: #f3f7f9;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--line);
+  color: var(--text);
   display: grid;
   grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto;
   gap: 14px;
@@ -356,8 +356,9 @@ pre {
 
 .window-titlebar {
   align-items: center;
-  background: #06090d;
-  border-bottom: 1px solid #18222d;
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(280px, 1fr) auto minmax(420px, 1fr);
@@ -402,10 +403,10 @@ pre {
 
 .repo-picker {
   align-items: center;
-  background: #0c1219;
-  border: 1px solid #1b2a38;
+  background: var(--field);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  color: #d8e6ee;
+  color: var(--text);
   display: grid;
   flex-shrink: 0;
   gap: 8px;
@@ -418,7 +419,7 @@ pre {
 }
 
 .repo-picker span {
-  color: #9aabb8;
+  color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 750;
 }
@@ -427,7 +428,7 @@ pre {
   background: transparent;
   border: 0;
   box-shadow: none;
-  color: #f2f8fb;
+  color: var(--text);
   height: 34px;
   min-width: 0;
   padding: 0;
@@ -439,9 +440,9 @@ pre {
 .connection-pill,
 .compact-select,
 .check-chip {
-  background: #0c1219;
-  border: 1px solid #1b2a38;
-  color: #d9e8ef;
+  background: var(--field);
+  border: 1px solid var(--line);
+  color: var(--text);
   min-height: 38px;
 }
 
@@ -462,7 +463,7 @@ pre {
   background: transparent;
   border: 0;
   box-shadow: none;
-  color: #f3f9fb;
+  color: var(--text);
   font-size: 0.82rem;
   font-weight: 800;
   height: 34px;
@@ -485,7 +486,7 @@ pre {
 }
 
 .compact-select span {
-  color: #8fa0ae;
+  color: var(--text-muted);
   font-size: 0.7rem;
   font-weight: 850;
   text-transform: uppercase;
@@ -495,7 +496,7 @@ pre {
   background: transparent;
   border: 0;
   box-shadow: none;
-  color: #f3f9fb;
+  color: var(--text);
   height: 34px;
   min-width: 0;
   padding: 0;
@@ -1654,6 +1655,7 @@ select {
 }
 
 .conversation-panel,
+.preview-panel,
 .inspector,
 .terminal-dock,
 .tool-card,
