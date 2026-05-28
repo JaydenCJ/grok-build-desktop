@@ -3880,3 +3880,77 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   color: var(--grok-text-4);
   letter-spacing: 0.2px;
 }
+
+/* ===== @file picker ===== */
+.composer { position: relative; }
+.file-picker {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(100% + 4px);
+  z-index: 50;
+  background: var(--grok-bg-2);
+  border: 1px solid var(--grok-border-2);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,122,69,0.04);
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow: hidden;
+}
+.file-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--grok-border-1);
+  font-size: 12px;
+}
+.file-picker-title {
+  color: var(--grok-accent);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.file-picker-meta { color: var(--grok-text-4); }
+.file-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 240px;
+}
+.file-picker-row {
+  padding: 6px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--grok-text-1);
+  border-bottom: 1px solid transparent;
+}
+.file-picker-row.is-highlight {
+  background: var(--grok-bg-3);
+  border-bottom-color: var(--grok-border-1);
+}
+.file-picker-name { font-weight: 600; }
+.file-picker-path {
+  color: var(--grok-text-4);
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-picker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--grok-text-4);
+}
+.file-picker-hint {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--grok-text-4);
+  border-top: 1px solid var(--grok-border-1);
+  background: var(--grok-bg-1);
+}

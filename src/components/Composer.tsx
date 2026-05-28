@@ -12,6 +12,8 @@ import {
   notePendingSubmitEnd,
   notePendingSubmitStart,
 } from '../lib/streamStore';
+import { extractFileMentions, readFileSafe, type FileEntry } from '../lib/files';
+import { FilePicker } from './FilePicker';
 
 export interface ComposerHandle {
   /** Imperatively set the textarea value (used by starter cards / history click / drafts). */
@@ -47,6 +49,31 @@ interface Props {
   onTextChange?: (text: string) => void;
 }
 
+/**
+ * Find the active `@token` immediately to the left of the textarea caret. If
+ * the caret is not inside an unfinished `@…` mention, returns null. The token
+ * begins right after the most recent `@` that follows whitespace or
+ * string-start, and runs until the caret. Whitespace inside the token closes
+ * it (the user finished typing the filename).
+ */
+function detectActiveMention(text: string, caret: number): { start: number; query: string } | null {
+  if (caret <= 0) return null;
+  let i = caret - 1;
+  while (i >= 0) {
+    const ch = text[i];
+    if (ch === '@') {
+      // valid only if @ is at string-start or preceded by whitespace
+      if (i === 0 || /\s/.test(text[i - 1]!)) {
+        return { start: i, query: text.slice(i + 1, caret) };
+      }
+      return null;
+    }
+    if (/\s/.test(ch ?? '')) return null;
+    i--;
+  }
+  return null;
+}
+
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   {
     cwd,
@@ -66,6 +93,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const composingRef = useRef(false);
   const [isComposing, setIsComposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
   const active = useActiveRun();
@@ -107,6 +135,57 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const hasInflight =
     Boolean(active && active.state === 'running') || queue.items.length > 0;
 
+  /**
+   * Re-scan the textarea for an active @mention. Called on input + caret
+   * movement. We can't use a controlled value because the textarea is
+   * uncontrolled (perf invariant — see onTextChange comment).
+   */
+  const refreshMention = () => {
+    const el = ref.current;
+    if (!el) {
+      setMention(null);
+      return;
+    }
+    const caret = el.selectionStart ?? 0;
+    setMention(detectActiveMention(el.value, caret));
+  };
+
+  const insertMention = (entry: FileEntry) => {
+    const el = ref.current;
+    if (!el || !mention) return;
+    const caret = el.selectionStart ?? 0;
+    const before = el.value.slice(0, mention.start);
+    const after = el.value.slice(caret);
+    const insertion = `@${entry.path} `;
+    el.value = `${before}${insertion}${after}`;
+    const newCaret = before.length + insertion.length;
+    el.setSelectionRange(newCaret, newCaret);
+    setMention(null);
+    el.focus();
+  };
+
+  /**
+   * Resolve `@path` mentions in the raw prompt: read each file (size-capped)
+   * and append the contents as a fenced context block at the end. The model
+   * sees the original prompt verbatim (mentions remain inline) plus a
+   * "Referenced files" section with the actual content.
+   */
+  const expandMentionsInPrompt = async (raw: string): Promise<string> => {
+    const mentions = extractFileMentions(raw);
+    if (mentions.length === 0 || !cwd.trim()) return raw;
+    const blocks: string[] = [];
+    for (const mentionPath of mentions) {
+      const body = await readFileSafe(cwd, mentionPath, 200_000);
+      if (body == null) {
+        blocks.push(`\n### @${mentionPath}\n_(file unreadable, too large, or binary — skipped)_`);
+      } else {
+        const ext = mentionPath.includes('.') ? mentionPath.split('.').pop() : '';
+        blocks.push(`\n### @${mentionPath}\n\`\`\`${ext ?? ''}\n${body}\n\`\`\``);
+      }
+    }
+    return `${raw}\n\n---\nReferenced files (from @ mentions):${blocks.join('\n')}`;
+  };
+
   const submit = async () => {
     if (submitting) return;
     const el = ref.current;
@@ -114,9 +193,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const rawText = el.value.trim();
     if (!rawText) return;
     setSubmitting(true);
+    setMention(null);
     notePendingSubmitStart();
     try {
-      const wrapped = promptWrapper ? promptWrapper(rawText) : rawText;
+      const withFiles = await expandMentionsInPrompt(rawText);
+      const wrapped = promptWrapper ? promptWrapper(withFiles) : withFiles;
       const args = argsBuilder();
       args.push('-p', wrapped);
       const result = await enqueueRun({ prompt: wrapped, cwd, args });
@@ -138,6 +219,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   return (
     <div className={`composer${submitting ? ' composer-submitting' : ''}`}>
+      {mention && cwd.trim() ? (
+        <FilePicker
+          cwd={cwd}
+          query={mention.query}
+          onSelect={insertMention}
+          onCancel={() => setMention(null)}
+        />
+      ) : null}
       <textarea
         ref={ref}
         disabled={submitting}
@@ -153,13 +242,37 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         onCompositionEnd={() => {
           composingRef.current = false;
           setIsComposing(false);
+          refreshMention();
+        }}
+        onInput={() => refreshMention()}
+        onClick={() => refreshMention()}
+        onKeyUp={(e) => {
+          // arrow-nav over the textarea moves the caret too — refresh after.
+          if (
+            e.key === 'ArrowLeft' ||
+            e.key === 'ArrowRight' ||
+            e.key === 'ArrowUp' ||
+            e.key === 'ArrowDown' ||
+            e.key === 'Home' ||
+            e.key === 'End'
+          ) {
+            refreshMention();
+          }
         }}
         onBlur={(e) => {
           // Persist draft only on blur, not every keystroke — that's the
           // critical perf invariant. See header comment on onTextChange prop.
           onTextChangeRef.current?.((e.target as HTMLTextAreaElement).value);
+          // Close mention picker on blur so it doesn't linger over other UI.
+          // Use a microtask so mousedown on a picker row can fire first.
+          setTimeout(() => setMention(null), 100);
         }}
         onKeyDown={(e) => {
+          // When the file picker is open it owns Enter/Tab/Arrows/Esc.
+          if (mention) {
+            const navKeys = ['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape'];
+            if (navKeys.includes(e.key)) return;
+          }
           if (e.key !== 'Enter' || e.shiftKey) return;
           // Four-layer guard against accidental Enter-during-IME auto-submit:
           //   1. composingRef.current — sync ref, set synchronously by
