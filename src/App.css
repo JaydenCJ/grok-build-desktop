@@ -3414,6 +3414,51 @@ select:focus {
 }
 
 .message-body { white-space: pre-wrap; }
+
+/* Override legacy `.message` (grid 38px + 1fr) for the new MessageList
+   markup, which has no avatar element and was collapsing each character
+   into the 38px column. */
+.message.message-user,
+.message.message-assistant {
+  border-bottom: 1px solid var(--grok-border-1);
+  display: block;
+  padding: 14px 22px;
+}
+.message.message-user {
+  background: linear-gradient(180deg, transparent, rgba(255, 122, 69, 0.04));
+}
+.message.message-user::before {
+  content: 'You';
+  color: var(--grok-accent);
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.message.message-assistant::before {
+  content: 'Grok';
+  color: var(--grok-text-3);
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.message.message-user .message-body,
+.message.message-assistant .message-body {
+  color: var(--grok-text-1);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .streaming-raw {
   font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   font-size: 13px;
