@@ -23,6 +23,7 @@ for (const label of [
   "Best-of-N",
   "Subagents",
   "MCP",
+  "Preview",
   "Agents",
   "Plugins",
   "Hooks",
@@ -44,17 +45,42 @@ for (const command of [
   "save_session_state",
   "run_grok_streaming_task",
   "cancel_grok_run",
+  "get_static_preview",
   "inspect_grok_environment",
   "list_grok_mcp",
   "doctor_grok_mcp",
   "list_grok_plugins",
   "list_grok_sessions",
   "install_chrome_native_host",
+  "pick_project_folder",
 ]) {
   assert.ok(read("src-tauri/src/lib.rs").includes(command), `missing Tauri command: ${command}`);
 }
 
-assert.ok(read("src-tauri/src/lib.rs").includes("--max-turns"), "Grok max-turn guard missing");
+const libRs = read("src-tauri/src/lib.rs");
+assert.ok(libRs.includes("--max-turns"), "Grok max-turn guard missing");
+assert.ok(libRs.includes("is_noisy_grok_line"), "Tracing-noise filter missing");
+assert.ok(libRs.includes("GROK_DESKTOP_VERBOSE_GROK_STDERR"), "Verbose stderr escape hatch missing");
+assert.ok(libRs.includes("theme_mode: Option<String>"), "SessionState must round-trip themeMode");
+assert.ok(libRs.includes("messages: serde_json::Value"), "SessionState must round-trip messages");
+
+assert.ok(app.includes("handlePromptKeyDown"), "Enter-to-send composer handler missing");
+assert.ok(!app.includes("[code output hidden]"), "Main Grok output should not hide code blocks");
+assert.ok(app.includes("type ChatMessage"), "ChatMessage type missing");
+assert.ok(app.includes("parseAvailableModels"), "Dynamic model parser missing");
+assert.ok(app.includes("togglePanel"), "Panel mutual-exclusivity helper missing");
+assert.ok(app.includes("pickFolder"), "Folder picker handler missing");
+assert.ok(app.includes("workspace-statusbar"), "Workspace status bar missing");
+assert.ok(app.includes("empty-hints"), "Empty conversation hint missing");
+assert.ok(app.includes("conversationScrollRef"), "Conversation auto-scroll ref missing");
+
+const css = read("src/App.css");
+assert.ok(css.includes(".workspace-statusbar"), "Status bar styles missing");
+assert.ok(css.includes(".status-cluster"), "Status cluster styles missing");
+assert.ok(css.includes(".repo-pick-button"), "Folder picker button styles missing");
+assert.ok(css.includes(".message.user-message"), "User message styles missing");
+assert.ok(css.includes(".message-error"), "Error message styles missing");
+assert.ok(!css.includes("grid-template-rows: auto minmax(0, 1fr) auto 36px;"), "Old 36px empty workspace row should be gone");
 
 const manifest = JSON.parse(read("chrome-extension/manifest.json"));
 assert.equal(manifest.manifest_version, 3, "Chrome extension must stay Manifest V3");

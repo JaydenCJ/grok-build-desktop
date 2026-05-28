@@ -10,7 +10,7 @@ The current build focuses on making Grok feel like a native coding desktop app r
 ## Quick Start
 
 ```bash
-cd "/Users/you/Projects/grok-desktop"
+cd path/to/grok-desktop
 npm install
 npm run tauri:dev
 ```
@@ -205,6 +205,7 @@ GROK_DESKTOP_COMMAND_TIMEOUT_SECS=240
 GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS=240
 GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS=180
 GROK_DESKTOP_GROK_MAX_TURNS=12
+GROK_DESKTOP_VERBOSE_GROK_STDERR=0
 XAI_API_KEY=
 BROWSER_USE_API_KEY=
 ```
@@ -221,7 +222,7 @@ BROWSER_USE_API_KEY=
 - The visual direction now follows a Grok/xAI-style command surface with a dark left rail and top command bar, bright work area, and a right capability inspector.
 - Coding workflows include Analyze, Implement, Review, Debug, Tests, and Refactor.
 - Action policies include Review only, Patch ready, and Autopilot.
-- Grok run controls include selectable effort, permission mode, optional `--check` self-verification, and a Stop action for long-running headless jobs.
+- Grok run controls include selectable effort, permission mode, optional `--check` self-verification, a Stop action for long-running headless jobs, and Codex-style composer behavior where Enter sends and Shift+Enter inserts a newline.
 - Grok and browser-use subprocess calls are wrapped with timeouts and clear errors.
 - Grok Build CLI defaults to `grok-build` with Medium effort, but the UI can select `grok-build-0.1`, Grok 4.x aliases, fast reasoning/non-reasoning presets, or a custom model ID accepted by the installed Grok CLI. Effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and Grok's headless `--check` self-verification are all exposed in the UI. Web search and subagents default off for local code tasks so ordinary repo analysis does not automatically fan out into unrelated remote or MCP work.
 - Grok Build CLI supports project working directories and realtime stdout/stderr streaming in Coding Mode.
@@ -237,6 +238,12 @@ BROWSER_USE_API_KEY=
 - Absorb Repo writes a manifest, language stats, important-file list, command hints, and summary.
 - Output panel shows command, cwd, duration, exit code, timeout state, stdout/stderr, and run history.
 - UIUX concept art generated with `imagegen` is saved at `docs/design/grok-desktop-uiux-concept.png`, `docs/design/grok-desktop-grok-style-uiux-v2.png`, the restrained dark/light direction at `docs/design/grok-desktop-restrained-dark-light-uiux.png`, and the latest power-clean 10-point direction at `docs/design/grok-desktop-10pt-power-clean-ui.png`.
+- Conversation panel keeps a turn-by-turn chat log (user + Grok) with streaming output, status (running/done/stopped/error), and durable persistence across restarts.
+- Workspace status bar at the bottom shows the active repo path, model, action policy, last run state, run count, and a one-click clear for conversation + history + terminal.
+- Native macOS folder picker (osascript) attached to the repo input so the cwd does not have to be typed.
+- Preview / Context / Terminal / Tools panels are mutually exclusive overlays with right or bottom dock positions, so only one ever covers the workspace.
+- Grok CLI stdout/stderr is filtered against tracing noise (`INFO plugin discovered`, MCP transport warnings) before reaching the UI; set `GROK_DESKTOP_VERBOSE_GROK_STDERR=1` to see the raw stream when debugging.
+- Model selector reflects what the installed Grok CLI actually advertises via `grok models`; selecting a model not in that list flags it with a warning so users do not silently fall back to the default.
 
 ## Known Limits
 

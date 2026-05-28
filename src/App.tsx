@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  AtSign,
   Bot,
   ChevronDown,
   CheckCircle2,
   CircleAlert,
   ClipboardCheck,
-  Copy,
   FileText,
   FolderDown,
   FolderGit2,
@@ -25,13 +23,11 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   SquareTerminal,
   Sun,
   TerminalSquare,
   Trash2,
-  User,
   Wrench,
   X,
   Zap,
@@ -59,6 +55,7 @@ type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 type PermissionMode = "default" | "acceptEdits" | "auto" | "dontAsk" | "plan";
 type ThemeMode = "dark" | "light";
+type DockPosition = "right" | "bottom";
 type GrokModelId =
   | "grok-build"
   | "grok-build-0.1"
@@ -132,6 +129,23 @@ type ChromeBridgeState = {
   lastError?: string | null;
 };
 
+type StaticPreviewFile = {
+  name: string;
+  path: string;
+  kind: string;
+  size: number;
+};
+
+type StaticPreview = {
+  available: boolean;
+  root: string;
+  entryPath: string;
+  html: string;
+  files: StaticPreviewFile[];
+  detail: string;
+  updatedAt: number;
+};
+
 type GrokAuthStatus = {
   installed: boolean;
   authenticated: boolean;
@@ -148,6 +162,22 @@ type GrokAuthStatus = {
   configPath: string;
 };
 
+type ChatMessageStatus = "streaming" | "done" | "error" | "stopped";
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  ts: number;
+  status?: ChatMessageStatus;
+  meta?: {
+    model?: string;
+    durationMs?: number;
+    exitCode?: number | null;
+    workflow?: string;
+  };
+};
+
 type SessionState = {
   mode?: Mode;
   drafts?: Partial<Record<Mode, string>>;
@@ -159,6 +189,7 @@ type SessionState = {
   themeMode?: ThemeMode;
   lastRun?: ToolRun | null;
   history?: ToolRun[];
+  messages?: ChatMessage[];
 };
 
 const modeCopy = {
@@ -188,7 +219,11 @@ const storageKeys = {
   codingWorkflow: "grok-desktop-coding-workflow",
   lastRun: "grok-desktop-last-run",
   runHistory: "grok-desktop-run-history",
+  messages: "grok-desktop-messages-v1",
   themeMode: "grok-desktop-theme-mode",
+  cleanLayoutTheme: "grok-desktop-clean-layout-theme-v1",
+  cleanComposer: "grok-desktop-clean-composer-v3",
+  dockPosition: "grok-desktop-dock-position",
   inspectorTab: "grok-desktop-inspector-tab",
   modelPreset: "grok-desktop-model-preset",
   customModel: "grok-desktop-custom-model",
@@ -363,27 +398,28 @@ const primaryNavItems = [
   { label: "Settings", meta: "Preferences" },
 ];
 
-const starterHistory = [
-  {
-    title: "Add session persistence",
-    detail: "Restore mode, draft, cwd, and runs",
-    time: "9:41 AM",
-  },
-  {
-    title: "Refactor command runner",
-    detail: "Improve streaming output",
-    time: "Yesterday",
-  },
-  {
-    title: "Fix TypeScript errors",
-    detail: "Resolve strict null checks",
-    time: "Yesterday",
-  },
-  {
-    title: "Add approval policy",
-    detail: "Configure safe edit gates",
-    time: "May 25",
-  },
+type HistoryPreview = { id: string; title: string; detail: string; time: string };
+
+function recentPromptPreviews(messages: ChatMessage[]): HistoryPreview[] {
+  const userMessages = messages.filter((message) => message.role === "user");
+  const recent = userMessages.slice(-5).reverse();
+  return recent.map((message) => {
+    const firstLine = message.content.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+    const title = firstLine.length > 56 ? `${firstLine.slice(0, 56)}…` : firstLine || "Untitled prompt";
+    const detail = message.meta?.workflow ?? "task";
+    return {
+      id: message.id,
+      title,
+      detail,
+      time: timeLabel(message.ts),
+    };
+  });
+}
+
+const placeholderHistory: HistoryPreview[] = [
+  { id: "p1", title: "Try: review this repository for risks", detail: "review", time: "" },
+  { id: "p2", title: "Try: add a failing test for the bug", detail: "tests", time: "" },
+  { id: "p3", title: "Try: implement a small focused fix", detail: "implement", time: "" },
 ];
 
 const contextFiles = [
@@ -464,6 +500,10 @@ function isThemeMode(value: unknown): value is ThemeMode {
   return value === "dark" || value === "light";
 }
 
+function isDockPosition(value: unknown): value is DockPosition {
+  return value === "right" || value === "bottom";
+}
+
 function isToolRun(value: unknown): value is ToolRun {
   if (!value || typeof value !== "object") return false;
   const run = value as Partial<ToolRun>;
@@ -488,6 +528,52 @@ function storedRunHistory() {
 function storedLastRun() {
   const run = readJsonStorage<unknown | null>(storageKeys.lastRun, null);
   return isToolRun(run) ? run : null;
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Partial<ChatMessage>;
+  return (
+    typeof message.id === "string" &&
+    (message.role === "user" || message.role === "assistant") &&
+    typeof message.content === "string" &&
+    typeof message.ts === "number"
+  );
+}
+
+function storedMessages() {
+  return readJsonStorage<unknown[]>(storageKeys.messages, [])
+    .filter(isChatMessage)
+    .slice(-120);
+}
+
+function makeId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function parseAvailableModels(output: string): string[] {
+  if (!output.trim()) return [];
+  const lines = output.split("\n");
+  const start = lines.findIndex((line) => /available models/i.test(line));
+  if (start < 0) return [];
+  const models = new Set<string>();
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*[\*\-•]\s*([\w./:@-]+)/);
+    if (!match) {
+      if (models.size > 0) break;
+      continue;
+    }
+    models.add(match[1]);
+  }
+  return Array.from(models);
+}
+
+function timeLabel(ts: number) {
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
 
 function nativeUnavailable(command: string): ToolRun {
@@ -522,10 +608,9 @@ function compactRunPreview(value: string) {
     .replace(/\r/g, "")
     .replace(/\*\*/g, "")
     .replace(/^#{1,6}\s*/gm, "")
-    .replace(/```[\s\S]*?```/g, "[code output hidden]")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 720);
+    .slice(0, 5000);
 }
 
 function formatBridgeAge(timestamp?: number | null) {
@@ -690,6 +775,8 @@ function App() {
   );
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = window.localStorage.getItem(storageKeys.themeMode);
+    const cleanLayoutMigrated = window.localStorage.getItem(storageKeys.cleanLayoutTheme) === "true";
+    if (!cleanLayoutMigrated) return "dark";
     return isThemeMode(stored) ? stored : "dark";
   });
   const [statuses, setStatuses] = useState<ToolStatus[]>([]);
@@ -700,7 +787,20 @@ function App() {
   const [mcpDoctorRun, setMcpDoctorRun] = useState<ToolRun | null>(null);
   const [pluginsRun, setPluginsRun] = useState<ToolRun | null>(null);
   const [sessionsRun, setSessionsRun] = useState<ToolRun | null>(null);
+  const [staticPreview, setStaticPreview] = useState<StaticPreview | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [dockPosition, setDockPosition] = useState<DockPosition>(() => {
+    const stored = window.localStorage.getItem(storageKeys.dockPosition);
+    return isDockPosition(stored) ? stored : "right";
+  });
   const [history, setHistory] = useState<ToolRun[]>(() => storedRunHistory());
+  const [messages, setMessages] = useState<ChatMessage[]>(() => storedMessages());
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [busyRunner, setBusyRunner] = useState<Runner | "status" | null>(null);
   const [activeGrokRunId, setActiveGrokRunId] = useState<string | null>(null);
@@ -768,11 +868,22 @@ function App() {
     setHistory((current) => [run, ...current].slice(0, 6));
   }
 
+  function appendMessage(message: ChatMessage) {
+    setMessages((current) => [...current, message].slice(-120));
+  }
+
+  function updateMessage(id: string, mutate: (message: ChatMessage) => ChatMessage) {
+    setMessages((current) =>
+      current.map((message) => (message.id === id ? mutate(message) : message)),
+    );
+  }
+
   function clearRunHistory() {
     setLastRun(null);
     setHistory([]);
+    setMessages([]);
     setTerminalLines([]);
-    setSessionNotice("Run history cleared.");
+    setSessionNotice("Cleared conversation, run history, and terminal.");
   }
 
   function updatePrompt(value: string) {
@@ -808,8 +919,9 @@ function App() {
       `Grok ecosystem: ${grokInspectCount(ecosystemRun?.output ?? "", "Skills")} skills, ${grokInspectCount(ecosystemRun?.output ?? "", "MCP Servers")} MCP servers, ${grokInspectCount(ecosystemRun?.output ?? "", "Agents")} agents, ${grokInspectCount(ecosystemRun?.output ?? "", "Plugins")} plugins discovered by grok inspect.`,
       "",
       "Professional expectations:",
+      "- If the user asks for a simple, short, one-sentence, read-only, or exact-format answer, obey that request directly and skip repository mapping, long reports, and section templates.",
       "- Optimize for a senior programmer who wants high signal and minimal ceremony.",
-      "- Start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
+      "- For repository implementation, review, debugging, or architecture tasks, start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
       "- Prefer exact file paths, exact commands, and concrete implementation details.",
       "- If the user includes this repository's GitHub URL, prefer the selected local working directory over fetching the remote repository unless they explicitly ask for remote state.",
       "- If changing code, keep edits narrow and make verification easy.",
@@ -817,6 +929,7 @@ function App() {
       "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents only when they clearly improve the result; do not start unrelated MCP workflows for ordinary repository analysis.",
       "- When web search is enabled, use it only for unstable/version-sensitive facts and cite sources in the response.",
       "- For hard implementation or debugging, reason privately, then return crisp evidence, changes, and verification.",
+      "- For normal coding tasks, use this report format: 1. Summary 2. Files / Evidence 3. Changes or Recommendation 4. Verification commands 5. Next step. For simple tasks, do not use it.",
       "",
       "Task:",
       prompt,
@@ -894,6 +1007,41 @@ function App() {
     }
   }
 
+  async function refreshStaticPreview(openWhenAvailable = false) {
+    setPreviewBusy(true);
+    try {
+      if (!hasTauriRuntime()) {
+        setStaticPreview({
+          available: false,
+          root: codingCwd,
+          entryPath: "",
+          html: "",
+          files: [],
+          detail: "Preview is available in the installed Grok Desktop app.",
+          updatedAt: Date.now(),
+        });
+        return;
+      }
+      const preview = await invoke<StaticPreview>("get_static_preview", { cwd: codingCwd });
+      setStaticPreview(preview);
+      if (openWhenAvailable && preview.available) {
+        setPreviewOpen(true);
+      }
+    } catch (error) {
+      setStaticPreview({
+        available: false,
+        root: codingCwd,
+        entryPath: "",
+        html: "",
+        files: [],
+        detail: error instanceof Error ? error.message : String(error),
+        updatedAt: Date.now(),
+      });
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   async function startGrokLogin(deviceAuth = false) {
     setBusyRunner("grok");
     setTerminalLines([
@@ -913,6 +1061,7 @@ function App() {
         cwd: codingCwd,
       });
       recordRun(run);
+      await refreshStaticPreview(true);
       await refreshGrokAuthStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -935,6 +1084,13 @@ function App() {
   async function cancelGrok() {
     if (!activeGrokRunId) return;
     setTerminalLines((current) => [...current, "[sys] Stopping Grok run..."].slice(-500));
+    setMessages((current) =>
+      current.map((message) =>
+        message.role === "assistant" && message.status === "streaming"
+          ? { ...message, status: "stopped" as ChatMessageStatus }
+          : message,
+      ),
+    );
     try {
       const cancelled = await cancelGrokCLI(activeGrokRunId);
       if (!cancelled) {
@@ -947,6 +1103,10 @@ function App() {
   }
 
   async function runGrok() {
+    const userPrompt = prompt.trim();
+    if (!userPrompt) return;
+    const taskPrompt = buildGrokTaskPrompt();
+    updatePrompt("");
     const reasoningFlag = reasoningEffort === "off" ? "" : ` --reasoning-effort ${reasoningEffort}`;
     const permissionFlag = permissionMode === "default" ? "" : ` --permission-mode ${permissionMode}`;
     const bestOfNFlag = bestOfN > 1 ? ` --best-of-n ${bestOfN}` : "";
@@ -955,6 +1115,26 @@ function App() {
     const subagentsFlag = subagentsEnabled ? "" : " --no-subagents";
     const checkFlag = selfCheck ? " --check" : "";
     const maxTurnsFlag = " --max-turns 12";
+
+    const userMessageId = makeId("u");
+    const assistantMessageId = makeId("a");
+    const now = Date.now();
+    appendMessage({
+      id: userMessageId,
+      role: "user",
+      content: userPrompt,
+      ts: now,
+      meta: { workflow: mode === "coding" ? codingWorkflow : "chat" },
+    });
+    appendMessage({
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      ts: now,
+      status: "streaming",
+      meta: { model: activeModel, workflow: mode === "coding" ? codingWorkflow : "chat" },
+    });
+
     setBusyRunner("grok");
     setActiveGrokRunId(null);
     setTerminalLines([
@@ -962,19 +1142,30 @@ function App() {
       `[sys] Working directory: ${codingCwd.trim() || "project root"}`,
       `[sys] Command mode: grok --model ${activeModel} --effort ${effortLevel}${permissionFlag}${reasoningFlag}${bestOfNFlag}${memoryFlag}${webFlag}${subagentsFlag}${checkFlag}${maxTurnsFlag} -p <prompt>`,
     ]);
+
+    function failAssistant(message: string) {
+      updateMessage(assistantMessageId, (current) => ({
+        ...current,
+        content: current.content || message,
+        status: "error",
+      }));
+    }
+
     try {
       if (!hasTauriRuntime()) {
         const unavailable = nativeUnavailable("grok -p");
         setTerminalLines((current) => [...current, `[err] ${unavailable.stderr}`]);
+        failAssistant(unavailable.stderr);
         recordRun(unavailable);
         return;
       }
 
       if (grokStatus && (!grokStatus.installed || !grokStatus.authenticated)) {
-      const message = !grokStatus.installed
-        ? "Grok CLI is not installed yet. Click Connect Grok to install and log in."
-        : "Grok CLI is not authenticated. Click Connect Grok or set GROK_CODE_XAI_API_KEY / XAI_API_KEY.";
+        const message = !grokStatus.installed
+          ? "Grok CLI is not installed yet. Click Connect Grok to install and log in."
+          : "Grok CLI is not authenticated. Click Connect Grok or set GROK_CODE_XAI_API_KEY / XAI_API_KEY.";
         setTerminalLines((current) => [...current, `[err] ${message}`]);
+        failAssistant(message);
         recordRun({
           ok: false,
           command: "grok -p",
@@ -988,7 +1179,7 @@ function App() {
         return;
       }
 
-      const run = await callGrokCLI(buildGrokTaskPrompt(), {
+      const run = await callGrokCLI(taskPrompt, {
         mode,
         cwd: codingCwd,
         model: activeModel,
@@ -1003,13 +1194,35 @@ function App() {
         onRunId: setActiveGrokRunId,
         onEvent: (event) => {
           setTerminalLines((current) => [...current, formatGrokEvent(event)].slice(-500));
+          if (event.stream === "stdout") {
+            const incoming = event.line;
+            updateMessage(assistantMessageId, (current) => ({
+              ...current,
+              content: current.content ? `${current.content}\n${incoming}` : incoming,
+            }));
+          }
         },
       });
       recordRun(run);
+      const finalText =
+        compactRunPreview(run.output || "").trim() ||
+        (run.ok ? "Command finished without output." : compactRunPreview(run.stderr || "")) ||
+        "Grok run did not produce output.";
+      updateMessage(assistantMessageId, (current) => ({
+        ...current,
+        content: finalText,
+        status: run.ok ? "done" : run.timed_out ? "stopped" : "error",
+        meta: {
+          ...current.meta,
+          durationMs: run.duration_ms,
+          exitCode: run.exit_code,
+        },
+      }));
       await refreshGrokAuthStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTerminalLines((current) => [...current, `[err] ${message}`]);
+      failAssistant(message);
       recordRun({
         ok: false,
         command: "grok -p",
@@ -1091,7 +1304,10 @@ function App() {
         setModelsRun(nativeUnavailable("grok models"));
         return;
       }
-      setModelsRun(await invoke<ToolRun>("list_grok_models"));
+      const run = await invoke<ToolRun>("list_grok_models");
+      setModelsRun(run);
+      const parsed = parseAvailableModels(run.output);
+      if (parsed.length > 0) setAvailableModels(parsed);
     } catch (error) {
       setModelsRun({
         ok: false,
@@ -1106,6 +1322,44 @@ function App() {
     } finally {
       setContextBusy(null);
     }
+  }
+
+  async function pickFolder() {
+    if (!hasTauriRuntime()) {
+      setSessionNotice("Folder picker is only available in the Tauri desktop window.");
+      return;
+    }
+    setFolderPickerBusy(true);
+    try {
+      const next = await invoke<string | null>("pick_project_folder", {
+        initial: codingCwd || null,
+      });
+      if (next) {
+        setCodingCwd(next);
+        setSessionNotice(`Repo set to ${next}.`);
+      }
+    } catch (error) {
+      setSessionNotice(
+        `Folder picker failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setFolderPickerBusy(false);
+    }
+  }
+
+  function togglePanel(target: "preview" | "context" | "terminal" | "tools") {
+    const next = !(target === "preview"
+      ? previewOpen
+      : target === "context"
+        ? contextOpen
+        : target === "terminal"
+          ? terminalOpen
+          : toolsOpen);
+    setPreviewOpen(target === "preview" ? next : false);
+    setContextOpen(target === "context" ? next : false);
+    setTerminalOpen(target === "terminal" ? next : false);
+    setToolsOpen(target === "tools" ? next : false);
+    if (next && target === "preview") void refreshStaticPreview();
   }
 
   async function refreshGrokMcp() {
@@ -1396,10 +1650,14 @@ function App() {
           const restoredLastRun = isToolRun(restored.lastRun)
             ? restored.lastRun
             : restoredHistory[0] ?? null;
+          const shouldClearRestoredPrompt = Boolean(restoredLastRun);
+          const nextDrafts = shouldClearRestoredPrompt
+            ? { ...restoredDrafts, [restoredMode]: "" }
+            : restoredDrafts;
 
-          setDrafts(restoredDrafts);
+          setDrafts(nextDrafts);
           setMode(restoredMode);
-          setPrompt(restoredDrafts[restoredMode] ?? defaultDrafts[restoredMode]);
+          setPrompt(nextDrafts[restoredMode] ?? defaultDrafts[restoredMode]);
           if (typeof restored.codingCwd === "string") setCodingCwd(restored.codingCwd);
           if (typeof restored.shellCommand === "string") setShellCommand(restored.shellCommand);
           if (isActionPolicy(restored.actionPolicy)) setActionPolicy(restored.actionPolicy);
@@ -1415,8 +1673,22 @@ function App() {
           setHistory(restoredHistory);
           setLastRun(restoredLastRun);
 
-          if (restoredHistory.length > 0 || restoredLastRun) {
-            setSessionNotice(`Restored ${restoredHistory.length} recent runs.`);
+          const restoredMessages = Array.isArray(restored.messages)
+            ? restored.messages.filter(isChatMessage).slice(-120)
+            : [];
+          if (restoredMessages.length > 0) {
+            const cleaned = restoredMessages.map((message) =>
+              message.role === "assistant" && message.status === "streaming"
+                ? { ...message, status: "stopped" as ChatMessageStatus }
+                : message,
+            );
+            setMessages(cleaned);
+          }
+
+          if (restoredHistory.length > 0 || restoredLastRun || restoredMessages.length > 0) {
+            setSessionNotice(
+              `Restored ${restoredHistory.length} recent runs and ${restoredMessages.length} chat messages.`,
+            );
           }
         }
       } catch (error) {
@@ -1440,6 +1712,8 @@ function App() {
     refreshStatuses();
     refreshChromeBridge();
     refreshGrokAuthStatus();
+    refreshStaticPreview();
+    refreshGrokModels();
   }, []);
 
   useEffect(() => {
@@ -1456,11 +1730,19 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.themeMode, themeMode);
+    window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
   }, [themeMode]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
   }, [codingCwd]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshStaticPreview();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [codingCwd, lastRun?.duration_ms]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.shellCommand, shellCommand);
@@ -1473,6 +1755,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingWorkflow, codingWorkflow);
   }, [codingWorkflow]);
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.dockPosition, dockPosition);
+  }, [dockPosition]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.inspectorTab, inspectorTab);
@@ -1519,12 +1805,24 @@ function App() {
   }, [selfCheck]);
 
   useEffect(() => {
+    const cleanComposerMigrated = window.localStorage.getItem(storageKeys.cleanComposer) === "true";
+    if (!cleanComposerMigrated && lastRun) {
+      const clearedDrafts = { ...drafts, [mode]: "" };
+      setDrafts(clearedDrafts);
+      setPrompt("");
+      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
+    }
     window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
-  }, []);
+    window.localStorage.setItem(storageKeys.cleanComposer, "true");
+  }, [drafts, lastRun, mode]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.messages, JSON.stringify(messages));
+  }, [messages]);
 
   useEffect(() => {
     if (lastRun) {
@@ -1549,6 +1847,7 @@ function App() {
         themeMode,
         lastRun,
         history,
+        messages,
       };
 
       invoke<void>("save_session_state", { state }).catch((error) => {
@@ -1567,6 +1866,7 @@ function App() {
     drafts,
     history,
     lastRun,
+    messages,
     mode,
     sessionLoaded,
     shellCommand,
@@ -1599,6 +1899,37 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busyRunner, drafts, mode]);
 
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = conversationScrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages]);
+
+  const [historyFilter, setHistoryFilter] = useState("");
+  const recentPrompts = useMemo(() => {
+    const all = recentPromptPreviews(messages);
+    if (!historyFilter.trim()) return all;
+    const needle = historyFilter.trim().toLowerCase();
+    return all.filter((item) => item.title.toLowerCase().includes(needle) || item.detail.toLowerCase().includes(needle));
+  }, [messages, historyFilter]);
+
+  const modelOptions = useMemo(() => {
+    const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
+    const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
+    const merged: string[] = [];
+    for (const id of fromCli.length > 0 ? fromCli : declared) {
+      if (!merged.includes(id)) merged.push(id);
+    }
+    if (fromCli.length > 0) {
+      for (const id of declared) {
+        if (!merged.includes(id)) merged.push(id);
+      }
+    }
+    return merged;
+  }, [availableModels]);
+  const modelIsVerified = availableModels.length === 0 || availableModels.includes(activeModel) || modelPreset === "custom";
+
   const currentPolicy = actionPolicies[actionPolicy];
   const grokToolStatus = statusMap.grok;
   const isGrokReady = Boolean(grokStatus?.authenticated);
@@ -1609,6 +1940,11 @@ function App() {
       : "Connect needed";
   const workspacePath = codingCwd.trim() || "/Users/you/Projects/grok-desktop";
   const visibleRuns = history.length > 0 ? history : lastRun ? [lastRun] : [];
+  const previewFiles = staticPreview?.files ?? [];
+  const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
+  const previewEntry = staticPreview?.entryPath
+    ? staticPreview.entryPath.split("/").pop() || "index.html"
+    : "index.html";
   const terminalDisplay = terminalLines.length > 0
     ? terminalLines
     : formatOutput(lastRun)
@@ -1639,6 +1975,17 @@ function App() {
   const grokControlDisabled = grokIsRunning
     ? activeGrokRunId === null
     : busyRunner !== null || grokRunBlocked;
+  function handlePromptKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (grokIsRunning) {
+      void cancelGrok();
+      return;
+    }
+    if (!grokControlDisabled) {
+      void runGrok();
+    }
+  }
   return (
     <main className={`app-shell theme-${themeMode}`}>
       <aside className="app-sidebar">
@@ -1676,18 +2023,37 @@ function App() {
           </div>
           <label className="search-box">
             <Search size={15} />
-            <input aria-label="Search history" placeholder="Search history..." />
+            <input
+              aria-label="Search history"
+              placeholder="Filter recent prompts..."
+              onChange={(event) => setHistoryFilter(event.currentTarget.value)}
+              value={historyFilter}
+            />
           </label>
           <div className="history-list">
-            {starterHistory.map((item, index) => (
-              <button className={index === 0 ? "active" : ""} key={item.title} type="button">
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>{item.detail}</small>
-                </span>
-                <time>{item.time}</time>
-              </button>
-            ))}
+            {(recentPrompts.length > 0 ? recentPrompts : placeholderHistory).map((item, index) => {
+              const isPlaceholder = recentPrompts.length === 0;
+              return (
+                <button
+                  className={!isPlaceholder && index === 0 ? "active" : ""}
+                  disabled={isPlaceholder}
+                  key={item.id}
+                  onClick={() => {
+                    if (isPlaceholder) return;
+                    const target = messages.find((message) => message.id === item.id);
+                    if (target) updatePrompt(target.content);
+                  }}
+                  title={isPlaceholder ? "Sample prompt" : "Restore this prompt to the composer"}
+                  type="button"
+                >
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                  <time>{item.time || ""}</time>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -1724,7 +2090,7 @@ function App() {
         </div>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace dock-${dockPosition}`}>
         <header className="window-titlebar">
           <div className="repo-controls">
             <label className="repo-picker">
@@ -1734,37 +2100,101 @@ function App() {
                 aria-label="Project path"
                 onChange={(event) => setCodingCwd(event.currentTarget.value)}
                 value={codingCwd}
-                placeholder="/Users/you/Projects/grok-desktop"
+                placeholder="Click the folder button to pick a project"
               />
+              <button
+                aria-label="Pick project folder"
+                className="repo-pick-button"
+                disabled={folderPickerBusy}
+                onClick={pickFolder}
+                title="Open folder picker"
+                type="button"
+              >
+                {folderPickerBusy ? <Loader2 className="spin" size={15} /> : <FolderDown size={15} />}
+              </button>
             </label>
-            <button className="branch-chip" type="button">
-              <GitBranch size={15} />
-              <span>main</span>
-              <ChevronDown size={14} />
-            </button>
-            <label className="model-chip">
+            <label className="model-chip" title={modelIsVerified ? "Grok model" : "Model not in grok CLI list — may fall back to default"}>
               <Sparkles size={15} />
               <select
                 aria-label="Grok model"
-                onChange={(event) => changeModelPreset(event.currentTarget.value as GrokModelId)}
-                value={modelPreset}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  if (isGrokModelId(value)) {
+                    changeModelPreset(value);
+                  } else {
+                    setModelPreset("custom");
+                    setCustomModel(value);
+                    setReasoningEffort(grokModelPresets.custom.defaultReasoning);
+                  }
+                }}
+                value={modelPreset === "custom" ? "custom" : modelPreset}
               >
-                {(Object.keys(grokModelPresets) as GrokModelId[]).map((model) => (
-                  <option key={model} value={model}>
-                    {grokModelPresets[model].label}
-                  </option>
-                ))}
+                {modelOptions.map((id) => {
+                  const verified = availableModels.length === 0 || availableModels.includes(id);
+                  return (
+                    <option key={id} value={id}>
+                      {id}
+                      {verified ? "" : " (not in CLI)"}
+                    </option>
+                  );
+                })}
+                <option value="custom">Custom...</option>
               </select>
+              {!modelIsVerified ? <CircleAlert size={13} /> : null}
             </label>
-            <button aria-label="Add context" className="square-button" type="button">
-              <Plus size={17} />
-            </button>
           </div>
           <div className="title-center">
             <span>Grok Code</span>
             <small>{grokVersion}</small>
           </div>
           <div className="top-actions">
+            <button
+              aria-pressed={previewOpen}
+              className={`panel-toggle ${previewOpen ? "active" : ""}`}
+              onClick={() => togglePanel("preview")}
+              type="button"
+            >
+              <Globe2 size={15} />
+              <span>Preview</span>
+            </button>
+            <button
+              aria-pressed={contextOpen}
+              className={`panel-toggle ${contextOpen ? "active" : ""}`}
+              onClick={() => togglePanel("context")}
+              type="button"
+            >
+              <PanelRight size={15} />
+              <span>Context</span>
+            </button>
+            <button
+              aria-pressed={terminalOpen}
+              className={`panel-toggle ${terminalOpen ? "active" : ""}`}
+              onClick={() => togglePanel("terminal")}
+              type="button"
+            >
+              <SquareTerminal size={15} />
+              <span>Terminal</span>
+            </button>
+            <button
+              aria-pressed={toolsOpen}
+              className={`panel-toggle ${toolsOpen ? "active" : ""}`}
+              onClick={() => togglePanel("tools")}
+              type="button"
+            >
+              <Wrench size={15} />
+              <span>Tools</span>
+            </button>
+            <label className="dock-select">
+              <PanelRight size={14} />
+              <select
+                aria-label="Dock position"
+                onChange={(event) => setDockPosition(event.currentTarget.value as DockPosition)}
+                value={dockPosition}
+              >
+                <option value="right">Right</option>
+                <option value="bottom">Bottom</option>
+              </select>
+            </label>
             <div className="theme-switch" aria-label="Theme">
               <button
                 aria-pressed={themeMode === "dark"}
@@ -1803,56 +2233,78 @@ function App() {
 
         <section className="workbench">
           <div className="conversation-panel">
-            <div className="conversation-scroll">
-              <article className="message user-message">
-                <div className="message-avatar">
-                  <User size={18} />
-                </div>
-                <div className="message-body">
-                  <div className="message-meta">
-                    <strong>You</strong>
-                    <time>9:41 AM</time>
+            <div className="conversation-scroll" ref={conversationScrollRef}>
+              {messages.length === 0 ? (
+                <article className="message assistant-message">
+                  <div className="message-avatar grok-avatar">
+                    <Bot size={18} />
                   </div>
-                  <p>{prompt || modeCopy[mode].placeholder}</p>
-                </div>
-              </article>
-
-              <article className="message assistant-message">
-                <div className="message-avatar grok-avatar">
-                  <Bot size={18} />
-                </div>
-                <div className="message-body">
-                  <div className="message-meta">
-                    <strong>Grok Code <span>({activeModel})</span></strong>
-                    <time>{lastRun ? `${lastRun.duration_ms}ms` : "ready"}</time>
+                  <div className="message-body">
+                    <div className="message-meta">
+                      <strong>Grok Code <span>({activeModel})</span></strong>
+                      <time>ready</time>
+                    </div>
+                    <p>{assistantPreview}</p>
+                    <div className="empty-hints">
+                      <span>Try Analyze, Implement, Review, Debug, Tests, or Refactor from the composer.</span>
+                      <span>Press Enter to send · Shift+Enter for newline · ⌘1/⌘2 to switch · ⌘Enter to run.</span>
+                    </div>
                   </div>
-                  <p>
-                    {assistantPreview}
-                  </p>
-                  <div className="message-actions">
-                    <button type="button"><Copy size={15} /> Copy</button>
-                    <button type="button"><RefreshCcw size={15} /> Retry</button>
-                    <button type="button"><MoreHorizontal size={15} /> More</button>
-                  </div>
-                </div>
-              </article>
+                </article>
+              ) : (
+                messages.map((message) => {
+                  const isUser = message.role === "user";
+                  const showSpinner = message.status === "streaming";
+                  return (
+                    <article
+                      className={`message ${isUser ? "user-message" : "assistant-message"} ${message.status ? `status-${message.status}` : ""}`}
+                      key={message.id}
+                    >
+                      <div className={`message-avatar ${isUser ? "user-avatar" : "grok-avatar"}`}>
+                        {isUser ? <span>You</span> : <Bot size={18} />}
+                      </div>
+                      <div className="message-body">
+                        <div className="message-meta">
+                          <strong>
+                            {isUser ? "You" : "Grok"}
+                            {!isUser && message.meta?.model ? <span>({message.meta.model})</span> : null}
+                            {!isUser && message.meta?.workflow ? <small className="message-workflow">{message.meta.workflow}</small> : null}
+                          </strong>
+                          <time>
+                            {showSpinner ? (
+                              <Loader2 className="spin" size={13} />
+                            ) : message.meta?.durationMs ? (
+                              `${(message.meta.durationMs / 1000).toFixed(1)}s`
+                            ) : (
+                              timeLabel(message.ts)
+                            )}
+                          </time>
+                        </div>
+                        <p>{message.content || (showSpinner ? "Working..." : "(no output)")}</p>
+                        {message.role === "assistant" && message.status === "error" ? (
+                          <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
+                        ) : null}
+                        {message.role === "assistant" && message.status === "stopped" ? (
+                          <div className="message-error">Stopped by user.</div>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })
+              )}
             </div>
 
             <div className="composer">
-              <div className="composer-tabs">
-                <button className="active" type="button">Ask Grok</button>
-                <button type="button">Use Tools</button>
-                <span>{modeCopy[mode].subtitle}</span>
-              </div>
               <textarea
                 id="main-prompt"
+                onKeyDown={handlePromptKeyDown}
                 onChange={(event) => updatePrompt(event.currentTarget.value)}
                 placeholder={modeCopy[mode].placeholder}
+                rows={1}
                 value={prompt}
+                autoFocus
               />
               <div className="composer-footer">
-                <button aria-label="Attach context" type="button"><AtSign size={16} /></button>
-                <button aria-label="Prompt tags" type="button"><SlidersHorizontal size={16} /></button>
                 <select
                   aria-label="Interaction mode"
                   className="mode-select"
@@ -1891,11 +2343,15 @@ function App() {
                     </option>
                   ))}
                 </select>
+                <span className="composer-hint" aria-hidden="true">
+                  ↵ Send · ⇧↵ Newline · ⌘↵ Force
+                </span>
                 <button
                   className="mini-run"
                   disabled={grokControlDisabled}
                   onClick={grokIsRunning ? cancelGrok : runGrok}
                   type="button"
+                  title={grokIsRunning ? "Stop run" : "Send to Grok (Enter)"}
                 >
                   {grokIsRunning ? <X size={16} /> : <Play size={16} />}
                 </button>
@@ -1903,7 +2359,72 @@ function App() {
             </div>
           </div>
 
-          <details className="inspector-drawer">
+          <aside
+            aria-hidden={!previewOpen}
+            className={`preview-panel preview-drawer ${previewOpen ? "open" : ""}`}
+            aria-label="Generated preview"
+          >
+            <div className="preview-head">
+              <div>
+                <Globe2 size={16} />
+                <strong>Preview</strong>
+                <span>{previewReady ? previewEntry : "waiting for index.html"}</span>
+              </div>
+              <div className="preview-actions">
+                <button
+                  aria-label="Refresh preview"
+                  disabled={previewBusy}
+                  onClick={() => refreshStaticPreview()}
+                  type="button"
+                >
+                  {previewBusy ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
+                </button>
+                <button aria-label="Close preview" onClick={() => setPreviewOpen(false)} type="button">
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="preview-frame-wrap">
+              {previewReady ? (
+                <iframe
+                  sandbox="allow-forms allow-popups allow-scripts"
+                  srcDoc={staticPreview?.html}
+                  title="Generated static site preview"
+                />
+              ) : (
+                <div className="preview-empty">
+                  <FileText size={22} />
+                  <strong>No static preview yet</strong>
+                  <span>{staticPreview?.detail ?? "Ask Grok to create index.html, then the result appears here."}</span>
+                </div>
+              )}
+            </div>
+            <div className="preview-files">
+              {previewFiles.length > 0 ? (
+                previewFiles.slice(0, 6).map((file) => (
+                  <span key={file.path}>
+                    <FileText size={13} />
+                    <span>{file.name}</span>
+                    <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
+                  </span>
+                ))
+              ) : (
+                <span>
+                  <FileText size={13} />
+                  <span>No files in project root</span>
+                </span>
+              )}
+            </div>
+          </aside>
+
+          <details
+            className="inspector-drawer"
+            onToggle={(event) => {
+              if (event.currentTarget.open && !contextOpen) togglePanel("context");
+              else if (!event.currentTarget.open && contextOpen) setContextOpen(false);
+            }}
+            open={contextOpen}
+          >
             <summary>
               <span><PanelRight size={16} /> Context and tools</span>
               <small>
@@ -2342,7 +2863,46 @@ function App() {
           </details>
         </section>
 
-        <section className="terminal-dock">
+        <details
+          className="terminal-dock"
+          onToggle={(event) => {
+            if (event.currentTarget.open && !terminalOpen) togglePanel("terminal");
+            else if (!event.currentTarget.open && terminalOpen) setTerminalOpen(false);
+          }}
+          open={terminalOpen}
+        >
+          <summary className="terminal-summary">
+            <span>
+              <SquareTerminal size={16} />
+              <strong>Terminal</strong>
+              <small className={busyRunner ? "running" : ""}>{busyRunner ? "Running" : "Idle"}</small>
+            </span>
+            <span>
+              <button
+                aria-label="Dock terminal right"
+                className={dockPosition === "right" ? "dock-dot active" : "dock-dot"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setDockPosition("right");
+                }}
+                type="button"
+              >
+                Right
+              </button>
+              <button
+                aria-label="Dock terminal bottom"
+                className={dockPosition === "bottom" ? "dock-dot active" : "dock-dot"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setDockPosition("bottom");
+                }}
+                type="button"
+              >
+                Bottom
+              </button>
+              <small>{terminalDisplay.length} lines</small>
+            </span>
+          </summary>
           <div className="terminal-head">
             <div>
               <SquareTerminal size={17} />
@@ -2377,9 +2937,17 @@ function App() {
               </div>
             ))}
           </div>
-        </section>
+        </details>
 
-        <details className="toolbelt" aria-label="Developer tools">
+        <details
+          className="toolbelt"
+          aria-label="Developer tools"
+          onToggle={(event) => {
+            if (event.currentTarget.open && !toolsOpen) togglePanel("tools");
+            else if (!event.currentTarget.open && toolsOpen) setToolsOpen(false);
+          }}
+          open={toolsOpen}
+        >
           <summary>
             <span><Wrench size={16} /> Developer utilities</span>
             <small>Browser, Chrome bridge, Absorb Repo</small>
@@ -2459,6 +3027,48 @@ function App() {
           </div>
           </div>
         </details>
+
+        <footer className="workspace-statusbar" aria-label="Workspace status">
+          <div className="status-cluster">
+            <FolderGit2 size={13} />
+            <span className="status-cwd" title={workspacePath}>{workspacePath}</span>
+          </div>
+          <div className="status-cluster">
+            <Sparkles size={13} />
+            <span>{activeModel}</span>
+            {!modelIsVerified ? <span className="status-warn">unverified</span> : null}
+          </div>
+          <div className="status-cluster">
+            <ShieldCheck size={13} />
+            <span>{actionPolicies[actionPolicy].label}</span>
+          </div>
+          <div className="status-cluster">
+            {grokIsRunning ? <Loader2 className="spin" size={13} /> : lastRun?.ok ? <CheckCircle2 size={13} /> : lastRun ? <CircleAlert size={13} /> : <Zap size={13} />}
+            <span>
+              {grokIsRunning
+                ? "Running"
+                : lastRun
+                  ? `${lastRun.ok ? "Last run ok" : "Last run failed"} · ${(lastRun.duration_ms / 1000).toFixed(1)}s`
+                  : isGrokReady
+                    ? "Idle · ready"
+                    : statusLabel}
+            </span>
+          </div>
+          <div className="status-cluster status-right">
+            <History size={13} />
+            <span>{history.length} runs</span>
+            <button
+              className="status-clear"
+              disabled={messages.length === 0 && history.length === 0}
+              onClick={clearRunHistory}
+              type="button"
+              title="Clear conversation, run history, and terminal"
+            >
+              <Trash2 size={12} />
+              <span>Clear</span>
+            </button>
+          </div>
+        </footer>
       </section>
     </main>
   );

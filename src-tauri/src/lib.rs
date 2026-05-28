@@ -7,7 +7,7 @@ use std::{
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex, OnceLock},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -51,8 +51,10 @@ struct SessionState {
     action_policy: Option<String>,
     coding_workflow: Option<String>,
     chrome_extension_id: Option<String>,
+    theme_mode: Option<String>,
     last_run: Option<ToolRun>,
     history: Vec<ToolRun>,
+    messages: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -170,6 +172,27 @@ struct ChromeBridgeState {
     last_error: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StaticPreviewFile {
+    name: String,
+    path: String,
+    kind: String,
+    size: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StaticPreview {
+    available: bool,
+    root: String,
+    entry_path: String,
+    html: String,
+    files: Vec<StaticPreviewFile>,
+    detail: String,
+    updated_at: u128,
+}
+
 fn truncate_text(value: String) -> String {
     const MAX_CHARS: usize = 12_000;
     if value.chars().count() <= MAX_CHARS {
@@ -200,6 +223,37 @@ fn strip_ansi_codes(value: &str) -> String {
     }
 
     output
+}
+
+fn is_noisy_grok_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.len() < 21 {
+        return false;
+    }
+    let head: String = trimmed.chars().take(20).collect();
+    let mut iter = head.chars();
+    let looks_like_iso = (0..4).all(|_| iter.next().is_some_and(|c| c.is_ascii_digit()))
+        && iter.next() == Some('-')
+        && (0..2).all(|_| iter.next().is_some_and(|c| c.is_ascii_digit()))
+        && iter.next() == Some('-')
+        && (0..2).all(|_| iter.next().is_some_and(|c| c.is_ascii_digit()))
+        && iter.next() == Some('T');
+    if !looks_like_iso {
+        return false;
+    }
+    let upper = trimmed.to_uppercase();
+    upper.contains(" INFO ")
+        || upper.contains(" DEBUG ")
+        || upper.contains(" TRACE ")
+        || upper.contains(" WARN ")
+        || upper.contains(" ERROR ")
+}
+
+fn verbose_grok_stderr() -> bool {
+    matches!(
+        env::var("GROK_DESKTOP_VERBOSE_GROK_STDERR").as_deref(),
+        Ok("1" | "true" | "yes" | "on")
+    )
 }
 
 fn command_line(program: &str, args: &[String]) -> String {
@@ -483,10 +537,15 @@ fn run_external_command(
 
     if let Some(stdout) = stdout {
         let output = Arc::clone(&output);
+        let verbose = verbose_grok_stderr();
         reader_threads.push(thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let cleaned = strip_ansi_codes(&line);
+                if !verbose && is_noisy_grok_line(&cleaned) {
+                    continue;
+                }
                 if let Ok(mut buffer) = output.lock() {
-                    buffer.push_str(&strip_ansi_codes(&line));
+                    buffer.push_str(&cleaned);
                     buffer.push('\n');
                 }
             }
@@ -495,10 +554,15 @@ fn run_external_command(
 
     if let Some(stderr) = stderr {
         let error_output = Arc::clone(&error_output);
+        let verbose = verbose_grok_stderr();
         reader_threads.push(thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                let cleaned = strip_ansi_codes(&line);
+                if !verbose && is_noisy_grok_line(&cleaned) {
+                    continue;
+                }
                 if let Ok(mut buffer) = error_output.lock() {
-                    buffer.push_str(&strip_ansi_codes(&line));
+                    buffer.push_str(&cleaned);
                     buffer.push('\n');
                 }
             }
@@ -679,6 +743,199 @@ fn save_session_state(state: SessionState) -> Result<(), String> {
     fs::write(&path, raw).map_err(|error| format!("Could not save session state: {error}"))
 }
 
+fn preview_root(cwd: Option<String>) -> PathBuf {
+    cwd.map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+fn html_attr_value(tag: &str, attr: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let attr_lower = attr.to_ascii_lowercase();
+    let attr_pos = lower.find(&attr_lower)?;
+    let after_attr = &tag[attr_pos + attr.len()..];
+    let after_attr = after_attr.trim_start();
+    let after_equals = after_attr.strip_prefix('=')?.trim_start();
+    let quote = after_equals.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &after_equals[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
+}
+
+fn asset_path(root: &PathBuf, canonical_root: &PathBuf, reference: &str) -> Option<PathBuf> {
+    let clean = reference
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    if clean.is_empty()
+        || clean.starts_with('/')
+        || clean.starts_with("http:")
+        || clean.starts_with("https:")
+        || clean.starts_with("data:")
+        || clean.starts_with("blob:")
+        || clean.contains('\\')
+    {
+        return None;
+    }
+
+    let candidate = root.join(clean);
+    let canonical = candidate.canonicalize().ok()?;
+    if canonical.starts_with(canonical_root) && canonical.is_file() {
+        Some(canonical)
+    } else {
+        None
+    }
+}
+
+fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+    let mut cursor = 0;
+    while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<link") {
+        let start = cursor + relative_start;
+        let Some(relative_end) = html[start..].find('>') else {
+            break;
+        };
+        let end = start + relative_end + 1;
+        let tag = html[start..end].to_string();
+        let tag_lower = tag.to_ascii_lowercase();
+        if !tag_lower.contains("stylesheet") {
+            cursor = end;
+            continue;
+        }
+
+        let Some(href) = html_attr_value(&tag, "href") else {
+            cursor = end;
+            continue;
+        };
+        let Some(path) = asset_path(root, canonical_root, &href) else {
+            cursor = end;
+            continue;
+        };
+        let Ok(css) = fs::read_to_string(path) else {
+            cursor = end;
+            continue;
+        };
+        let replacement = format!("<style>\n{}\n</style>", css.replace("</style", "<\\/style"));
+        html.replace_range(start..end, &replacement);
+        cursor = start + replacement.len();
+    }
+    html
+}
+
+fn inline_scripts(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+    let mut cursor = 0;
+    while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<script") {
+        let start = cursor + relative_start;
+        let Some(relative_tag_end) = html[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + relative_tag_end + 1;
+        let tag = html[start..tag_end].to_string();
+        let Some(src) = html_attr_value(&tag, "src") else {
+            cursor = tag_end;
+            continue;
+        };
+
+        let html_lower_tail = html[tag_end..].to_ascii_lowercase();
+        let Some(relative_close) = html_lower_tail.find("</script>") else {
+            cursor = tag_end;
+            continue;
+        };
+        let close_end = tag_end + relative_close + "</script>".len();
+        let Some(path) = asset_path(root, canonical_root, &src) else {
+            cursor = close_end;
+            continue;
+        };
+        let Ok(script) = fs::read_to_string(path) else {
+            cursor = close_end;
+            continue;
+        };
+        let replacement = format!("<script>\n{}\n</script>", script.replace("</script", "<\\/script"));
+        html.replace_range(start..close_end, &replacement);
+        cursor = start + replacement.len();
+    }
+    html
+}
+
+fn inline_static_assets(html: String, root: &PathBuf) -> String {
+    let Ok(canonical_root) = root.canonicalize() else {
+        return html;
+    };
+    let html = inline_stylesheets(html, root, &canonical_root);
+    inline_scripts(html, root, &canonical_root)
+}
+
+fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
+    let mut files = fs::read_dir(root)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return None;
+            }
+            let metadata = entry.metadata().ok()?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let kind = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("file")
+                .to_ascii_lowercase();
+            Some(StaticPreviewFile {
+                name,
+                path: path.to_string_lossy().to_string(),
+                kind,
+                size: metadata.len(),
+            })
+        })
+        .collect::<Vec<_>>();
+    files.sort_by(|left, right| left.name.cmp(&right.name));
+    files.truncate(24);
+    files
+}
+
+#[tauri::command]
+fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
+    let root = preview_root(cwd);
+    let files = project_files(&root);
+    let entry = root.join("index.html");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+
+    if !entry.is_file() {
+        return Ok(StaticPreview {
+            available: false,
+            root: root.to_string_lossy().to_string(),
+            entry_path: entry.to_string_lossy().to_string(),
+            html: String::new(),
+            files,
+            detail: "Create index.html in the selected project to enable preview.".to_string(),
+            updated_at: now,
+        });
+    }
+
+    let html = fs::read_to_string(&entry)
+        .map_err(|error| format!("Could not read static preview entry: {error}"))?;
+    let html = inline_static_assets(html, &root);
+
+    Ok(StaticPreview {
+        available: true,
+        root: root.to_string_lossy().to_string(),
+        entry_path: entry.to_string_lossy().to_string(),
+        html,
+        files,
+        detail: "Rendering index.html with local CSS and JavaScript inlined.".to_string(),
+        updated_at: now,
+    })
+}
+
 fn path_has_entries(path: &PathBuf) -> bool {
     fs::read_dir(path)
         .ok()
@@ -713,17 +970,14 @@ Workspace contract:
 - If credentials, private files, or risky operations appear, pause and explain the risk.
 
 Engineering behavior:
+- For simple, short, one-sentence, read-only, or exact-format tasks, answer directly and do not perform repository mapping or use the section template.
 - For analysis tasks, produce a high-signal technical readout with file paths, risks, and next actions.
 - For implementation tasks, state the intended change, keep edits focused, and include verification.
 - For debugging tasks, distinguish evidence, hypothesis, root cause, fix, and verification.
 - For reviews, prioritize correctness, regressions, tests, security, and maintainability.
 
 Response format:
-1. Summary
-2. Files / Evidence
-3. Changes or Recommendation
-4. Verification commands
-5. Next step
+Use `1. Summary`, `2. Files / Evidence`, `3. Changes or Recommendation`, `4. Verification commands`, and `5. Next step` for normal coding tasks only. For simple tasks, obey the user's requested format exactly.
 
 User task:
 {prompt}"#,
@@ -1184,9 +1438,13 @@ fn run_external_command_streaming(
         let command = display_command.clone();
         let error_output = Arc::clone(&error_output);
         let last_activity = Arc::clone(&last_activity);
+        let verbose = verbose_grok_stderr();
         stream_threads.push(thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 let line = strip_ansi_codes(&line);
+                if !verbose && is_noisy_grok_line(&line) {
+                    continue;
+                }
                 if let Ok(mut buffer) = error_output.lock() {
                     buffer.push_str(&line);
                     buffer.push('\n');
@@ -1775,6 +2033,52 @@ fn get_chrome_bridge_state() -> ChromeBridgeState {
 }
 
 #[tauri::command]
+fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
+    let starting_dir = initial
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| {
+            let candidate = PathBuf::from(&value);
+            if candidate.is_dir() {
+                Some(value)
+            } else {
+                None
+            }
+        });
+
+    let default_clause = match starting_dir {
+        Some(path) => format!(" default location (POSIX file {})", applescript_quote(&path)),
+        None => String::new(),
+    };
+
+    let script = format!(
+        "try\n  set chosen to POSIX path of (choose folder with prompt \"Select project folder for Grok Desktop\"{default_clause})\n  return chosen\non error number -128\n  return \"\"\nend try"
+    );
+
+    let output = Command::new("osascript")
+        .args(["-e", &script])
+        .env("PATH", command_path())
+        .output()
+        .map_err(|error| format!("Could not launch folder picker: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Ok(None);
+        }
+        return Err(format!("Folder picker failed: {stderr}"));
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    let cleaned = raw.trim_end_matches('/').to_string();
+    Ok(Some(cleaned))
+}
+
+#[tauri::command]
 fn install_chrome_native_host(extension_id: String) -> ToolRun {
     let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let script = script_path("install_chrome_native_host.py");
@@ -1804,6 +2108,7 @@ pub fn run() {
             run_grok_streaming_task,
             cancel_grok_run,
             run_shell_command,
+            get_static_preview,
             inspect_grok_environment,
             list_grok_models,
             list_grok_mcp,
@@ -1814,7 +2119,8 @@ pub fn run() {
             run_absorb_repo,
             run_doctor,
             get_chrome_bridge_state,
-            install_chrome_native_host
+            install_chrome_native_host,
+            pick_project_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
