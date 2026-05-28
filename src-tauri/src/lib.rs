@@ -1,3 +1,4 @@
+pub mod prompts;
 pub mod runs;
 pub mod telegram;
 
@@ -1671,6 +1672,64 @@ async fn cancel_pending_runs(
     queue.cancel_all_pending().await.map_err(|e| e.to_string())
 }
 
+// ── Prompt library (D) ──────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_prompts(
+    store: tauri::State<'_, crate::prompts::PromptStore>,
+) -> Result<Vec<crate::prompts::Prompt>, String> {
+    store.list().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn upsert_prompt(
+    store: tauri::State<'_, crate::prompts::PromptStore>,
+    name: String,
+    body: String,
+    category: Option<String>,
+    id: Option<String>,
+) -> Result<crate::prompts::Prompt, String> {
+    let now = chrono::Utc::now().timestamp_millis();
+    let (resolved_id, created_at) = match id {
+        Some(existing) if !existing.trim().is_empty() => {
+            let prior = store
+                .list()
+                .await
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .find(|p| p.id == existing);
+            let created_at = prior.map(|p| p.created_at).unwrap_or(now);
+            (existing, created_at)
+        }
+        _ => (uuid::Uuid::now_v7().to_string(), now),
+    };
+    let prompt = crate::prompts::Prompt {
+        id: resolved_id,
+        name: name.trim().to_string(),
+        category: category.and_then(|c| {
+            let trimmed = c.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }),
+        body,
+        created_at,
+        updated_at: now,
+    };
+    store.upsert(&prompt).await.map_err(|e| e.to_string())?;
+    Ok(prompt)
+}
+
+#[tauri::command]
+async fn delete_prompt(
+    store: tauri::State<'_, crate::prompts::PromptStore>,
+    id: String,
+) -> Result<bool, String> {
+    store.delete(&id).await.map_err(|e| e.to_string())
+}
+
 // ── Event forwarder ─────────────────────────────────────────────────────────
 
 fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
@@ -1798,6 +1857,13 @@ pub fn run() {
                 let telegram_rx = queue.subscribe();
                 crate::telegram::spawn_daemon(queue.clone(), telegram_rx);
 
+                // Prompt library (D) — open store next to runs.sqlite.
+                let prompts_path = resource_dir.join("prompts.sqlite");
+                let prompts = crate::prompts::PromptStore::open_at(&prompts_path)
+                    .await
+                    .expect("open prompts.sqlite");
+                app_handle.manage(prompts);
+
                 app_handle.manage(queue);
             });
 
@@ -1829,7 +1895,10 @@ pub fn run() {
             get_queue,
             clear_queue,
             resume_pending_runs,
-            cancel_pending_runs
+            cancel_pending_runs,
+            list_prompts,
+            upsert_prompt,
+            delete_prompt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
