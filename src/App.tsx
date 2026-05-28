@@ -1697,10 +1697,14 @@ function App() {
             setMessages(cleaned);
           }
 
-          if (restoredHistory.length > 0 || restoredLastRun || restoredMessages.length > 0) {
-            setSessionNotice(
-              `Restored ${restoredHistory.length} recent runs and ${restoredMessages.length} chat messages.`,
-            );
+          const effectiveMessageCount = Math.max(restoredMessages.length, storedMessages().length);
+          if (restoredHistory.length > 0 || restoredLastRun || effectiveMessageCount > 0) {
+            const runWord = restoredHistory.length === 1 ? "run" : "runs";
+            const messagePart =
+              effectiveMessageCount > 0
+                ? `, ${effectiveMessageCount} chat message${effectiveMessageCount === 1 ? "" : "s"}`
+                : "";
+            setSessionNotice(`Restored ${restoredHistory.length} recent ${runWord}${messagePart}.`);
           }
         }
       } catch (error) {
