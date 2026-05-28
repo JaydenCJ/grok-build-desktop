@@ -798,6 +798,11 @@ function App() {
     return isDockPosition(stored) ? stored : "right";
   });
   const [history, setHistory] = useState<ToolRun[]>(() => storedRunHistory());
+  const [totalRuns, setTotalRuns] = useState<number>(() => {
+    const stored = Number.parseInt(window.localStorage.getItem("grok-desktop-run-count-total") ?? "", 10);
+    if (Number.isFinite(stored) && stored >= 0) return stored;
+    return storedRunHistory().length;
+  });
   const [messages, setMessages] = useState<ChatMessage[]>(() => storedMessages());
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
@@ -866,6 +871,11 @@ function App() {
   function recordRun(run: ToolRun) {
     setLastRun(run);
     setHistory((current) => [run, ...current].slice(0, 6));
+    setTotalRuns((current) => {
+      const next = current + 1;
+      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      return next;
+    });
   }
 
   function appendMessage(message: ChatMessage) {
@@ -883,6 +893,8 @@ function App() {
     setHistory([]);
     setMessages([]);
     setTerminalLines([]);
+    setTotalRuns(0);
+    window.localStorage.setItem("grok-desktop-run-count-total", "0");
     setSessionNotice("Cleared conversation, run history, and terminal.");
   }
 
@@ -3056,7 +3068,7 @@ function App() {
           </div>
           <div className="status-cluster status-right">
             <History size={13} />
-            <span>{history.length} runs</span>
+            <span>{totalRuns} runs</span>
             <button
               className="status-clear"
               disabled={messages.length === 0 && history.length === 0}
