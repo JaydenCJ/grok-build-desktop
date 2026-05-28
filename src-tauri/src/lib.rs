@@ -1,4 +1,5 @@
 pub mod runs;
+pub mod telegram;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -1771,8 +1772,15 @@ pub fn run() {
                 // Event forwarder: queue messages → Tauri events.
                 let app_for_events = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    while let Some(msg) = rx.recv().await {
-                        forward_queue_message(&app_for_events, &msg);
+                    use tokio::sync::broadcast::error::RecvError;
+                    loop {
+                        match rx.recv().await {
+                            Ok(msg) => forward_queue_message(&app_for_events, &msg),
+                            Err(RecvError::Lagged(n)) => {
+                                eprintln!("[grok-desktop] tauri event forwarder lagged, dropped {n} messages");
+                            }
+                            Err(RecvError::Closed) => break,
+                        }
                     }
                 });
 
@@ -1785,6 +1793,10 @@ pub fn run() {
                         tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
                     }
                 });
+
+                // Telegram remote daemon (E). No-op if env vars are missing.
+                let telegram_rx = queue.subscribe();
+                crate::telegram::spawn_daemon(queue.clone(), telegram_rx);
 
                 app_handle.manage(queue);
             });

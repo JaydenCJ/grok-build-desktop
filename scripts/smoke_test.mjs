@@ -170,4 +170,24 @@ assert.ok(packageJsonText.includes('"highlight.js"'), "highlight.js dependency m
 assert.ok(packageJsonText.includes('"react-virtuoso"'), "react-virtuoso dependency missing — MessageList virtualizes chat");
 assert.ok(packageJsonText.includes('"test:unit"'), "vitest test:unit script missing for streamStore tests");
 
+// E: Telegram remote daemon
+const cargoToml = read("src-tauri/Cargo.toml");
+assert.ok(cargoToml.includes("teloxide"), "teloxide dep missing — Telegram remote daemon");
+assert.ok(cargoToml.includes("dotenvy"), "dotenvy dep missing — .env loader");
+assert.ok(existsSync(join(root, "src-tauri/src/telegram/mod.rs")), "telegram module missing");
+assert.ok(existsSync(join(root, "src-tauri/src/telegram/config.rs")), "telegram config module missing");
+assert.ok(existsSync(join(root, "src-tauri/src/telegram/commands.rs")), "telegram commands module missing");
+assert.ok(existsSync(join(root, "src-tauri/src/telegram/stream.rs")), "telegram stream module missing");
+const teleCommands = read("src-tauri/src/telegram/commands.rs");
+for (const cmd of ["Grok(String)", "Queue", "Cancel(String)", "Status", "Help"]) {
+  assert.ok(teleCommands.includes(cmd), `telegram command variant missing: ${cmd}`);
+}
+assert.ok(libRs.includes("telegram::spawn_daemon"),
+  "lib.rs must spawn telegram daemon from setup()");
+assert.ok(libRs.includes("pub mod telegram"), "lib.rs must export telegram module");
+assert.ok(read(".env.example").includes("TELEGRAM_BOT_TOKEN"),
+  ".env.example must document TELEGRAM_BOT_TOKEN");
+assert.ok(read(".env.example").includes("TELEGRAM_ALLOWED_CHAT_IDS"),
+  ".env.example must document TELEGRAM_ALLOWED_CHAT_IDS");
+
 console.log("smoke: ok");

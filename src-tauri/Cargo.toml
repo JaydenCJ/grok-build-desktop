@@ -27,4 +27,7 @@ uuid = { version = "1", features = ["v7", "serde"] }
 nix = { version = "0.29", features = ["signal", "process"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
+teloxide = { version = "0.13", default-features = false, features = ["macros", "ctrlc_handler", "rustls"] }
+dotenvy = "0.15"
+thiserror = "2"
 
