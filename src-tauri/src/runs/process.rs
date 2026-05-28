@@ -13,8 +13,47 @@ pub struct SpawnedGrok {
     pub pgid: i32,
 }
 
+/// grok 0.2.3 takes a file lock on ~/.grok/auth.json.lock when it starts up.
+/// If a previous grok process was killed (e.g. by our cancel-run or an OS
+/// kill), the lock file is left behind containing "<pid>:<timestamp>". The
+/// next grok run blocks indefinitely waiting on that lock — never produces
+/// stdout — and our watchdog times out as if grok itself were broken.
+///
+/// Detect and remove stale locks: if the recorded PID no longer exists,
+/// delete the lock so the new grok run can acquire it cleanly.
+#[cfg(unix)]
+fn cleanup_stale_grok_lock() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let lock_path = std::path::PathBuf::from(home).join(".grok/auth.json.lock");
+    let contents = match std::fs::read_to_string(&lock_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let pid_str = contents.split(':').next().unwrap_or("").trim();
+    let pid: i32 = match pid_str.parse() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    // nix::sys::signal::kill with None probes for the PID's existence without
+    // sending an actual signal. Err(ESRCH) means "no such process" — stale.
+    let alive = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok();
+    if !alive {
+        eprintln!(
+            "[grok-desktop] process: removing stale grok lock (pid {} no longer running): {:?}",
+            pid, lock_path
+        );
+        let _ = std::fs::remove_file(&lock_path);
+    }
+}
+
 #[cfg(unix)]
 pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<SpawnedGrok> {
+    // Best-effort cleanup before each spawn — see cleanup_stale_grok_lock().
+    cleanup_stale_grok_lock();
+
     // Resolve cwd: fall back to $HOME if the requested directory doesn't
     // exist. Common cause: user saved a project path long ago, then moved
     // or deleted the directory. Without this fallback, posix_spawn returns
