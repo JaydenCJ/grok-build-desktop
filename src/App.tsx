@@ -38,12 +38,13 @@ import {
   Zap,
 } from "lucide-react";
 import "./App.css";
-import { cancelRun } from "./lib/grok";
+import { cancelRun, enqueueRun } from "./lib/grok";
 import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
+import { GuideBanner } from "./components/GuideBanner";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -1124,6 +1125,29 @@ function App() {
     }
   }
 
+  // Codex-style "guide while it runs" submit. Mid-run, the user types a steer
+  // ("focus on the SQL query", "skip the explainer") and we enqueue it as the
+  // next run with `--continue`, so grok resumes the same session and folds the
+  // guidance into the existing context.
+  async function handleGuideSubmit(guidance: string) {
+    const trimmed = guidance.trim();
+    if (!trimmed) return;
+    const args = buildGrokArgs();
+    args.push("-c"); // continue last session for this cwd
+    const wrapped = `[Guidance — apply to the in-flight task]\n${trimmed}`;
+    args.push("-p", wrapped);
+    try {
+      const result = await enqueueRun({ prompt: wrapped, cwd: codingCwd, args });
+      handleEnqueued({ runId: result.runId, position: result.position, prompt: wrapped });
+      setPendingGuide("");
+    } catch (err) {
+      console.error("[grok-desktop] guide enqueue failed", err);
+      setSessionNotice(
+        `Failed to send guidance: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   async function runShell() {
     setBusyRunner("shell");
     setTerminalLines([]);
@@ -1814,6 +1838,8 @@ function App() {
   }, [messages]);
 
   const [historyFilter, setHistoryFilter] = useState("");
+  const historySearchInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingGuide, setPendingGuide] = useState<string>("");
   const recentPrompts = useMemo(() => {
     const all = recentPromptPreviews(messages);
     if (!historyFilter.trim()) return all;
@@ -1921,13 +1947,47 @@ function App() {
 
         <section className="nav-section primary-nav" aria-label="Primary navigation">
           <div className="nav-list">
-            {primaryNavItems.map((item, index) => (
-              <button className={index === 0 ? "active" : ""} key={item.label} type="button">
-                {item.label === "New Session" ? <Plus size={16} /> : item.label === "Search" ? <Search size={16} /> : item.label === "Tools" ? <Wrench size={16} /> : <Settings size={16} />}
-                <span>{item.label}</span>
-                <small>{item.meta}</small>
-              </button>
-            ))}
+            {primaryNavItems.map((item) => {
+              const handle = () => {
+                if (item.label === "New Session") {
+                  // Clear conversation + history but ask first if there's
+                  // anything to lose. Then refocus the composer.
+                  if (messages.length > 0) {
+                    const ok = window.confirm(
+                      "Start a new session? This clears the current conversation.",
+                    );
+                    if (!ok) return;
+                  }
+                  clearRunHistory();
+                  composerRef.current?.focus();
+                } else if (item.label === "Search") {
+                  // Focus the history filter input.
+                  historySearchInputRef.current?.focus();
+                  historySearchInputRef.current?.select();
+                } else if (item.label === "Tools") {
+                  togglePanel("tools");
+                } else if (item.label === "Settings") {
+                  // No dedicated Settings drawer yet — surface the existing
+                  // settings controls via the Tools panel for now and notify.
+                  togglePanel("tools");
+                  setSessionNotice(
+                    "Settings panel is in the Tools dock for now — a dedicated drawer is on the design roadmap.",
+                  );
+                }
+              };
+              return (
+                <button
+                  className={item.label === "New Session" ? "active" : ""}
+                  key={item.label}
+                  type="button"
+                  onClick={handle}
+                >
+                  {item.label === "New Session" ? <Plus size={16} /> : item.label === "Search" ? <Search size={16} /> : item.label === "Tools" ? <Wrench size={16} /> : <Settings size={16} />}
+                  <span>{item.label}</span>
+                  <small>{item.meta}</small>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -1939,6 +1999,7 @@ function App() {
           <label className="search-box">
             <Search size={15} />
             <input
+              ref={historySearchInputRef}
               aria-label="Search history"
               placeholder="Filter recent prompts..."
               onChange={(event) => setHistoryFilter(event.currentTarget.value)}
@@ -2212,6 +2273,7 @@ function App() {
             <StatusBar />
 
             <div className="composer-row">
+              <GuideBanner onSubmit={handleGuideSubmit} initialValue={pendingGuide} />
               <Composer
                 ref={composerRef}
                 cwd={codingCwd}

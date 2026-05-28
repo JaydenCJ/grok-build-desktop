@@ -3800,3 +3800,83 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   0%, 100% { opacity: 0.40; transform: translateY(0.5px) scale(0.96); }
   50%      { opacity: 1.00; transform: translateY(0.5px) scale(1.04); }
 }
+
+/* ===== Codex-style Guide banner (mid-run steering) ===== */
+.guide-banner {
+  margin: 0 14px 6px;
+  padding: 10px 12px 8px;
+  background: linear-gradient(180deg, var(--grok-bg-2), var(--grok-bg-1));
+  border: 1px solid var(--grok-border-2);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.10), inset 0 0 0 1px rgba(255, 122, 69, 0.04);
+}
+.guide-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--grok-text-2);
+}
+.guide-banner-icon {
+  color: var(--grok-accent);
+  font-size: 13px;
+  line-height: 1;
+}
+.guide-banner-title {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.guide-banner-meta {
+  font-weight: 400;
+  color: var(--grok-text-4);
+}
+.guide-banner-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.guide-banner-input {
+  flex: 1;
+  resize: none;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--grok-border-1);
+  background: var(--grok-bg-3);
+  color: var(--grok-text-1);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.guide-banner-input:focus {
+  outline: none;
+  border-color: var(--grok-accent);
+  box-shadow: 0 0 0 3px rgba(255, 122, 69, 0.16);
+}
+.guide-banner-input::placeholder { color: var(--grok-text-4); }
+.guide-banner-send {
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: none;
+  background: linear-gradient(180deg, var(--grok-accent-hi), var(--grok-accent));
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.18);
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.guide-banner-send:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.4) brightness(0.78);
+}
+.guide-banner-send:not(:disabled):hover { filter: brightness(1.08); }
+.guide-banner-send:not(:disabled):active { transform: translateY(1px); }
+.guide-banner-hint {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  color: var(--grok-text-4);
+  letter-spacing: 0.2px;
+}
