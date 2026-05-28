@@ -2502,6 +2502,114 @@ select:focus {
   font-weight: 750;
 }
 
+/* Empty-state Claude-style starter cards */
+.empty-state {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 56px 24px 24px;
+  width: 100%;
+}
+
+.empty-state-head {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.empty-state-avatar {
+  align-items: center;
+  background: var(--field-strong);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--text);
+  display: flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.empty-state-title {
+  color: var(--text);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 4px 0 0;
+}
+
+.empty-state-subtitle {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.starter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  width: 100%;
+}
+
+.starter-card {
+  align-items: flex-start;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 88px;
+  padding: 14px 16px;
+  text-align: left;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.starter-card:hover {
+  background: var(--field-strong);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.starter-card:active {
+  transform: translateY(0);
+}
+
+.starter-card strong {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.starter-card span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.empty-state-hint {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.empty-state-hint kbd {
+  background: var(--field-strong);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.7rem;
+  margin: 0 1px;
+  padding: 1px 5px;
+}
+
 /* Activity strip above composer — what Grok is doing right now */
 .activity-strip {
   align-items: center;

@@ -2068,13 +2068,6 @@ function App() {
   const hookItems = grokInspectSection(inspectOutput, "Hooks", 8);
   const permissionsSource = grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected");
   const grokVersion = grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown");
-  const assistantPreview =
-    busyRunner === "grok"
-      ? "Working through the repository. Streaming details are in Terminal."
-      : lastRun
-        ? compactRunPreview(lastRun.ok ? lastRun.output : lastRun.stderr || lastRun.output) ||
-          (lastRun.ok ? "Command finished without output." : "Grok run did not complete.")
-        : "Ready to review, implement, test, and verify this repository with Grok.";
   const grokIsRunning = busyRunner === "grok";
   const grokRunBlocked =
     prompt.trim().length === 0 ||
@@ -2362,22 +2355,56 @@ function App() {
           <div className="conversation-panel">
             <div className="conversation-scroll" ref={conversationScrollRef}>
               {messages.length === 0 ? (
-                <article className="message assistant-message">
-                  <div className="message-avatar grok-avatar">
-                    <Bot size={18} />
+                <div className="empty-state">
+                  <div className="empty-state-head">
+                    <div className="empty-state-avatar"><Bot size={22} /></div>
+                    <h2 className="empty-state-title">How can Grok help today?</h2>
+                    <p className="empty-state-subtitle">
+                      Code with you across this repository · {activeModel}
+                    </p>
                   </div>
-                  <div className="message-body">
-                    <div className="message-meta">
-                      <strong>Grok Code <span>({activeModel})</span></strong>
-                      <time>ready</time>
-                    </div>
-                    <p>{assistantPreview}</p>
-                    <div className="empty-hints">
-                      <span>Try Analyze, Implement, Review, Debug, Tests, or Refactor from the composer.</span>
-                      <span>Press Enter to send · Shift+Enter for newline · ⌘1/⌘2 to switch · ⌘Enter to run.</span>
-                    </div>
+                  <div className="starter-grid">
+                    {[
+                      {
+                        title: "Review this repository",
+                        body: "Surface the highest-impact risks and gaps you can verify in 30 seconds.",
+                        prompt:
+                          "Review this repository like a senior engineer. Surface the top 3 risks or gaps you can verify in under a minute, with one exact command per finding.",
+                      },
+                      {
+                        title: "Explain this codebase",
+                        body: "Give me a tight architecture tour so I can start contributing today.",
+                        prompt:
+                          "Give me a 5-bullet architecture tour of this repository: entry point, key modules, build/run command, test command, and one gotcha. Be concrete.",
+                      },
+                      {
+                        title: "Add a failing test",
+                        body: "Pick a real bug or gap and write a failing test that pins it down.",
+                        prompt:
+                          "Find one real bug, edge case, or gap in this repository. Write a failing test that pins it down. Tell me the file path and the exact command to run just that test.",
+                      },
+                      {
+                        title: "Suggest the next change",
+                        body: "What is the single most useful next code action right now?",
+                        prompt:
+                          "What is the single most useful next code action in this repository right now? Show the proposed diff and the verification command. Be specific.",
+                      },
+                    ].map((card) => (
+                      <button
+                        key={card.title}
+                        className="starter-card"
+                        onClick={() => updatePrompt(card.prompt)}
+                        type="button"
+                      >
+                        <strong>{card.title}</strong>
+                        <span>{card.body}</span>
+                      </button>
+                    ))}
                   </div>
-                </article>
+                  <p className="empty-state-hint">
+                    Press <kbd>↵</kbd> to send · <kbd>⇧↵</kbd> newline · <kbd>⌘1</kbd>/<kbd>⌘2</kbd> to switch modes
+                  </p>
+                </div>
               ) : (
                 messages.map((message) => <MessageItem key={message.id} message={message} />)
               )}
