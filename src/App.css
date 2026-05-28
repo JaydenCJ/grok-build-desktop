@@ -407,11 +407,12 @@ pre {
   border-radius: 8px;
   color: #d8e6ee;
   display: grid;
+  flex-shrink: 0;
   gap: 8px;
-  grid-template-columns: auto auto minmax(120px, 1fr) auto;
+  grid-template-columns: auto auto minmax(80px, 1fr) auto;
   max-width: 470px;
   min-height: 38px;
-  min-width: 0;
+  min-width: 260px;
   padding: 0 10px;
   width: 100%;
 }
