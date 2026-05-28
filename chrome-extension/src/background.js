@@ -392,6 +392,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
+    if (message.type === "GROK_DESKTOP_AGENT_CANCEL") {
+      // Forward to native host so the Tauri app can cancel any active run.
+      // Best-effort: bridge may be offline.
+      postNative({ type: "agent_cancel", tabId: _sender?.tab?.id ?? null });
+      sendResponse({ ok: true, bridge: bridgeInfo() });
+      return;
+    }
+
     sendResponse({ ok: false, error: "Unknown message type", bridge: bridgeInfo() });
   })();
   return true;
