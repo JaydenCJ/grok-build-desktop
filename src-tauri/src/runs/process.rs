@@ -15,10 +15,34 @@ pub struct SpawnedGrok {
 
 #[cfg(unix)]
 pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<SpawnedGrok> {
+    // Resolve cwd: fall back to $HOME if the requested directory doesn't
+    // exist. Common cause: user saved a project path long ago, then moved
+    // or deleted the directory. Without this fallback, posix_spawn returns
+    // "No such file or directory" — easy to misread as "grok binary missing".
+    let resolved_cwd: std::path::PathBuf = if cwd.is_dir() {
+        cwd.to_path_buf()
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+        eprintln!(
+            "[grok-desktop] process: cwd {:?} does not exist, falling back to {}",
+            cwd, home
+        );
+        std::path::PathBuf::from(home)
+    };
+
+    // Also verify the binary itself exists — surfaces a clearer error if the
+    // user uninstalls grok mid-session.
+    if !cmd_path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("grok binary not found at {:?}", cmd_path),
+        ));
+    }
+
     let mut command = Command::new(cmd_path);
     command
         .args(args)
-        .current_dir(cwd)
+        .current_dir(&resolved_cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -37,13 +37,31 @@ CREATE INDEX IF NOT EXISTS idx_prompts_category ON prompts(category);
 CREATE INDEX IF NOT EXISTS idx_prompts_updated_at ON prompts(updated_at DESC);
 "#;
 
+/// Run each `;`-separated DDL statement individually — sqlx::query only
+/// prepares one statement at a time, so the CREATE INDEX bodies in SCHEMA
+/// would be silently ignored if we pass the whole blob to a single query().
+async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
+    for stmt in schema.split(';') {
+        let trimmed = stmt.trim();
+        if !trimmed.is_empty() {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
+    Ok(())
+}
+
 impl PromptStore {
     pub async fn open_at(path: &Path) -> Result<Self, sqlx::Error> {
         let opts = SqliteConnectOptions::new()
             .filename(path)
-            .create_if_missing(true);
-        let pool = SqlitePoolOptions::new().connect_with(opts).await?;
-        sqlx::query(SCHEMA).execute(&pool).await?;
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await?;
+        run_schema(&pool, SCHEMA).await?;
         Ok(Self { pool })
     }
 
@@ -53,7 +71,7 @@ impl PromptStore {
             .max_connections(1)
             .connect_with(SqliteConnectOptions::from_str("sqlite::memory:")?)
             .await?;
-        sqlx::query(SCHEMA).execute(&pool).await?;
+        run_schema(&pool, SCHEMA).await?;
         Ok(Self { pool })
     }
 
