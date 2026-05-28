@@ -229,6 +229,15 @@ impl RunQueue {
             .db
             .update_state(&rec.id, RunState::Running, Some(started_at), None, None, None)
             .await;
+        // Emit QueueChanged BEFORE StateChanged so the frontend's queue.active
+        // flips from None → Some(rec.id) before any text events arrive. The
+        // QueueChanged that fires from enqueue() can race with pop_next() and
+        // capture a stale active=None — emitting again here guarantees the
+        // post-pop snapshot is the one the frontend ends up with.
+        let _ = self.tx.send(QueueMessage {
+            run_id: rec.id.clone(),
+            kind: QueueMessageKind::QueueChanged,
+        });
         let _ = self.tx.send(QueueMessage {
             run_id: rec.id.clone(),
             kind: QueueMessageKind::StateChanged {

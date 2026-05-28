@@ -70,22 +70,44 @@ CREATE INDEX IF NOT EXISTS idx_runs_state ON runs(state);
 CREATE INDEX IF NOT EXISTS idx_runs_enqueued_at ON runs(enqueued_at);
 "#;
 
+/// Execute every `;`-delimited DDL statement in `schema` against the given
+/// pool. sqlx::query() prepares a single statement at a time, so the CREATE
+/// INDEX bodies in a multi-line SCHEMA string would silently be ignored if
+/// passed to a single query(). This helper avoids that footgun.
+async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
+    for stmt in schema.split(';') {
+        let trimmed = stmt.trim();
+        if !trimmed.is_empty() {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
+    Ok(())
+}
+
 impl Db {
     pub async fn open_memory() -> Result<Self, sqlx::Error> {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(SqliteConnectOptions::from_str("sqlite::memory:")?)
             .await?;
-        sqlx::query(SCHEMA).execute(&pool).await?;
+        run_schema(&pool, SCHEMA).await?;
         Ok(Self { pool })
     }
 
     pub async fn open_at(path: &Path) -> Result<Self, sqlx::Error> {
         let opts = SqliteConnectOptions::new()
             .filename(path)
-            .create_if_missing(true);
-        let pool = SqlitePoolOptions::new().connect_with(opts).await?;
-        sqlx::query(SCHEMA).execute(&pool).await?;
+            .create_if_missing(true)
+            // Force WAL off and single-conn so DDL definitely persists to the
+            // file. Without this, sqlx-pooled connections + the lazy CREATE
+            // sequence can leave a 0-byte file on first run.
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await?;
+        run_schema(&pool, SCHEMA).await?;
         Ok(Self { pool })
     }
 

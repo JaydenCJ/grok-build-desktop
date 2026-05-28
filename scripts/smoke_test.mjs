@@ -220,11 +220,22 @@ for (const cmd of ["set_agent_overlay", "set_agent_cursor"]) {
   assert.ok(libRs.includes(cmd), `missing Tauri command for overlay: ${cmd}`);
 }
 const tauriConf = JSON.parse(read("src-tauri/tauri.conf.json"));
+// G2 agent-overlay window: declared statically with `fullscreen: true` had a
+// macOS bug — fullscreen mode does not honor transparent, producing an opaque
+// white block over a whole display. Until G2 is rewritten to create the
+// overlay window programmatically (WebviewWindowBuilder + set_position +
+// set_size, no fullscreen flag), the static window config is intentionally
+// absent. The set_agent_overlay command stays available; calling it when no
+// "agent-overlay" window exists returns an error that AgentOverlayDriver
+// catches silently.
 const overlayWindow = (tauriConf.app?.windows ?? []).find((w) => w.label === "agent-overlay");
-assert.ok(overlayWindow, "tauri.conf.json must declare agent-overlay window");
-assert.equal(overlayWindow.transparent, true, "agent-overlay window must be transparent");
-assert.equal(overlayWindow.alwaysOnTop, true, "agent-overlay window must be alwaysOnTop");
-assert.equal(overlayWindow.decorations, false, "agent-overlay window must hide decorations");
+if (overlayWindow) {
+  assert.notEqual(overlayWindow.fullscreen, true,
+    "agent-overlay must NOT use fullscreen: true — macOS fullscreen mode is opaque");
+  assert.equal(overlayWindow.transparent, true, "agent-overlay window must be transparent");
+  assert.equal(overlayWindow.alwaysOnTop, true, "agent-overlay window must be alwaysOnTop");
+  assert.equal(overlayWindow.decorations, false, "agent-overlay window must hide decorations");
+}
 
 // Vite multi-entry build for overlay.
 const viteConfig = read("vite.config.ts");
