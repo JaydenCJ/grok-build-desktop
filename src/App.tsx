@@ -811,6 +811,7 @@ function App() {
     }
   }, []);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
   const [composerEmpty, setComposerEmpty] = useState(() => initialPromptValue.trim().length === 0);
   const draftsTimerRef = useRef<number | null>(null);
   const setComposerValue = (value: string) => {
@@ -820,6 +821,11 @@ function App() {
     setComposerEmpty(value.trim().length === 0);
   };
   const readComposerValue = () => promptRef.current?.value ?? "";
+  const syncComposerEmpty = () => {
+    const value = promptRef.current?.value ?? "";
+    const isEmpty = value.trim().length === 0;
+    setComposerEmpty((current) => (current === isEmpty ? current : isEmpty));
+  };
   const [browserTask, setBrowserTask] = useState(
     "Open https://example.com and report the main heading.",
   );
@@ -2488,9 +2494,21 @@ function App() {
                 id="main-prompt"
                 ref={promptRef}
                 onKeyDown={handlePromptKeyDown}
-                onChange={(event) => {
-                  const isEmpty = event.currentTarget.value.trim().length === 0;
-                  setComposerEmpty((current) => (current === isEmpty ? current : isEmpty));
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composingRef.current = false;
+                  syncComposerEmpty();
+                  scheduleDraftSave();
+                }}
+                onChange={() => {
+                  // Skip every React update while the IME is mid-composition —
+                  // pinyin/kana candidates fire onChange on every keystroke and
+                  // make the textarea feel locked. We only sync state on
+                  // compositionend (above) or on a real non-IME input below.
+                  if (composingRef.current) return;
+                  syncComposerEmpty();
                   scheduleDraftSave();
                 }}
                 placeholder={modeCopy[mode].placeholder}
