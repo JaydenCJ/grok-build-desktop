@@ -1904,10 +1904,11 @@ async fn set_agent_cursor(
 fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
     use tauri::Emitter as _;
     match &msg.kind {
-        QueueMessageKind::Event { event } => {
+        QueueMessageKind::Event { event, raw } => {
             let _ = app.emit("grok-desktop://run-event", serde_json::json!({
                 "runId": msg.run_id,
                 "event": event,
+                "raw": raw,
             }));
         }
         QueueMessageKind::StateChanged { state, started_at, ended_at, error } => {

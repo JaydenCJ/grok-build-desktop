@@ -92,7 +92,7 @@ impl StreamerRegistry {
         };
 
         match &msg.kind {
-            QueueMessageKind::Event { event } => match event {
+            QueueMessageKind::Event { event, raw: _ } => match event {
                 GrokEvent::Thought { .. } => {
                     if state.thought_started_at.is_none() {
                         state.thought_started_at = Some(Instant::now());

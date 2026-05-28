@@ -1,4 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { classifyEvent, type TraceEvent } from './traceParser';
 
 export type GrokEvent =
   | { type: 'thought'; data: string }
@@ -20,6 +21,8 @@ export interface RunSnapshot {
   htmlVersion: number;
   stopReason: string | null;
   error: string | null;
+  /** Tool / subagent / task trace cards, in order of first appearance. */
+  traces: TraceEvent[];
 }
 
 export interface QueuedRunMeta {
@@ -86,6 +89,7 @@ class StreamStore {
       lastEventType: null, text: '',
       htmlVersion: 0,
       stopReason: null, error: null,
+      traces: [],
     };
   }
 
@@ -100,7 +104,7 @@ class StreamStore {
 
 export const streamStore = new StreamStore();
 
-export function applyRunEvent(runId: string, event: GrokEvent): void {
+export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): void {
   const cur = streamStore.getRunSnapshot(runId);
   if (event.type === 'thought') {
     const data = (event as any).data as string;
@@ -136,8 +140,31 @@ export function applyRunEvent(runId: string, event: GrokEvent): void {
       stopReason: e.stopReason,
       endedAt: Date.now(),
     });
+  } else if (raw) {
+    // Unknown typed event — try to classify as a trace (tool/subagent/task).
+    const result = classifyEvent(raw);
+    if (result.kind === 'create') {
+      const existing = cur?.traces ?? [];
+      // Avoid duplicates if the same key is emitted twice (e.g. updates).
+      if (!existing.some((t) => t.key === result.event.key)) {
+        streamStore.patchRun(runId, { traces: [...existing, result.event] });
+      }
+    } else if (result.kind === 'finish') {
+      const existing = cur?.traces ?? [];
+      const idx = existing.findIndex((t) => t.key === result.key);
+      if (idx >= 0) {
+        const updated = [...existing];
+        updated[idx] = {
+          ...updated[idx]!,
+          status: result.status,
+          endedAt: Date.now(),
+          detail: result.detail ?? updated[idx]!.detail,
+        };
+        streamStore.patchRun(runId, { traces: updated });
+      }
+    }
   }
-  // Unknown events: ignore (forward-compat).
+  // Unknown events without raw payload: ignore (forward-compat).
 }
 
 export function applyStateChange(
@@ -201,9 +228,9 @@ export async function attachTauriListeners(): Promise<void> {
   if (attachInflight) return attachInflight;
   attachInflight = (async () => {
     try {
-      const u1 = await listen<{ runId: string; event: GrokEvent }>(
+      const u1 = await listen<{ runId: string; event: GrokEvent; raw?: unknown }>(
         'grok-desktop://run-event',
-        (e) => applyRunEvent(e.payload.runId, e.payload.event),
+        (e) => applyRunEvent(e.payload.runId, e.payload.event, e.payload.raw),
       );
       const u2 = await listen<{
         runId: string;
