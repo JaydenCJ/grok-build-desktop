@@ -45,6 +45,8 @@ import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
 import { GuideBanner } from "./components/GuideBanner";
+import { TabBar } from "./components/TabBar";
+import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -793,6 +795,41 @@ function App() {
     return storedRunHistory().length;
   });
   const [messages, setMessages] = useState<ChatMessage[]>(() => storedMessages());
+  // Multi-session tabs. The "active" tab's cwd and messages are mirrored back
+  // into the existing flat state above so the rest of App.tsx (model picker,
+  // mode dock, status bar, etc.) keeps working unchanged. Tabs are a thin
+  // facade — see comment in lib/tabs.ts for the design rationale.
+  const tabsStorageKey = "grok-desktop-tabs-v1";
+  const tabsActiveKey = "grok-desktop-tabs-active-v1";
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(tabsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Tab[];
+      }
+    } catch {
+      // fall through
+    }
+    // First-run: synthesize one tab from the legacy single-session state.
+    const initialCwd = window.localStorage.getItem(storageKeys.codingCwd) ?? "";
+    return [makeTab(initialCwd, storedMessages() as unknown as TabMessage[], defaultTabName(initialCwd, 0))];
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    const stored = window.localStorage.getItem(tabsActiveKey);
+    if (stored) return stored;
+    // Use the first tab's id from initial setup above.
+    try {
+      const raw = window.localStorage.getItem(tabsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed[0]?.id) return parsed[0].id;
+      }
+    } catch {
+      // fall through
+    }
+    return "";
+  });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
@@ -879,6 +916,96 @@ function App() {
     window.localStorage.setItem("grok-desktop-run-count-total", "0");
     setSessionNotice("Cleared conversation, run history, and terminal.");
   }
+
+  // ── Multi-session tabs ───────────────────────────────────────────────────
+  // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
+  // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
+  function handleTabSelect(id: string) {
+    const next = tabs.find((t) => t.id === id);
+    if (!next) return;
+    // First, snapshot the *current* active tab's state back into the tabs
+    // array so we don't lose unsaved messages when switching.
+    setTabs((current) =>
+      current.map((t) =>
+        t.id === activeTabId
+          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+          : t,
+      ),
+    );
+    setActiveTabId(id);
+    setCodingCwd(next.cwd);
+    setMessages(next.messages as unknown as ChatMessage[]);
+  }
+  function handleTabCreate() {
+    // Persist current tab first.
+    setTabs((current) => {
+      const snapshotted = current.map((t) =>
+        t.id === activeTabId
+          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+          : t,
+      );
+      const next = makeTab("", [], defaultTabName("", snapshotted.length));
+      return [...snapshotted, next];
+    });
+    // The new tab id is generated inside the setter; pull it out via a
+    // microtask so the state update has committed.
+    queueMicrotask(() => {
+      setTabs((current) => {
+        const newest = current[current.length - 1];
+        if (newest) {
+          setActiveTabId(newest.id);
+          setCodingCwd(newest.cwd);
+          setMessages(newest.messages as unknown as ChatMessage[]);
+        }
+        return current;
+      });
+    });
+  }
+  function handleTabClose(id: string) {
+    setTabs((current) => {
+      if (current.length <= 1) return current;
+      const remaining = current.filter((t) => t.id !== id);
+      // If we just closed the active tab, jump to the next one.
+      if (id === activeTabId) {
+        const fallback = remaining[0]!;
+        setActiveTabId(fallback.id);
+        setCodingCwd(fallback.cwd);
+        setMessages(fallback.messages as unknown as ChatMessage[]);
+      }
+      return remaining;
+    });
+  }
+  function handleTabRename(id: string, name: string) {
+    setTabs((current) => current.map((t) => (t.id === id ? { ...t, name } : t)));
+  }
+
+  // Persist tabs (and the active id) whenever the array changes. This is the
+  // single source of truth across reloads; localStorage hydrates on next boot.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
+    } catch {
+      // quota or serialization error — non-fatal; in-memory state survives.
+    }
+  }, [tabs]);
+  useEffect(() => {
+    if (activeTabId) window.localStorage.setItem(tabsActiveKey, activeTabId);
+  }, [activeTabId]);
+
+  // Whenever the global codingCwd or messages change, write them back into
+  // the active tab. This keeps the tab "in sync" with the flat state without
+  // requiring every existing setMessages/setCodingCwd call-site to know about
+  // tabs.
+  useEffect(() => {
+    setTabs((current) =>
+      current.map((t) =>
+        t.id === activeTabId
+          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+          : t,
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codingCwd, messages]);
 
   function updatePrompt(value: string) {
     setComposerValue(value);
@@ -2211,6 +2338,14 @@ function App() {
 
         <section className="workbench">
           <div className="conversation-panel">
+            <TabBar
+              tabs={tabs}
+              activeId={activeTabId}
+              onSelect={handleTabSelect}
+              onCreate={handleTabCreate}
+              onClose={handleTabClose}
+              onRename={handleTabRename}
+            />
             <div className="conversation-scroll" ref={conversationScrollRef}>
               {messages.length === 0 ? (
                 <div className="empty-state">
