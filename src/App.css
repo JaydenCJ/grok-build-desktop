@@ -2435,8 +2435,8 @@ select:focus {
   margin: 0;
 }
 
-.markdown-body strong { font-weight: 750; }
-.markdown-body em { font-style: italic; }
+.markdown-body strong { color: var(--text); font-weight: 700; }
+.markdown-body em { color: var(--text); font-style: italic; }
 
 .markdown-body a {
   color: var(--accent);
