@@ -2769,10 +2769,33 @@ select:focus {
   color: var(--text);
 }
 
-/* Typing dots — Claude-style pulsing indicator while grok streams */
+/* Thinking indicator — shows inside an assistant bubble that has no
+   stream content yet so the user sees live processing-time feedback
+   right where the answer will land. */
 .streaming-placeholder {
   margin-top: 8px;
   min-height: 22px;
+}
+
+.thinking-indicator {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 0.88rem;
+  gap: 9px;
+  letter-spacing: 0.005em;
+  line-height: 1;
+}
+
+.thinking-label {
+  font-weight: 600;
+}
+
+.thinking-elapsed {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 .typing-dots {

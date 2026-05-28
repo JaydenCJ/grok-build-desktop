@@ -949,7 +949,7 @@ fn mode_context(mode: &str) -> &'static str {
             "Grok Desktop Grok Code Mode: act as a senior programming desktop assistant for professional engineers. Optimize for repository understanding, precise edits, terminal verification, and concise engineering judgment."
         }
         _ => {
-            "Grok Desktop Grok Chat Mode: answer clearly, keep practical context, and hand off to Coding Mode when the task touches a repository, terminal, or code change."
+            "Grok Desktop Grok Chat Mode: answer clearly, keep practical context, and hand off to Coding Mode when the task touches a repository, terminal, or code change. In every response, the first thing your text (文字) must do is clearly 吐出 (state) this core point before proceeding with the answer to the user task."
         }
     }
 }
