@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import { cancelRun, enqueueRun } from "./lib/grok";
+import { streamStore } from "./lib/streamStore";
 import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
@@ -48,6 +49,7 @@ import { GuideBanner } from "./components/GuideBanner";
 import { TabBar } from "./components/TabBar";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
+import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -786,6 +788,16 @@ function App() {
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // Developer-utilities <details> (Browser / Chrome bridge / Absorb Repo).
+  // Independent from `toolsOpen` so the inspector and the toolbelt don't both
+  // pop open at once and stack on top of each other in the right column.
+  const [toolbeltOpen, setToolbeltOpen] = useState(false);
+  // ⌘K command palette — global, lives outside the panel-toggle group above.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Sidebar collapse for ⌘B — defaults to expanded.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
+  });
   const [dockPosition, setDockPosition] = useState<DockPosition>(() => {
     const stored = window.localStorage.getItem(storageKeys.dockPosition);
     return isDockPosition(stored) ? stored : "right";
@@ -1778,6 +1790,150 @@ function App() {
     window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
   }, [themeMode]);
 
+  // Persist sidebar-collapsed state so ⌘B is sticky across reloads.
+  useEffect(() => {
+    window.localStorage.setItem(
+      "grok-desktop-sidebar-collapsed",
+      sidebarCollapsed ? "1" : "0",
+    );
+  }, [sidebarCollapsed]);
+
+  // ── Command palette catalogue ────────────────────────────────────────────
+  // Every action here is reachable both through ⌘K and (where applicable) a
+  // direct button in the UI. Keep them in sync — adding an action here is
+  // the cheapest way to make a new feature discoverable.
+  const paletteActions = useMemo<PaletteAction[]>(() => {
+    return [
+      {
+        id: "new-session",
+        label: "New session",
+        hint: "Empty messages, fresh cwd",
+        shortcut: "⌘N",
+        group: "Session",
+        run: () => handleTabCreate(),
+      },
+      {
+        id: "clear-conversation",
+        label: "Clear current conversation",
+        hint: "Wipes messages + run history",
+        group: "Session",
+        run: () => clearRunHistory(),
+      },
+      {
+        id: "focus-composer",
+        label: "Focus composer",
+        shortcut: "/",
+        group: "Navigation",
+        run: () => composerRef.current?.focus(),
+      },
+      {
+        id: "search-history",
+        label: "Search recent prompts",
+        shortcut: "⌘F",
+        group: "Navigation",
+        run: () => {
+          historySearchInputRef.current?.focus();
+          historySearchInputRef.current?.select();
+        },
+      },
+      {
+        id: "toggle-sidebar",
+        label: sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar",
+        shortcut: "⌘B",
+        group: "View",
+        run: () => setSidebarCollapsed((v) => !v),
+      },
+      {
+        id: "toggle-tools",
+        label: toolsOpen ? "Close Tools panel" : "Open Tools panel",
+        group: "View",
+        run: () => togglePanel("tools"),
+      },
+      {
+        id: "toggle-terminal",
+        label: terminalOpen ? "Close Terminal panel" : "Open Terminal panel",
+        group: "View",
+        run: () => togglePanel("terminal"),
+      },
+      {
+        id: "toggle-theme",
+        label: themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme",
+        shortcut: "⌘⇧L",
+        group: "Theme",
+        run: () => setThemeMode(themeMode === "dark" ? "light" : "dark"),
+      },
+      {
+        id: "open-desktop-bridge",
+        label: "Open Desktop bridge",
+        hint: "Mac app context queries",
+        group: "View",
+        run: () => {
+          setToolsOpen(true);
+          setInspectorTab("desktop");
+        },
+      },
+      {
+        id: "open-settings",
+        label: "Open Settings panel",
+        shortcut: "⌘,",
+        group: "View",
+        run: () => {
+          setToolsOpen(true);
+          setInspectorTab("context");
+        },
+      },
+      {
+        id: "cancel-run",
+        label: "Cancel current run",
+        group: "Run",
+        run: () => {
+          // Read activeRunId via streamStore at action-fire time — the value
+          // declared further down the component isn't in scope here yet, and
+          // listing it as a dep would create a TDZ error during render.
+          const snap = streamStore.getActiveRunSnapshot();
+          if (snap?.id) void cancelRun(snap.id);
+        },
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarCollapsed, toolsOpen, terminalOpen, themeMode]);
+
+  // Global keyboard router — only fires while the palette isn't already in a
+  // text-input state. Each shortcut is also surfaced via the palette so users
+  // can discover them.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (meta && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarCollapsed((v) => !v);
+      } else if (meta && e.key === ",") {
+        e.preventDefault();
+        setToolsOpen(true);
+        setInspectorTab("context");
+      } else if (meta && e.shiftKey && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        setThemeMode((t) => (t === "dark" ? "light" : "dark"));
+      } else if (meta && e.key.toLowerCase() === "n" && !e.shiftKey) {
+        // Don't steal the system "New Window" shortcut if the user is in a
+        // textarea (composer). Only act when focus is elsewhere.
+        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+        if (tag !== "textarea" && tag !== "input") {
+          e.preventDefault();
+          handleTabCreate();
+        }
+      } else if (e.key === "Escape") {
+        if (paletteOpen) setPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paletteOpen]);
+
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
   }, [codingCwd]);
@@ -2057,7 +2213,14 @@ function App() {
     [messages],
   );
   return (
-    <main className={`app-shell theme-${themeMode}`}>
+    <main
+      className={`app-shell theme-${themeMode}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+    >
+      <CommandPalette
+        open={paletteOpen}
+        actions={paletteActions}
+        onClose={() => setPaletteOpen(false)}
+      />
       <aside className="app-sidebar">
         <div className="mac-lights" aria-hidden="true">
           <span className="red" />
@@ -2071,42 +2234,58 @@ function App() {
             <h1>Grok Desktop</h1>
             <span>Grok desktop for engineers</span>
           </div>
-          <ChevronDown size={16} />
+          {/* The chevron previously looked clickable but did nothing. Now it
+              opens the ⌘K palette — the natural "what can I do?" affordance. */}
+          <button
+            className="brand-chevron"
+            type="button"
+            aria-label="Open command palette"
+            title="Command palette (⌘K)"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <ChevronDown size={16} />
+          </button>
         </div>
 
         <section className="nav-section primary-nav" aria-label="Primary navigation">
           <div className="nav-list">
             {primaryNavItems.map((item) => {
+              // Each nav item maps to a single, deterministic action — no
+              // "this kinda does X" semantics. If the action isn't obvious
+              // from the label, the meta line below it explains.
               const handle = () => {
                 if (item.label === "New Session") {
-                  // Clear conversation + history but ask first if there's
-                  // anything to lose. Then refocus the composer.
-                  if (messages.length > 0) {
-                    const ok = window.confirm(
-                      "Start a new session? This clears the current conversation.",
-                    );
-                    if (!ok) return;
-                  }
-                  clearRunHistory();
+                  // CREATES a fresh tab (empty messages, clean cwd) and
+                  // switches to it. This is the user's mental model post-
+                  // v0.3.0 tabs — match it rather than "clear current".
+                  handleTabCreate();
                   composerRef.current?.focus();
+                  setSessionNotice("New session ready.");
                 } else if (item.label === "Search") {
-                  // Focus the history filter input.
-                  historySearchInputRef.current?.focus();
-                  historySearchInputRef.current?.select();
+                  // Open the ⌘K command palette pre-focused. The host of
+                  // visible "search-y" things (recent prompts, palette,
+                  // files) is unified here.
+                  setPaletteOpen(true);
                 } else if (item.label === "Tools") {
                   togglePanel("tools");
+                  setInspectorTab("context");
                 } else if (item.label === "Settings") {
-                  // No dedicated Settings drawer yet — surface the existing
-                  // settings controls via the Tools panel for now and notify.
-                  togglePanel("tools");
-                  setSessionNotice(
-                    "Settings panel is in the Tools dock for now — a dedicated drawer is on the design roadmap.",
-                  );
+                  // Open Tools panel on the Permissions tab — that's where
+                  // approval policy, web search, subagents, etc. live.
+                  setToolsOpen(true);
+                  setInspectorTab("permissions");
                 }
               };
+              // The active highlight should follow what's *actually* open,
+              // not hardcoded to "New Session". Otherwise every button looks
+              // selected and the user can't tell which panel is current.
+              const isActive =
+                (item.label === "Tools" && toolsOpen && inspectorTab !== "permissions") ||
+                (item.label === "Settings" && toolsOpen && inspectorTab === "permissions") ||
+                (item.label === "Search" && paletteOpen);
               return (
                 <button
-                  className={item.label === "New Session" ? "active" : ""}
+                  className={isActive ? "active" : ""}
                   key={item.label}
                   type="button"
                   onClick={handle}
@@ -2123,7 +2302,20 @@ function App() {
         <section className="nav-section history-nav">
           <div className="nav-head">
             <span>History</span>
-            <History size={15} />
+            {/* Refresh icon — clears the filter input so the user sees the
+                full recent-prompts list again. Was a decorative icon before. */}
+            <button
+              className="history-refresh"
+              type="button"
+              aria-label="Clear filter"
+              title="Clear filter and show all recent prompts"
+              onClick={() => {
+                setHistoryFilter("");
+                historySearchInputRef.current?.focus();
+              }}
+            >
+              <History size={15} />
+            </button>
           </div>
           <label className="search-box">
             <Search size={15} />
@@ -2191,7 +2383,20 @@ function App() {
             <strong>Grok Developer</strong>
             <span>Local workspace</span>
           </div>
-          <Settings size={16} />
+          {/* The footer gear used to be a decorative icon — wire it to open
+              the Permissions tab in Tools (where auth/policy/effort live). */}
+          <button
+            className="account-settings"
+            type="button"
+            aria-label="Open settings"
+            title="Settings (⌘,)"
+            onClick={() => {
+              setToolsOpen(true);
+              setInspectorTab("permissions");
+            }}
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </aside>
 
@@ -2564,8 +2769,26 @@ function App() {
                   {tab.label}
                 </button>
               ))}
-              <button aria-label="Panel options" type="button"><PanelRight size={16} /></button>
-              <button aria-label="Close inspector" type="button"><X size={16} /></button>
+              <button
+                aria-label="Toggle dock position"
+                onClick={() => {
+                  const next: DockPosition = dockPosition === "right" ? "bottom" : "right";
+                  setDockPosition(next);
+                  window.localStorage.setItem(storageKeys.dockPosition, next);
+                }}
+                title={`Move dock to ${dockPosition === "right" ? "bottom" : "right"}`}
+                type="button"
+              >
+                <PanelRight size={16} />
+              </button>
+              <button
+                aria-label="Close inspector"
+                onClick={() => setToolsOpen(false)}
+                title="Close (⌘B clears panels)"
+                type="button"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             <div className="inspector-body">
@@ -3075,11 +3298,8 @@ function App() {
         <details
           className="toolbelt"
           aria-label="Developer tools"
-          onToggle={(event) => {
-            if (event.currentTarget.open && !toolsOpen) togglePanel("tools");
-            else if (!event.currentTarget.open && toolsOpen) setToolsOpen(false);
-          }}
-          open={toolsOpen}
+          onToggle={(event) => setToolbeltOpen(event.currentTarget.open)}
+          open={toolbeltOpen}
         >
           <summary>
             <span><Wrench size={16} /> Developer utilities</span>
