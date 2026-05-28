@@ -2161,9 +2161,15 @@ function App() {
       void cancelGrok();
       return;
     }
-    if (!grokControlDisabled) {
-      void runGrok();
-    }
+    // Read the value directly instead of relying on composerEmpty state.
+    // composerEmpty can be stale right after a fast paste or an IME engine
+    // that fired input events without a clean compositionend — we want
+    // Enter to always send when there IS text, even if state lags.
+    const value = event.currentTarget.value.trim();
+    if (!value) return;
+    if (busyRunner !== null) return;
+    if (mode === "coding" && grokStatus !== null && !grokStatus.authenticated) return;
+    void runGrok();
   }
   return (
     <main className={`app-shell theme-${themeMode}`}>
@@ -2503,12 +2509,19 @@ function App() {
                   scheduleDraftSave();
                 }}
                 onChange={() => {
-                  // Skip every React update while the IME is mid-composition —
-                  // pinyin/kana candidates fire onChange on every keystroke and
-                  // make the textarea feel locked. We only sync state on
-                  // compositionend (above) or on a real non-IME input below.
-                  if (composingRef.current) return;
+                  // Always keep composerEmpty in sync with the actual textarea
+                  // value — setState bails out on no-change, so this is free
+                  // when the boundary hasn't moved. We MUST update outside
+                  // composition events too: programmatic typing (paste, IME
+                  // engines that skip composition, computer-use) never fires
+                  // compositionend, and skipping the sync used to leave
+                  // composerEmpty=true forever so Enter would never send.
                   syncComposerEmpty();
+                  // Only schedule the localStorage draft save when the IME is
+                  // NOT mid-composition. Pinyin/kana candidates fire onChange
+                  // on every keystroke; we don't want to burn 300ms timers on
+                  // intermediate composition state.
+                  if (composingRef.current) return;
                   scheduleDraftSave();
                 }}
                 placeholder={modeCopy[mode].placeholder}
