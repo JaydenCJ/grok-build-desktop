@@ -263,23 +263,64 @@ impl RunQueue {
                     let mut inner = self.inner.lock().await;
                     inner.active_pgid = Some(spawned.pgid);
                 }
+                // Drain stderr in a background task. Without this, when grok
+                // produces > 64 KB of stderr (tracing logs, debug noise) the
+                // pipe fills and grok BLOCKS on stderr write, which makes
+                // stdout silent and trips our 60s "no output timeout" — even
+                // though grok is alive and would have produced text just fine.
+                if let Some(stderr) = spawned.child.stderr.take() {
+                    use tokio::io::{AsyncBufReadExt, BufReader};
+                    tokio::spawn(async move {
+                        let mut reader = BufReader::new(stderr);
+                        let mut line = String::new();
+                        loop {
+                            line.clear();
+                            match reader.read_line(&mut line).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(_) => {
+                                    // Surface unfiltered stderr to the host
+                                    // process — useful when diagnosing grok
+                                    // misbehavior. Set
+                                    // GROK_DESKTOP_QUIET_GROK_STDERR=1 to
+                                    // suppress.
+                                    if std::env::var("GROK_DESKTOP_QUIET_GROK_STDERR")
+                                        .ok()
+                                        .as_deref()
+                                        != Some("1")
+                                    {
+                                        eprint!("[grok stderr] {line}");
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
                 let mut reader = process::read_stdout_lines(&mut spawned.child);
                 let mut line = String::new();
                 let mut consecutive_fail = 0u32;
 
+                // No-output timeout: how long we'll wait between stdout lines
+                // before assuming grok is wedged. grok with `--effort medium`
+                // can legitimately spend > 60s "thinking" before producing
+                // the first NDJSON event, so the default has to be generous.
+                // Tunable via env var so power users can tighten it.
+                let no_output_secs: u64 = std::env::var("GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(240);
                 loop {
                     line.clear();
                     let read_fut = reader.read_line(&mut line);
                     let outcome =
-                        tokio::time::timeout(std::time::Duration::from_secs(60), read_fut).await;
+                        tokio::time::timeout(std::time::Duration::from_secs(no_output_secs), read_fut).await;
                     match outcome {
                         Err(_) => {
-                            // 60s no output and not exited
+                            // N seconds no output and not exited
                             process::kill_group(spawned.pgid).await;
                             self.finalize(
                                 &rec.id,
                                 RunState::Failed,
-                                Some("no output timeout".into()),
+                                Some(format!("no output timeout ({}s)", no_output_secs)),
                             )
                             .await;
                             return;
