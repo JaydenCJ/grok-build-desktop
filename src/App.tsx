@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Bot,
   ChevronDown,
@@ -1916,10 +1918,23 @@ function App() {
   }, [busyRunner, drafts, mode]);
 
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   useEffect(() => {
     const node = conversationScrollRef.current;
     if (!node) return;
-    node.scrollTop = node.scrollHeight;
+    const onScroll = () => {
+      const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 80;
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => node.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    const node = conversationScrollRef.current;
+    if (!node) return;
+    if (stickToBottomRef.current) {
+      node.scrollTop = node.scrollHeight;
+    }
   }, [messages]);
 
   const [historyFilter, setHistoryFilter] = useState("");
@@ -2296,7 +2311,27 @@ function App() {
                             )}
                           </time>
                         </div>
-                        <p>{message.content || (showSpinner ? "Working..." : "(no output)")}</p>
+                        {isUser ? (
+                          <p>{message.content || "(empty)"}</p>
+                        ) : message.content ? (
+                          <div className="markdown-body">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="streaming-placeholder">
+                            {showSpinner ? (
+                              <span className="typing-dots" aria-label="Grok is typing">
+                                <span />
+                                <span />
+                                <span />
+                              </span>
+                            ) : (
+                              "(no output)"
+                            )}
+                          </p>
+                        )}
                         {message.role === "assistant" && message.status === "error" ? (
                           <div className="message-error">Run failed{message.meta?.exitCode != null ? ` (exit ${message.meta.exitCode})` : ""}.</div>
                         ) : null}
