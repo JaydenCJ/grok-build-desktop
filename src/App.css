@@ -1,42 +1,92 @@
 :root {
-  /* Grok-themed design tokens (xAI dark palette + warm accent) */
-  --grok-bg-0: #0b0e13;          /* deepest base */
-  --grok-bg-1: #11151c;          /* surface 1 */
-  --grok-bg-2: #161b24;          /* surface 2 (panels) */
-  --grok-bg-3: #1d2330;          /* surface 3 (cards) */
-  --grok-bg-4: #252b3a;          /* hover */
-  --grok-border-1: rgba(255, 255, 255, 0.06);
-  --grok-border-2: rgba(255, 255, 255, 0.12);
-  --grok-border-3: rgba(255, 255, 255, 0.20);
-  --grok-text-1: #e8ecf4;        /* primary text */
-  --grok-text-2: #b6bdcc;        /* secondary */
-  --grok-text-3: #828aa0;        /* tertiary */
-  --grok-text-4: #525a72;        /* faint */
-  --grok-accent: #ff7a45;        /* Grok warm accent — burnt orange */
-  --grok-accent-hi: #ff9466;
-  --grok-accent-lo: #d65a2a;
-  --grok-success: #4ade80;
-  --grok-warning: #facc15;
-  --grok-danger: #f87171;
-  --grok-info: #60a5fa;
+  /* ──────────────────────────────────────────────────────────────────────
+   * v0.4.0 mono design tokens — graphite dark, no chromatic accent.
+   * Sourced from the Grok Desktop UI design handoff (May 2026). Premium =
+   * restraint. Hierarchy comes from weight/opacity, not color.
+   *
+   * The old `--grok-*` names are kept as aliases below so the existing 3700
+   * lines of stylesheet keep working unchanged.
+   * ──────────────────────────────────────────────────────────────────── */
 
-  /* Themed compatibility aliases used by F components */
-  --surface-1: var(--grok-bg-2);
-  --surface-info: rgba(96, 165, 250, 0.16);
-  --border-faint: var(--grok-border-1);
-  --text-emphasis: var(--grok-text-1);
-  --text-muted: var(--grok-text-2);
-  --text-faint: var(--grok-text-3);
-  --text-accent: var(--grok-accent);
-  --button-primary: var(--grok-accent);
+  /* Surfaces — graphite, near-black, no blue cast */
+  --bg-0: #0a0a0a;
+  --bg-1: #131313;
+  --bg-2: #181818;
+  --bg-3: #1e1e1e;
+  --bg-4: #2a2a2a;
+  --bg-5: #353535;
+  --bg-overlay: rgba(0,0,0,0.6);
 
-  color: var(--grok-text-1);
-  background: var(--grok-bg-0);
+  /* Text — warm off-white, never pure */
+  --text-1: #ECE9E2;
+  --text-2: #999692;
+  --text-3: #6A6864;
+  --text-4: #46443F;
+
+  /* Borders — hairlines, low contrast */
+  --border:        #232323;
+  --border-2:      #2D2D2D;
+  --border-strong: #3C3C3C;
+
+  /* Accent: mono off-white. Premium = restraint. */
+  --accent:       #ECE9E2;
+  --accent-hover: #FFFFFF;
+  --accent-soft:  rgba(236,233,226,0.07);
+  --accent-line:  rgba(236,233,226,0.16);
+  --accent-glow:  rgba(236,233,226,0.10);
+  --accent-ink:   #131313;
+
+  /* Semantic — drained, not signal-bright */
+  --success: #6F9F7B;
+  --warn:    #B5985A;
+  --error:   #C26C6C;
+  --info:    #7A8FA8;
+
+  /* Syntax — muted, no neon */
+  --syn-keyword: #B89BC4;
+  --syn-string:  #A4B89A;
+  --syn-fn:      #8AA3C0;
+  --syn-comment: #5E6068;
+  --syn-num:     #C49978;
+  --syn-type:    #C5B27C;
+
+  /* ────────  Legacy --grok-* aliases (forward-compat for existing CSS) ──── */
+  --grok-bg-0: var(--bg-0);
+  --grok-bg-1: var(--bg-1);
+  --grok-bg-2: var(--bg-2);
+  --grok-bg-3: var(--bg-3);
+  --grok-bg-4: var(--bg-4);
+  --grok-border-1: var(--border);
+  --grok-border-2: var(--border-2);
+  --grok-border-3: var(--border-strong);
+  --grok-text-1: var(--text-1);
+  --grok-text-2: var(--text-2);
+  --grok-text-3: var(--text-3);
+  --grok-text-4: var(--text-4);
+  --grok-accent: var(--accent);
+  --grok-accent-hi: var(--accent-hover);
+  --grok-accent-lo: var(--text-2);
+  --grok-success: var(--success);
+  --grok-warning: var(--warn);
+  --grok-danger: var(--error);
+  --grok-info: var(--info);
+
+  --surface-1: var(--bg-2);
+  --surface-info: rgba(122, 143, 168, 0.16);
+  --border-faint: var(--border);
+  --text-emphasis: var(--text-1);
+  --text-muted: var(--text-2);
+  --text-faint: var(--text-3);
+  --text-accent: var(--accent);
+  --button-primary: var(--accent);
+
+  color: var(--text-1);
+  background: var(--bg-0);
   font-family:
-    "Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  font-feature-settings: "ss01", "cv11", "cv05";
-  font-size: 14px;
+    "Geist", "Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.55;
   font-synthesis: none;
@@ -46,24 +96,47 @@
   -webkit-text-size-adjust: 100%;
 }
 
-/* Light theme override (data-theme="light" on root or body). */
+/* Light theme — warm parchment, Claude-Desktop vibe. */
 :root[data-theme="light"],
 body[data-theme="light"] {
-  --grok-bg-0: #fafbfd;
-  --grok-bg-1: #ffffff;
-  --grok-bg-2: #f3f5f9;
-  --grok-bg-3: #eef1f6;
-  --grok-bg-4: #e3e7ee;
-  --grok-border-1: rgba(20, 32, 51, 0.06);
-  --grok-border-2: rgba(20, 32, 51, 0.12);
-  --grok-border-3: rgba(20, 32, 51, 0.20);
-  --grok-text-1: #142033;
-  --grok-text-2: #4b5567;
-  --grok-text-3: #6b7388;
-  --grok-text-4: #98a0b3;
-  --grok-accent: #d65a2a;
-  --grok-accent-hi: #ff7a45;
-  --grok-accent-lo: #9c4321;
+  --bg-0: #E8E4D9;
+  --bg-1: #F6F3EC;
+  --bg-2: #F0EDE5;
+  --bg-3: #FBF9F3;
+  --bg-4: #E5E1D5;
+  --bg-5: #D6D1C2;
+  --bg-overlay: rgba(20,18,14,0.32);
+
+  --text-1: #1F1D19;
+  --text-2: #5C5953;
+  --text-3: #8E8B83;
+  --text-4: #B5B1A7;
+
+  --border:        #E1DCCE;
+  --border-2:      #D4CFBE;
+  --border-strong: #B1AB99;
+
+  --accent:       #1F1D19;
+  --accent-hover: #000000;
+  --accent-soft:  rgba(31,29,25,0.06);
+  --accent-line:  rgba(31,29,25,0.18);
+  --accent-glow:  rgba(31,29,25,0.08);
+  --accent-ink:   #F6F3EC;
+
+  --success: #5A8167;
+  --warn:    #8A7240;
+  --error:   #A05050;
+  --info:    #5A6F8A;
+
+  --syn-keyword: #7A5A8E;
+  --syn-string:  #5D7A4C;
+  --syn-fn:      #4F6E91;
+  --syn-comment: #9A988F;
+  --syn-num:     #8C5E3A;
+  --syn-type:    #8A7240;
+
+  /* Light-mode legacy aliases follow the new tokens automatically since
+   * the --grok-* names are var() aliases of the canonical names above. */
 }
 
 * {
@@ -3953,6 +4026,153 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   color: var(--grok-text-4);
   border-top: 1px solid var(--grok-border-1);
   background: var(--grok-bg-1);
+}
+
+/* ===== Sidebar icon buttons (brand chevron, history refresh, footer gear) ===== */
+.brand-chevron,
+.history-refresh,
+.account-settings {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-3);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.brand-chevron:hover,
+.history-refresh:hover,
+.account-settings:hover {
+  background: var(--bg-3);
+  border-color: var(--border);
+  color: var(--text-1);
+}
+.brand-chevron:active,
+.history-refresh:active,
+.account-settings:active {
+  background: var(--bg-4);
+}
+
+/* ===== Sidebar collapse (⌘B) ===== */
+.app-shell.sidebar-collapsed .app-sidebar {
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  overflow: hidden;
+  transition: width 180ms ease, min-width 180ms ease, max-width 180ms ease;
+}
+.app-shell.sidebar-collapsed .app-sidebar > *:not(.mac-lights):not(.brand) {
+  display: none;
+}
+.app-shell.sidebar-collapsed .app-sidebar .brand h1,
+.app-shell.sidebar-collapsed .app-sidebar .brand span {
+  display: none;
+}
+.app-shell.sidebar-collapsed .app-sidebar .brand {
+  justify-content: center;
+}
+
+/* ===== Command palette (⌘K) ===== */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 200;
+  animation: palette-fade 120ms ease-out;
+}
+@keyframes palette-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.palette-shell {
+  width: min(640px, calc(100% - 32px));
+  max-height: 60vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop, 0 24px 60px -12px rgba(0,0,0,0.6));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.palette-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.palette-search-glyph {
+  color: var(--text-3);
+  font-size: 16px;
+}
+.palette-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: var(--font-sans, inherit);
+  font-size: 14px;
+  font-weight: 450;
+}
+.palette-search-input::placeholder { color: var(--text-3); }
+.palette-search-kbd {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 10.5px;
+  color: var(--text-3);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--bg-3);
+}
+.palette-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.palette-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.palette-row.is-highlight { background: var(--bg-4); }
+.palette-row-label { flex: 1; font-size: 13px; }
+.palette-row-group {
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.palette-row-shortcut {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 11px;
+  color: var(--text-3);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--bg-3);
+}
+.palette-empty {
+  padding: 20px 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
 }
 
 /* ===== Tab bar (multi-session) ===== */
