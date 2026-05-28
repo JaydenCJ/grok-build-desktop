@@ -71,7 +71,9 @@ assert.ok(app.includes("parseAvailableModels"), "Dynamic model parser missing");
 assert.ok(app.includes("togglePanel"), "Panel mutual-exclusivity helper missing");
 assert.ok(app.includes("pickFolder"), "Folder picker handler missing");
 assert.ok(app.includes("workspace-statusbar"), "Workspace status bar missing");
-assert.ok(app.includes("empty-hints"), "Empty conversation hint missing");
+assert.ok(app.includes("starter-grid"), "Empty-state starter cards missing");
+assert.ok(app.includes("starter-card"), "Empty-state starter card buttons missing");
+assert.ok(app.includes("How can Grok help today"), "Empty-state heading missing");
 assert.ok(app.includes("conversationScrollRef"), "Conversation auto-scroll ref missing");
 
 const css = read("src/App.css");
