@@ -2157,21 +2157,31 @@ function App() {
 
   const modelOptions = useMemo(() => {
     const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
-    // LOCK to what `grok models` actually reports. Previously we appended all
-    // declared presets (grok-4.3, grok-latest, …) even when the CLI only
-    // exposed grok-build — so a user could pick grok-4.3, which is a chat
-    // model that fails in Grok Build's coding mode. When the CLI gives a
-    // definitive list, show EXACTLY that. Only fall back to the full preset
-    // list when the CLI returned nothing (offline / not logged in).
-    if (fromCli.length > 0) return fromCli;
-    return Object.keys(grokModelPresets).filter((id) => id !== "custom");
-  }, [availableModels]);
+    const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
+    // Mode-aware model list.
+    //   CODE mode  → lock to the Grok Build coding agent(s) the CLI actually
+    //                reports. grok-4.3 et al. are chat/reasoning models that
+    //                can't drive Grok Build's coding loop, so they must NOT be
+    //                pickable here (that was the failing case).
+    //   CHAT mode  → free choice: every preset (grok-4.3, grok-latest, …) so
+    //                you can pick a reasoning model for product thinking.
+    if (mode === "coding") {
+      return fromCli.length > 0 ? fromCli : ["grok-build"];
+    }
+    // Chat: union of CLI-reported + declared presets, CLI ones first.
+    const merged: string[] = [];
+    for (const id of [...fromCli, ...declared]) {
+      if (!merged.includes(id)) merged.push(id);
+    }
+    return merged;
+  }, [availableModels, mode]);
   const modelIsVerified = availableModels.length === 0 || availableModels.includes(activeModel) || modelPreset === "custom";
 
-  // If the persisted model isn't actually available (e.g. a leftover grok-4.3
-  // selection on a grok.com login that only exposes grok-build), snap to the
-  // first available model. Keeps the locked dropdown self-consistent.
+  // Only auto-snap in CODE mode, where the list is intentionally restricted —
+  // if a stale grok-4.3 selection lingers there, jump to the coding agent.
+  // Chat mode leaves the user's pick alone.
   useEffect(() => {
+    if (mode !== "coding") return;
     if (availableModels.length === 0) return; // CLI didn't report — leave as-is
     if (modelPreset === "custom") return;
     if (modelOptions.includes(modelPreset)) return;
@@ -2179,7 +2189,7 @@ function App() {
     if (!fallback) return;
     if (isGrokModelId(fallback)) changeModelPreset(fallback);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableModels, modelOptions, modelPreset]);
+  }, [mode, availableModels, modelOptions, modelPreset]);
 
   const currentPolicy = actionPolicies[actionPolicy];
   const grokToolStatus = statusMap.grok;
