@@ -1026,8 +1026,15 @@ pre {
   align-items: center;
   border-top: 1px solid #edf1f4;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 14px;
+}
+/* Run-config selects are secondary to mode/model — keep them compact so the
+   footer row stays tidy even with all of them shown. */
+.composer-footer select.run-select {
+  font-size: 0.78rem;
+  max-width: 150px;
 }
 
 .composer-footer button {
@@ -3981,6 +3988,20 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 }
 .detail-toggle:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
 .detail-toggle.active { background: var(--bg-4); color: var(--text-1); border-color: var(--border-2); }
+/* Title-bar icon button (day/night toggle) — matches the detail toggle. */
+.titlebar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.titlebar-icon-btn:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
 
 /* Bottom-left account strip is a full-width Settings button now. */
 .account-strip {

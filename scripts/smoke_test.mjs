@@ -344,5 +344,21 @@ assert.ok(app.includes('className="status-cluster status-action"'),
   "status bar project/model/policy chips must be clickable buttons");
 assert.ok(css.includes("button.status-cluster.status-action"),
   "clickable status chips need a hover affordance");
+// 8) MCP add must emit per-arg --args=VALUE (clap rejects a bare leading-dash
+//    value like npx's -y → "unexpected argument '-y'"). Verified against the
+//    real grok CLI.
+assert.ok(libRs.includes('format!("--args={}"'),
+  "grok_mcp_add must emit per-arg --args=VALUE (bare -y is rejected by clap)");
+assert.ok(read("src/lib/mcp.ts").includes("--args=${a}"),
+  "MCP command preview must mirror the --args= form the backend runs");
+// 9) Run config (effort/reasoning/permission/best-of-n) lives in the composer
+//    footer, one glance below the chat box.
+assert.ok(app.includes('aria-label="Agent effort"') && app.includes('className="run-select"'),
+  "run-config selects must be in the composer footer (below the chat box)");
+// 10) Top bar: day/night theme toggle + a panels menu (Preview/Context/Terminal/Tools).
+assert.ok(app.includes('className="titlebar-icon-btn"'),
+  "title bar must have a day/night theme toggle");
+assert.ok(app.includes("openPanelMenu") && app.includes("Tools & MCP"),
+  "top-right must open a panels menu wired to Preview/Context/Terminal/Tools");
 
 console.log("smoke: ok");

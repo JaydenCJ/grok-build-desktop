@@ -177,7 +177,10 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
 
 /** Build the human-readable `grok mcp add …` command for copy/preview. */
 export function previewAddCommand(entry: McpCatalogEntry): string {
-  const parts = ['grok', 'mcp', 'add', entry.id, '--command', entry.command, '--args', ...entry.args];
+  // Mirror exactly what the backend runs: each arg as its own `--args=VALUE`
+  // (clap rejects a bare `-y`; the `=` form binds it). Keep in sync with
+  // grok_mcp_add in src-tauri/src/lib.rs.
+  const parts = ['grok', 'mcp', 'add', entry.id, '--command', entry.command, ...entry.args.map((a) => `--args=${a}`)];
   const env = (entry.requiredEnv ?? []).flatMap((e) => ['--env', `${e.key}=…`]);
   return [...parts, ...env].join(' ');
 }
