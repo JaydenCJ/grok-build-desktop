@@ -18,7 +18,24 @@ fi
 
 ditto "$SOURCE_APP" "$TARGET_APP"
 codesign --verify --deep --strict "$TARGET_APP"
-if ! open "$TARGET_APP"; then
+
+# Re-register with LaunchServices so `open` sees the freshly-written bundle.
+# Without this, `open` can race the rewrite and fail with -600 (procNotFound)
+# even though the app is perfectly valid on disk.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "$TARGET_APP" >/dev/null 2>&1 || true
+
+# Launch with one short-settle retry — the first attempt right after a bundle
+# rewrite occasionally loses the LaunchServices race.
+launched=0
+for attempt in 1 2 3; do
+  if open "$TARGET_APP" >/dev/null 2>&1; then
+    launched=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$launched" -ne 1 ]]; then
   printf 'Warning: installed app verified, but macOS did not launch it automatically. Open it from %s.\n' "$TARGET_APP" >&2
 fi
 
