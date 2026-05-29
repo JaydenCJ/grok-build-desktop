@@ -733,8 +733,14 @@ pre {
 }
 
 .conversation-panel {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  /* Flex column, NOT a 2-row grid. The multi-session TabBar is now the first
+     child, followed by the scroll area, QueueDock, StatusBar and composer —
+     a fixed `grid-template-rows: 1fr auto` would let the TabBar steal the
+     flexible row and collapse the scroll area to 0 height (Virtuoso then
+     renders nothing). Flex + `flex:1` on .conversation-scroll is robust to
+     any number of sibling bars. */
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
@@ -856,8 +862,9 @@ pre {
 .conversation-scroll {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;       /* fill the space between TabBar and the composer */
   gap: 0;
-  min-height: 0;
+  min-height: 0;        /* allow it to shrink so Virtuoso gets a real height */
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -2413,9 +2420,9 @@ select:focus {
 
 .conversation-panel {
   align-self: stretch;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   grid-column: 1;
-  grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
   min-height: 0;
   width: min(1280px, 100%);
