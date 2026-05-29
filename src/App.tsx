@@ -6,6 +6,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  AlertTriangle,
   Bot,
   ChevronDown,
   CheckCircle2,
@@ -19,7 +20,6 @@ import {
   History,
   Layers3,
   Loader2,
-  Moon,
   MoreHorizontal,
   PanelRight,
   Play,
@@ -30,7 +30,6 @@ import {
   ShieldCheck,
   Sparkles,
   SquareTerminal,
-  Sun,
   TerminalSquare,
   Trash2,
   Wrench,
@@ -49,6 +48,7 @@ import { TabBar } from "./components/TabBar";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
+import { SettingsPage } from "./components/SettingsPage";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -65,7 +65,7 @@ type Runner =
   | "mcp-doctor"
   | "plugins"
   | "sessions";
-type ActionPolicy = "review" | "patch" | "autopilot";
+type ActionPolicy = "review" | "plan" | "patch" | "autopilot";
 type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions" | "desktop";
 type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -305,18 +305,29 @@ const codingPresets = [
   },
 ];
 
-const actionPolicies: Record<ActionPolicy, { label: string; detail: string }> = {
+const actionPolicies: Record<
+  ActionPolicy,
+  { label: string; detail: string; risk: "none" | "low" | "high" }
+> = {
   review: {
     label: "Review only",
     detail: "Read, reason, propose. No file edits unless asked.",
+    risk: "none",
+  },
+  plan: {
+    label: "Plan",
+    detail: "Grok presents a plan first and waits — runs with --permission-mode plan, no edits until you approve.",
+    risk: "none",
   },
   patch: {
     label: "Patch ready",
-    detail: "Produce exact changes and apply narrow safe edits.",
+    detail: "Produce exact changes and apply narrow safe edits with normal approvals.",
+    risk: "low",
   },
   autopilot: {
     label: "Autopilot",
-    detail: "Use tools and verification aggressively, still avoid destructive work.",
+    detail: "Auto-approves every tool call (--always-approve). Grok can edit files and run commands without asking. Use only in a sandbox or disposable checkout.",
+    risk: "high",
   },
 };
 
@@ -468,7 +479,12 @@ function isMode(value: unknown): value is Mode {
 }
 
 function isActionPolicy(value: unknown): value is ActionPolicy {
-  return value === "review" || value === "patch" || value === "autopilot";
+  return (
+    value === "review" ||
+    value === "plan" ||
+    value === "patch" ||
+    value === "autopilot"
+  );
 }
 
 function isInspectorTab(value: unknown): value is InspectorTab {
@@ -787,6 +803,11 @@ function App() {
   const [toolbeltOpen, setToolbeltOpen] = useState(false);
   // ⌘K command palette — global, lives outside the panel-toggle group above.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Dedicated Settings page (Claude-Desktop-style modal). settingsSection
+  // selects which left-nav panel is shown.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -1183,7 +1204,16 @@ function App() {
     if (reasoningEffort && reasoningEffort !== "off") {
       args.push("--reasoning-effort", reasoningEffort);
     }
-    if (permissionMode && permissionMode !== "default") {
+    // Action policy → REAL grok permission behavior (was previously prompt-only).
+    //   review   → no permission flag (the preamble asks Grok to stay read-only)
+    //   plan     → --permission-mode plan  (Grok plans, doesn't edit, waits)
+    //   patch    → respect the advanced permission-mode override, else default
+    //   autopilot→ --always-approve  (auto-approves EVERY tool call — risky)
+    if (actionPolicy === "plan") {
+      args.push("--permission-mode", "plan");
+    } else if (actionPolicy === "autopilot") {
+      args.push("--always-approve");
+    } else if (permissionMode && permissionMode !== "default") {
       args.push("--permission-mode", permissionMode);
     }
     if (bestOfN > 1) args.push("--best-of-n", String(bestOfN));
@@ -1866,13 +1896,10 @@ function App() {
       },
       {
         id: "open-settings",
-        label: "Open Settings panel",
+        label: "Open Settings",
         shortcut: "⌘,",
         group: "View",
-        run: () => {
-          setToolsOpen(true);
-          setInspectorTab("context");
-        },
+        run: () => setSettingsOpen(true),
       },
       {
         id: "cancel-run",
@@ -1904,8 +1931,7 @@ function App() {
         setSidebarCollapsed((v) => !v);
       } else if (meta && e.key === ",") {
         e.preventDefault();
-        setToolsOpen(true);
-        setInspectorTab("context");
+        setSettingsOpen(true);
       } else if (meta && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
         setThemeMode((t) => (t === "dark" ? "light" : "dark"));
@@ -2117,11 +2143,23 @@ function App() {
   const [historyFilter, setHistoryFilter] = useState("");
   const historySearchInputRef = useRef<HTMLInputElement | null>(null);
   const recentPrompts = useMemo(() => {
-    const all = recentPromptPreviews(messages);
+    // Aggregate prompts across ALL sessions (not just the active tab) so that
+    // creating a New Session never makes the history list look "wiped" — the
+    // user's earlier conversations stay visible regardless of which tab is
+    // open. Active tab uses live `messages`; others use their stored copy.
+    const everyMessage = tabs
+      .flatMap((t) =>
+        (t.id === activeTabId
+          ? (messages as unknown as TabMessage[])
+          : t.messages) ?? [],
+      )
+      .slice()
+      .sort((a, b) => ((a as { ts?: number }).ts ?? 0) - ((b as { ts?: number }).ts ?? 0));
+    const all = recentPromptPreviews(everyMessage as unknown as ChatMessage[]);
     if (!historyFilter.trim()) return all;
     const needle = historyFilter.trim().toLowerCase();
     return all.filter((item) => item.title.toLowerCase().includes(needle) || item.detail.toLowerCase().includes(needle));
-  }, [messages, historyFilter]);
+  }, [tabs, activeTabId, messages, historyFilter]);
 
   const modelOptions = useMemo(() => {
     const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
@@ -2212,6 +2250,75 @@ function App() {
         actions={paletteActions}
         onClose={() => setPaletteOpen(false)}
       />
+      <SettingsPage
+        open={settingsOpen}
+        section={settingsSection}
+        onSection={setSettingsSection}
+        onClose={() => setSettingsOpen(false)}
+        themeMode={themeMode}
+        setThemeMode={setThemeMode}
+        dockPosition={dockPosition}
+        setDockPosition={(d) => {
+          setDockPosition(d);
+          window.localStorage.setItem(storageKeys.dockPosition, d);
+        }}
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        modelOptions={modelOptions.map((id) => ({
+          value: id,
+          label: grokModelPresets[id as GrokModelId]?.label ?? id,
+        }))}
+        modelPreset={modelPreset}
+        onModelPreset={(id) => changeModelPreset(id as GrokModelId)}
+        customModel={customModel}
+        setCustomModel={setCustomModel}
+        activeModel={activeModel}
+        effortOptions={(Object.keys(effortLevels) as EffortLevel[]).map((k) => ({
+          value: k,
+          label: effortLevels[k].label,
+        }))}
+        effortLevel={effortLevel}
+        setEffortLevel={(v) => setEffortLevel(v as EffortLevel)}
+        reasoningOptions={(Object.keys(reasoningEfforts) as ReasoningEffort[]).map((k) => ({
+          value: k,
+          label: reasoningEfforts[k].label,
+        }))}
+        reasoningEffort={reasoningEffort}
+        setReasoningEffort={(v) => setReasoningEffort(v as ReasoningEffort)}
+        bestOfN={bestOfN}
+        setBestOfN={setBestOfN}
+        experimentalMemory={experimentalMemory}
+        setExperimentalMemory={setExperimentalMemory}
+        actionPolicyOptions={(Object.keys(actionPolicies) as ActionPolicy[]).map((k) => ({
+          value: k,
+          label: actionPolicies[k].label,
+          detail: actionPolicies[k].detail,
+          risk: actionPolicies[k].risk,
+        }))}
+        actionPolicy={actionPolicy}
+        setActionPolicy={(v) => setActionPolicy(v as ActionPolicy)}
+        permissionOptions={(Object.keys(permissionModes) as PermissionMode[]).map((k) => ({
+          value: k,
+          label: permissionModes[k].label,
+        }))}
+        permissionMode={permissionMode}
+        setPermissionMode={(v) => setPermissionMode(v as PermissionMode)}
+        webSearchEnabled={webSearchEnabled}
+        setWebSearchEnabled={setWebSearchEnabled}
+        subagentsEnabled={subagentsEnabled}
+        setSubagentsEnabled={setSubagentsEnabled}
+        selfCheck={selfCheck}
+        setSelfCheck={setSelfCheck}
+        codingCwd={codingCwd}
+        setCodingCwd={setCodingCwd}
+        onPickFolder={() => void pickFolder()}
+        chromeExtensionId={chromeExtensionId}
+        setChromeExtensionId={setChromeExtensionId}
+        telegramConfigured={false}
+        chromeConnected={Boolean(chromeBridge?.connected)}
+        appVersion="0.4.0"
+        grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
+      />
       <aside className="app-sidebar">
         <div className="mac-lights" aria-hidden="true">
           <span className="red" />
@@ -2261,18 +2368,16 @@ function App() {
                   togglePanel("tools");
                   setInspectorTab("context");
                 } else if (item.label === "Settings") {
-                  // Open Tools panel on the Permissions tab — that's where
-                  // approval policy, web search, subagents, etc. live.
-                  setToolsOpen(true);
-                  setInspectorTab("permissions");
+                  // Dedicated Settings page (Claude-Desktop-style modal).
+                  setSettingsOpen(true);
                 }
               };
               // The active highlight should follow what's *actually* open,
               // not hardcoded to "New Session". Otherwise every button looks
               // selected and the user can't tell which panel is current.
               const isActive =
-                (item.label === "Tools" && toolsOpen && inspectorTab !== "permissions") ||
-                (item.label === "Settings" && toolsOpen && inspectorTab === "permissions") ||
+                (item.label === "Tools" && toolsOpen) ||
+                (item.label === "Settings" && settingsOpen) ||
                 (item.label === "Search" && paletteOpen);
               return (
                 <button
@@ -2338,8 +2443,23 @@ function App() {
                   className={index === 0 ? "active" : ""}
                   key={item.id}
                   onClick={() => {
-                    const target = messages.find((message) => message.id === item.id);
-                    if (target) updatePrompt(target.content);
+                    // History now aggregates across sessions — the prompt may
+                    // live in the active tab or another one. Search live
+                    // messages first, then every stored tab.
+                    const inActive = messages.find((m) => m.id === item.id);
+                    if (inActive) {
+                      updatePrompt(inActive.content);
+                      return;
+                    }
+                    for (const t of tabs) {
+                      const hit = (t.messages as unknown as ChatMessage[]).find(
+                        (m) => m.id === item.id,
+                      );
+                      if (hit) {
+                        updatePrompt(hit.content);
+                        return;
+                      }
+                    }
                   }}
                   title="Restore this prompt to the composer"
                   type="button"
@@ -2391,10 +2511,7 @@ function App() {
             type="button"
             aria-label="Open settings"
             title="Settings (⌘,)"
-            onClick={() => {
-              setToolsOpen(true);
-              setInspectorTab("permissions");
-            }}
+            onClick={() => setSettingsOpen(true)}
           >
             <Settings size={16} />
           </button>
@@ -2495,37 +2612,19 @@ function App() {
               <Wrench size={15} />
               <span>Tools</span>
             </button>
-            <label className="dock-select">
-              <PanelRight size={14} />
-              <select
-                aria-label="Dock position"
-                onChange={(event) => setDockPosition(event.currentTarget.value as DockPosition)}
-                value={dockPosition}
-              >
-                <option value="right">Right</option>
-                <option value="bottom">Bottom</option>
-              </select>
-            </label>
-            <div className="theme-switch" aria-label="Theme">
-              <button
-                aria-pressed={themeMode === "dark"}
-                className={themeMode === "dark" ? "active" : ""}
-                onClick={() => setThemeMode("dark")}
-                type="button"
-              >
-                <Moon size={14} />
-                <span>Dark</span>
-              </button>
-              <button
-                aria-pressed={themeMode === "light"}
-                className={themeMode === "light" ? "active" : ""}
-                onClick={() => setThemeMode("light")}
-                type="button"
-              >
-                <Sun size={14} />
-                <span>Light</span>
-              </button>
-            </div>
+            {/* Theme + dock position moved into Settings → General to declutter
+                the header (Claude-Desktop-style minimal top bar). A single
+                Settings gear stays here for one-click access. */}
+            <button
+              className="panel-toggle"
+              onClick={() => setSettingsOpen(true)}
+              type="button"
+              title="Settings (⌘,)"
+              aria-label="Open settings"
+            >
+              <Settings size={15} />
+              <span>Settings</span>
+            </button>
             <span className={`connection-pill ${isGrokReady ? "ready" : "blocked"}`}>
               {isGrokReady ? <CheckCircle2 size={15} /> : <CircleAlert size={15} />}
               {statusLabel}
@@ -2616,6 +2715,27 @@ function App() {
             <StatusBar />
 
             <div className="composer-row">
+              {actionPolicy === "autopilot" ? (
+                <div className="autopilot-warning" role="alert">
+                  <AlertTriangle size={15} />
+                  <div>
+                    <strong>Autopilot is on — Grok auto-approves every action.</strong>
+                    <span>
+                      It can edit files and run shell commands with{" "}
+                      <code>--always-approve</code>, no confirmation. Only use this in a
+                      sandbox or a disposable git checkout.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="autopilot-warning-dismiss"
+                    onClick={() => setActionPolicy("patch")}
+                    title="Switch back to Patch ready"
+                  >
+                    Switch to Patch
+                  </button>
+                </div>
+              ) : null}
               <Composer
                 ref={composerRef}
                 cwd={codingCwd}
