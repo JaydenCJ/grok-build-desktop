@@ -17,9 +17,6 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 - Browser automation runs through `scripts/browser_automation.py` and the `browser-use` Python package.
 - Repository absorption starts with `scripts/absorb_repo.py` and writes manifests under `absorbed/`.
 - The Absorb Repo panel calls the same script through the Rust bridge, so terminal and desktop behavior stay aligned.
-- Chrome tab presence runs through an unpacked Manifest V3 extension in `chrome-extension/`.
-- Chrome Native Messaging writes monitored tab state to `~/Library/Application Support/Grok Desktop/chrome_state.json`.
-- The Mac app reads Chrome bridge state through `get_chrome_bridge_state` and can install the native host through `install_chrome_native_host`.
 - The Mac app persists session state through `load_session_state` and `save_session_state` at `~/Library/Application Support/Grok Desktop/session_state.json`.
 - External commands are wrapped with a timeout so missing or stuck CLIs do not permanently block the app.
 - Grok streaming uses a selected working directory so future ACP, Plan Mode, or sub-agent backends can preserve the same prompt/cwd contract.
@@ -28,8 +25,6 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 ## Platform Adapter Shape
 
 - `AgentBackend`: subprocess or API caller such as Grok Build or browser-use.
-- `BrowserPresenceAdapter`: Chrome extension today; future Edge/Arc adapters can keep the same watched-tab state shape.
-- `NativeControlAdapter`: macOS Native Messaging today; future Windows host and mobile bridge layers should expose the same tab/device status contract.
 - `DeviceAdapter`: reserved for scrcpy/scrcpy-mcp now, with iOS/Android app bridges planned as separate adapters.
 
 ## Environment Overrides

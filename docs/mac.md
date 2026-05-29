@@ -41,18 +41,7 @@ Ad-hoc signing is still not the same as public distribution signing. For a polis
 ```bash
 npm run doctor
 npm run check
-npm run chrome:check
 npm run mac:build
 ```
 
 Open the installed app from `~/Applications/Grok Desktop.app` for a local smoke test.
-
-## Chrome Native Bridge
-
-Load `chrome-extension/` in Chrome, copy the unpacked extension ID, then install the native host:
-
-```bash
-python3 scripts/install_chrome_native_host.py --extension-id <chrome-extension-id>
-```
-
-The Grok Desktop Mac app can also run this installer from the Chrome Agent panel.

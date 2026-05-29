@@ -46,7 +46,6 @@ for (const command of [
   "doctor_grok_mcp",
   "list_grok_plugins",
   "list_grok_sessions",
-  "install_chrome_native_host",
   "pick_project_folder",
   // F: run queue + streaming-json pipeline
   "enqueue_run",
@@ -90,10 +89,6 @@ assert.ok(css.includes(".status-cluster"), "Status cluster styles missing");
 assert.ok(css.includes(".repo-pick-button"), "Folder picker button styles missing");
 assert.ok(css.includes(".message.user-message"), "User message styles missing");
 assert.ok(!css.includes("grid-template-rows: auto minmax(0, 1fr) auto 36px;"), "Old 36px empty workspace row should be gone");
-
-const manifest = JSON.parse(read("chrome-extension/manifest.json"));
-assert.equal(manifest.manifest_version, 3, "Chrome extension must stay Manifest V3");
-assert.ok(manifest.permissions?.includes("nativeMessaging"), "native messaging permission missing");
 
 assert.ok(
   existsSync(join(root, "docs/design/grok-desktop-uiux-concept.png")),
@@ -168,25 +163,6 @@ assert.ok(packageJsonText.includes('"highlight.js"'), "highlight.js dependency m
 assert.ok(packageJsonText.includes('"react-virtuoso"'), "react-virtuoso dependency missing — MessageList virtualizes chat");
 assert.ok(packageJsonText.includes('"test:unit"'), "vitest test:unit script missing for streamStore tests");
 
-// E: Telegram remote daemon
-const cargoToml = read("src-tauri/Cargo.toml");
-assert.ok(cargoToml.includes("teloxide"), "teloxide dep missing — Telegram remote daemon");
-assert.ok(cargoToml.includes("dotenvy"), "dotenvy dep missing — .env loader");
-assert.ok(existsSync(join(root, "src-tauri/src/telegram/mod.rs")), "telegram module missing");
-assert.ok(existsSync(join(root, "src-tauri/src/telegram/config.rs")), "telegram config module missing");
-assert.ok(existsSync(join(root, "src-tauri/src/telegram/commands.rs")), "telegram commands module missing");
-assert.ok(existsSync(join(root, "src-tauri/src/telegram/stream.rs")), "telegram stream module missing");
-const teleCommands = read("src-tauri/src/telegram/commands.rs");
-for (const cmd of ["Grok(String)", "Queue", "Cancel(String)", "Status", "Help"]) {
-  assert.ok(teleCommands.includes(cmd), `telegram command variant missing: ${cmd}`);
-}
-assert.ok(libRs.includes("telegram::spawn_daemon"),
-  "lib.rs must spawn telegram daemon from setup()");
-assert.ok(libRs.includes("pub mod telegram"), "lib.rs must export telegram module");
-assert.ok(read(".env.example").includes("TELEGRAM_BOT_TOKEN"),
-  ".env.example must document TELEGRAM_BOT_TOKEN");
-assert.ok(read(".env.example").includes("TELEGRAM_ALLOWED_CHAT_IDS"),
-  ".env.example must document TELEGRAM_ALLOWED_CHAT_IDS");
 
 // v0.3.0: Prompt library (D MVP)
 assert.ok(existsSync(join(root, "src-tauri/src/prompts/mod.rs")),
@@ -390,8 +366,5 @@ assert.ok(!app.includes("Grok Desktop Professional Coding Session"),
   "the heavy user-turn preamble must be removed");
 assert.ok(!app.includes("discovered by grok inspect."),
   "must not echo grok's ecosystem back to it (the old line hard-said 0 skills)");
-assert.ok(read("src-tauri/src/telegram/commands.rs").includes("GROK_SENIOR_RULES") &&
-  read("src-tauri/src/telegram/commands.rs").includes('"--rules"'),
-  "Telegram runs must send the same --rules guidance as the desktop UI");
 
 console.log("smoke: ok");

@@ -83,38 +83,11 @@ def grok_auth_check() -> Check:
     )
 
 
-def chrome_native_host_check() -> Check:
-    manifest = (
-        Path.home()
-        / "Library"
-        / "Application Support"
-        / "Google"
-        / "Chrome"
-        / "NativeMessagingHosts"
-        / "com.grok.desktop.native.json"
-    )
-    if manifest.exists():
-        return Check(
-            name="chrome-native-host",
-            ok=True,
-            command=str(manifest),
-            detail="installed",
-        )
-
-    return Check(
-        name="chrome-native-host",
-        ok=False,
-        command=str(manifest),
-        detail="not installed; run python3 scripts/install_chrome_native_host.py --extension-id <id>",
-    )
-
-
 def main() -> int:
     checks = [
         command_check("grok", ["grok", "--version"]),
         grok_auth_check(),
         python_package_check("browser-use", "browser-use", "browser_use"),
-        chrome_native_host_check(),
         command_check("scrcpy", ["scrcpy", "--version"]),
         command_check("scrcpy-mcp", ["scrcpy-mcp", "--version"]),
         command_check("git", ["git", "--version"]),

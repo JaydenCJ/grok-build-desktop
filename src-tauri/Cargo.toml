@@ -26,8 +26,6 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros", "chro
 uuid = { version = "1", features = ["v7", "serde"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
-teloxide = { version = "0.13", default-features = false, features = ["macros", "ctrlc_handler", "rustls"] }
-dotenvy = "0.15"
 thiserror = "2"
 ignore = "0.4"
 

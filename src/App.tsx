@@ -73,7 +73,6 @@ type Runner =
   | "browser"
   | "absorb"
   | "doctor"
-  | "chrome"
   | "inspect"
   | "models"
   | "mcp"
@@ -122,42 +121,6 @@ type ToolRun = {
   timed_out: boolean;
   output: string;
   stderr: string;
-};
-
-type ChromeSnapshot = {
-  title: string;
-  url: string;
-  description: string;
-  selectedText: string;
-  textSample: string;
-  headings: { level: string; text: string }[];
-  updatedAt?: number;
-};
-
-type ChromeTabState = {
-  id: number;
-  title: string;
-  url: string;
-  status: "watching" | "controlling" | string;
-  task: string;
-  updatedAt?: number;
-  snapshot?: ChromeSnapshot | null;
-};
-
-type ChromeBridgeState = {
-  ok: boolean;
-  connected: boolean;
-  hostName: string;
-  extensionId?: string | null;
-  updatedAt?: number | null;
-  statePath: string;
-  tabs: ChromeTabState[];
-  settings: {
-    focusGuard: boolean;
-    visibleMotion: boolean;
-    controlledTabsOnly: boolean;
-  };
-  lastError?: string | null;
 };
 
 type StaticPreviewFile = {
@@ -217,7 +180,6 @@ type SessionState = {
   shellCommand?: string;
   actionPolicy?: ActionPolicy;
   codingWorkflow?: string;
-  chromeExtensionId?: string;
   themeMode?: ThemeMode;
   lastRun?: ToolRun | null;
   history?: ToolRun[];
@@ -244,7 +206,6 @@ const modeCopy = {
 const storageKeys = {
   mode: "grok-desktop-mode",
   drafts: "grok-desktop-mode-drafts",
-  chromeExtensionId: "grok-desktop-chrome-extension-id",
   codingCwd: "grok-desktop-coding-cwd",
   shellCommand: "grok-desktop-shell-command",
   actionPolicy: "grok-desktop-action-policy",
@@ -673,20 +634,6 @@ function formatOutput(run: ToolRun | null, terminalOutput = "") {
   return `${output}\n\nstderr:\n${stderr}`;
 }
 
-function formatBridgeAge(timestamp?: number | null) {
-  if (!timestamp) return "not connected";
-  const seconds = Math.max(1, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
-}
-
-function snapshotLead(tab: ChromeTabState) {
-  const firstHeading = tab.snapshot?.headings?.find((heading) => heading.text)?.text;
-  return firstHeading || tab.snapshot?.description || tab.snapshot?.textSample || tab.url;
-}
-
 function terminalClass(line: string) {
   if (line.startsWith("[err]")) return "terminal-line terminal-error";
   if (line.startsWith("[sys]")) return "terminal-line terminal-system";
@@ -814,11 +761,7 @@ function App() {
   );
   const [repoPath, setRepoPath] = useState("");
   const [copyText, setCopyText] = useState(true);
-  const [chromeBridge, setChromeBridge] = useState<ChromeBridgeState | null>(null);
   const [grokStatus, setGrokStatus] = useState<GrokAuthStatus | null>(null);
-  const [chromeExtensionId, setChromeExtensionId] = useState(
-    () => window.localStorage.getItem(storageKeys.chromeExtensionId) ?? "",
-  );
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = window.localStorage.getItem(storageKeys.themeMode);
     const cleanLayoutMigrated = window.localStorage.getItem(storageKeys.cleanLayoutTheme) === "true";
@@ -839,7 +782,7 @@ function App() {
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  // Developer-utilities <details> (Browser / Chrome bridge / Absorb Repo).
+  // Developer-utilities <details> (Browser / Absorb Repo).
   // Independent from `toolsOpen` so the inspector and the toolbelt don't both
   // pop open at once and stack on top of each other in the right column.
   const [toolbeltOpen, setToolbeltOpen] = useState(false);
@@ -1949,72 +1892,6 @@ function App() {
     }
   }
 
-  async function refreshChromeBridge() {
-    try {
-      if (!hasTauriRuntime()) {
-        setChromeBridge({
-          ok: false,
-          connected: false,
-          hostName: "com.grok.desktop.native",
-          statePath: "",
-          tabs: [],
-          settings: {
-            focusGuard: true,
-            visibleMotion: true,
-            controlledTabsOnly: true,
-          },
-          lastError: "Chrome bridge state is available in the Tauri desktop window.",
-        });
-        return;
-      }
-      setChromeBridge(await invoke<ChromeBridgeState>("get_chrome_bridge_state"));
-    } catch (error) {
-      setChromeBridge({
-        ok: false,
-        connected: false,
-        hostName: "com.grok.desktop.native",
-        statePath: "",
-        tabs: [],
-        settings: {
-          focusGuard: true,
-          visibleMotion: true,
-          controlledTabsOnly: true,
-        },
-        lastError: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  async function installChromeBridge() {
-    setBusyRunner("chrome");
-    setTerminalLines([]);
-    try {
-      if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("install-chrome-native-host"));
-        return;
-      }
-      recordRun(
-        await invoke<ToolRun>("install_chrome_native_host", {
-          extensionId: chromeExtensionId.trim(),
-        }),
-      );
-      await refreshChromeBridge();
-    } catch (error) {
-      recordRun({
-        ok: false,
-        command: "install-chrome-native-host",
-        cwd: "",
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
 
@@ -2053,9 +1930,6 @@ function App() {
           if (isActionPolicy(restored.actionPolicy)) setActionPolicy(restored.actionPolicy);
           if (typeof restored.codingWorkflow === "string") {
             setCodingWorkflow(restored.codingWorkflow);
-          }
-          if (typeof restored.chromeExtensionId === "string") {
-            setChromeExtensionId(restored.chromeExtensionId);
           }
           if (isThemeMode(restored.themeMode)) {
             setThemeMode(restored.themeMode);
@@ -2104,7 +1978,6 @@ function App() {
 
   useEffect(() => {
     refreshStatuses();
-    refreshChromeBridge();
     refreshGrokAuthStatus();
     refreshStaticPreview();
     refreshGrokModels();
@@ -2120,10 +1993,6 @@ function App() {
     }, 250);
     return () => clearTimeout(timer);
   }, [drafts]);
-
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.chromeExtensionId, chromeExtensionId);
-  }, [chromeExtensionId]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.themeMode, themeMode);
@@ -2424,7 +2293,6 @@ function App() {
         shellCommand,
         actionPolicy,
         codingWorkflow,
-        chromeExtensionId,
         themeMode,
         lastRun,
         history,
@@ -2441,7 +2309,6 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [
     actionPolicy,
-    chromeExtensionId,
     codingCwd,
     codingWorkflow,
     drafts,
@@ -2453,11 +2320,6 @@ function App() {
     shellCommand,
     themeMode,
   ]);
-
-  useEffect(() => {
-    const timer = window.setInterval(refreshChromeBridge, 5000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -2813,10 +2675,6 @@ function App() {
         codingCwd={codingCwd}
         setCodingCwd={setCodingCwd}
         onPickFolder={() => void pickFolder()}
-        chromeExtensionId={chromeExtensionId}
-        setChromeExtensionId={setChromeExtensionId}
-        telegramConfigured={false}
-        chromeConnected={Boolean(chromeBridge?.connected)}
         appVersion="0.4.0"
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
@@ -3944,7 +3802,7 @@ function App() {
         >
           <summary>
             <span><Wrench size={16} /> Developer utilities</span>
-            <small>Browser, Chrome bridge, Absorb Repo</small>
+            <small>Browser, Absorb Repo</small>
           </summary>
           <div className="toolbelt-grid">
           <div className="tool-card">
@@ -3961,38 +3819,6 @@ function App() {
               {busyRunner === "browser" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
               Run
             </button>
-          </div>
-
-          <div className="tool-card">
-            <div className="tool-title">
-              <ClipboardCheck size={17} />
-              <span>Chrome Agent</span>
-            </div>
-            <span className={`bridge-pill ${chromeBridge?.connected ? "connected" : "offline"}`}>
-              {chromeBridge?.connected ? "bridge live" : "bridge offline"}
-            </span>
-            <input
-              aria-label="Chrome extension ID"
-              onChange={(event) => setChromeExtensionId(event.currentTarget.value)}
-              placeholder="Chrome extension ID"
-              value={chromeExtensionId}
-            />
-            <button
-              disabled={busyRunner !== null || chromeExtensionId.trim().length === 0}
-              onClick={installChromeBridge}
-              type="button"
-            >
-              {busyRunner === "chrome" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-              Install
-            </button>
-            <button className="secondary-button" disabled={busyRunner !== null} onClick={refreshChromeBridge} type="button">
-              <RefreshCcw size={16} />
-              Refresh
-            </button>
-            <small>{(chromeBridge?.tabs ?? []).length} tabs · {formatBridgeAge(chromeBridge?.updatedAt)}</small>
-            {(chromeBridge?.tabs ?? []).slice(0, 2).map((tab) => (
-              <span className="tab-chip" key={tab.id}>{tab.title || snapshotLead(tab)}</span>
-            ))}
           </div>
 
           <div className="tool-card">

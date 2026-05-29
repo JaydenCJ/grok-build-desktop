@@ -28,7 +28,6 @@ pub mod desktop {
 }
 pub mod prompts;
 pub mod runs;
-pub mod telegram;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -82,7 +81,6 @@ struct SessionState {
     shell_command: Option<String>,
     action_policy: Option<String>,
     coding_workflow: Option<String>,
-    chrome_extension_id: Option<String>,
     theme_mode: Option<String>,
     last_run: Option<ToolRun>,
     history: Vec<ToolRun>,
@@ -105,89 +103,6 @@ struct GrokAuthStatus {
     npm_install_command: String,
     auth_path: String,
     config_path: String,
-}
-
-#[derive(Deserialize, Serialize, Default, Clone)]
-#[serde(default, rename_all = "camelCase")]
-struct ChromeHeading {
-    level: String,
-    text: String,
-}
-
-#[derive(Deserialize, Serialize, Default, Clone)]
-#[serde(default, rename_all = "camelCase")]
-struct ChromeSnapshot {
-    title: String,
-    url: String,
-    language: String,
-    canonical: String,
-    description: String,
-    selected_text: String,
-    headings: Vec<ChromeHeading>,
-    text_sample: String,
-    updated_at: Option<u64>,
-}
-
-#[derive(Deserialize, Serialize, Default, Clone)]
-#[serde(default, rename_all = "camelCase")]
-struct ChromeTabState {
-    id: i64,
-    title: String,
-    url: String,
-    status: String,
-    task: String,
-    updated_at: Option<u64>,
-    snapshot: Option<ChromeSnapshot>,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-#[serde(default, rename_all = "camelCase")]
-struct ChromeBridgeSettings {
-    #[serde(default = "default_true")]
-    focus_guard: bool,
-    #[serde(default = "default_true")]
-    visible_motion: bool,
-    #[serde(default = "default_true")]
-    controlled_tabs_only: bool,
-}
-
-impl Default for ChromeBridgeSettings {
-    fn default() -> Self {
-        Self {
-            focus_guard: true,
-            visible_motion: true,
-            controlled_tabs_only: true,
-        }
-    }
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default, rename_all = "camelCase")]
-struct ChromeBridgeFile {
-    connected: bool,
-    extension_id: Option<String>,
-    updated_at: Option<u64>,
-    last_error: Option<String>,
-    settings: ChromeBridgeSettings,
-    tabs: Vec<ChromeTabState>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChromeBridgeState {
-    ok: bool,
-    connected: bool,
-    host_name: String,
-    extension_id: Option<String>,
-    updated_at: Option<u64>,
-    state_path: String,
-    tabs: Vec<ChromeTabState>,
-    settings: ChromeBridgeSettings,
-    last_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -681,10 +596,6 @@ fn app_support_dir() -> PathBuf {
         .join("Library")
         .join("Application Support")
         .join("Grok Desktop")
-}
-
-fn chrome_bridge_state_path() -> PathBuf {
-    app_support_dir().join("chrome_state.json")
 }
 
 fn session_state_path() -> PathBuf {
@@ -1610,74 +1521,6 @@ fn run_doctor() -> ToolRun {
 }
 
 #[tauri::command]
-fn get_chrome_bridge_state() -> ChromeBridgeState {
-    let state_path = chrome_bridge_state_path();
-    match fs::read_to_string(&state_path) {
-        Ok(raw) => match serde_json::from_str::<ChromeBridgeFile>(&raw) {
-            Ok(state) => ChromeBridgeState {
-                ok: true,
-                connected: state.connected,
-                host_name: "com.grok.desktop.native".to_string(),
-                extension_id: state.extension_id,
-                updated_at: state.updated_at,
-                state_path: state_path.to_string_lossy().to_string(),
-                tabs: state.tabs,
-                settings: state.settings,
-                last_error: state.last_error,
-            },
-            Err(error) => ChromeBridgeState {
-                ok: false,
-                connected: false,
-                host_name: "com.grok.desktop.native".to_string(),
-                extension_id: None,
-                updated_at: None,
-                state_path: state_path.to_string_lossy().to_string(),
-                tabs: Vec::new(),
-                settings: ChromeBridgeSettings {
-                    focus_guard: true,
-                    visible_motion: true,
-                    controlled_tabs_only: true,
-                },
-                last_error: Some(format!("Could not parse Chrome bridge state: {error}")),
-            },
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ChromeBridgeState {
-            ok: true,
-            connected: false,
-            host_name: "com.grok.desktop.native".to_string(),
-            extension_id: None,
-            updated_at: None,
-            state_path: state_path.to_string_lossy().to_string(),
-            tabs: Vec::new(),
-            settings: ChromeBridgeSettings {
-                focus_guard: true,
-                visible_motion: true,
-                controlled_tabs_only: true,
-            },
-            last_error: Some(
-                "No Chrome bridge state yet. Install the native host and open the extension."
-                    .to_string(),
-            ),
-        },
-        Err(error) => ChromeBridgeState {
-            ok: false,
-            connected: false,
-            host_name: "com.grok.desktop.native".to_string(),
-            extension_id: None,
-            updated_at: None,
-            state_path: state_path.to_string_lossy().to_string(),
-            tabs: Vec::new(),
-            settings: ChromeBridgeSettings {
-                focus_guard: true,
-                visible_motion: true,
-                controlled_tabs_only: true,
-            },
-            last_error: Some(error.to_string()),
-        },
-    }
-}
-
-#[tauri::command]
 fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
     let starting_dir = initial
         .map(|value| value.trim().to_string())
@@ -1721,22 +1564,6 @@ fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String
 
     let cleaned = raw.trim_end_matches('/').to_string();
     Ok(Some(cleaned))
-}
-
-#[tauri::command]
-fn install_chrome_native_host(extension_id: String) -> ToolRun {
-    let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
-    let script = script_path("install_chrome_native_host.py");
-    run_external_command(
-        &python,
-        vec![
-            script.to_string_lossy().to_string(),
-            "--extension-id".to_string(),
-            extension_id,
-        ],
-        None,
-        command_timeout_secs(30),
-    )
 }
 
 // ── New queue commands ──────────────────────────────────────────────────────
@@ -1973,29 +1800,6 @@ fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<
     }
 }
 
-/// Desktop → Chrome: write a command the native host will pick up and push to
-/// the extension (which acts on the controlled tab). The host polls
-/// chrome_command.json; writing it again with fresh content re-fires.
-#[tauri::command]
-fn chrome_dispatch(command: serde_json::Value) -> Result<(), String> {
-    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let dir = std::path::PathBuf::from(&home).join("Library/Application Support/Grok Desktop");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir failed: {e}"))?;
-    let path = dir.join("chrome_command.json");
-    // Stamp with a nonce so re-issuing the same command still changes the file
-    // signature the host watches.
-    let mut obj = command;
-    if let Some(map) = obj.as_object_mut() {
-        map.insert(
-            "ts".into(),
-            serde_json::json!(chrono::Utc::now().timestamp_millis()),
-        );
-    }
-    let body = serde_json::to_string(&obj).map_err(|e| e.to_string())?;
-    std::fs::write(&path, body).map_err(|e| format!("write failed: {e}"))?;
-    Ok(())
-}
-
 // ── Agent overlay (G2) ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2174,10 +1978,6 @@ pub fn run() {
                     }
                 });
 
-                // Telegram remote daemon (E). No-op if env vars are missing.
-                let telegram_rx = queue.subscribe();
-                crate::telegram::spawn_daemon(queue.clone(), telegram_rx);
-
                 // Prompt library (D) — open store next to runs.sqlite.
                 let prompts_path = resource_dir.join("prompts.sqlite");
                 let prompts = crate::prompts::PromptStore::open_at(&prompts_path)
@@ -2210,8 +2010,6 @@ pub fn run() {
             run_browser_task,
             run_absorb_repo,
             run_doctor,
-            get_chrome_bridge_state,
-            install_chrome_native_host,
             pick_project_folder,
             enqueue_run,
             cancel_run,
@@ -2224,7 +2022,6 @@ pub fn run() {
             delete_prompt,
             glob_files,
             read_file_safe,
-            chrome_dispatch,
             desktop::desktop_list_apps,
             desktop::desktop_query,
             desktop::desktop_activate,

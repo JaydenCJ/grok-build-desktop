@@ -30,7 +30,6 @@
     "resources": [
       "../scripts",
       "../docs",
-      "../chrome-extension",
       "../THIRD_PARTY_NOTICES.md"
     ],
     "macOS": {
