@@ -290,4 +290,27 @@ assert.ok(app.includes("model-select-footer"),
 assert.ok(!css.includes("grid-template-rows: minmax(0, 1fr) auto"),
   "conversation-panel must not use the 2-row grid that collapsed the chat");
 
+// v0.4.0: Claude-class history right-click menu — rich, real, persisted.
+const ctxMenu = read("src/components/ContextMenu.tsx");
+for (const cap of ["submenu", "shortcut", "ctx-header", "ctx-submenu", "ctx-shortcut"]) {
+  assert.ok(ctxMenu.includes(cap), `ContextMenu must support ${cap}`);
+}
+for (const action of [
+  "openHistoryMenu",
+  "Pin to top",
+  "Move to group",
+  "Save to Prompt Library",
+  "togglePinPrompt",
+  "toggleArchivePrompt",
+  "deletePromptEntry",
+  "setPromptGroupId",
+]) {
+  assert.ok(app.includes(action), `History context menu missing real action: ${action}`);
+}
+// History list organized into persisted sections (pinned / group / archived).
+for (const piece of ["history-section-head", "historyView", "pinnedPromptIds", "promptGroups", "archivedPromptIds"]) {
+  assert.ok(app.includes(piece), `History organization missing: ${piece}`);
+}
+assert.ok(css.includes(".ctx-submenu"), "submenu flyout style missing");
+
 console.log("smoke: ok");

@@ -7,21 +7,32 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
+  BookmarkPlus,
   Bot,
   ChevronDown,
   CheckCircle2,
   CircleAlert,
   ClipboardCheck,
+  Copy,
+  CornerUpLeft,
   FileText,
   FolderDown,
   FolderGit2,
+  FolderInput,
+  FolderPlus,
   GitBranch,
+  GitFork,
   Globe2,
   History,
   Layers3,
   Loader2,
   MoreHorizontal,
   PanelRight,
+  Pencil,
+  Pin,
+  PinOff,
   Play,
   Plus,
   RefreshCcw,
@@ -36,6 +47,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { upsertPrompt } from "./lib/prompts";
 import "./App.css";
 import { cancelRun } from "./lib/grok";
 import { streamStore } from "./lib/streamStore";
@@ -254,7 +266,33 @@ const storageKeys = {
   subagentsEnabled: "grok-desktop-subagents-enabled",
   selfCheck: "grok-desktop-self-check",
   safeRuntimeDefaults: "grok-desktop-safe-runtime-defaults-v3",
+  // History-organization (keyed by prompt/message id):
+  historyPinned: "grok-desktop-history-pinned-v1",
+  historyLabels: "grok-desktop-history-labels-v1",
+  historyGroups: "grok-desktop-history-groups-v1",
+  historyArchived: "grok-desktop-history-archived-v1",
+  historyDeleted: "grok-desktop-history-deleted-v1",
 };
+
+// Small localStorage helpers for the history-organization maps/sets.
+function loadIdSet(key: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const arr = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+function loadIdMap(key: string): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const obj = raw ? (JSON.parse(raw) as unknown) : {};
+    return obj && typeof obj === "object" ? (obj as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
 
 const defaultDrafts: Record<Mode, string> = {
   standard: modeCopy.standard.defaultPrompt,
@@ -429,10 +467,11 @@ const primaryNavItems = [
 ];
 
 type HistoryPreview = { id: string; title: string; detail: string; time: string };
+type HistoryRow = HistoryPreview & { pinned: boolean; group: string | null; archived: boolean };
 
 function recentPromptPreviews(messages: ChatMessage[]): HistoryPreview[] {
   const userMessages = messages.filter((message) => message.role === "user");
-  const recent = userMessages.slice(-5).reverse();
+  const recent = userMessages.slice(-60).reverse();
   return recent.map((message) => {
     const firstLine = message.content.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
     const title = firstLine.length > 56 ? `${firstLine.slice(0, 56)}…` : firstLine || "Untitled prompt";
@@ -813,6 +852,39 @@ function App() {
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
   // App-owned right-click menu (replaces the suppressed WebView menu).
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // History organization — pin / rename / group / archive / delete, persisted
+  // by prompt id so the right-click actions survive restarts and have a
+  // visible effect in the list (no decorative no-ops).
+  const [pinnedPromptIds, setPinnedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyPinned));
+  const [promptLabels, setPromptLabels] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyLabels));
+  const [promptGroups, setPromptGroups] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyGroups));
+  const [archivedPromptIds, setArchivedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyArchived));
+  const [deletedPromptIds, setDeletedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyDeleted));
+  const [showArchived, setShowArchived] = useState(false);
+  // Inline editing for a history row: rename (custom label) or new-group entry.
+  const [rowEdit, setRowEdit] = useState<{ id: string; mode: "rename" | "newgroup" } | null>(null);
+  // Transient toast for actions without an obvious list change (copy/save).
+  const [historyNote, setHistoryNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!historyNote) return;
+    const t = window.setTimeout(() => setHistoryNote(null), 1700);
+    return () => window.clearTimeout(t);
+  }, [historyNote]);
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
+  }, [pinnedPromptIds]);
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
+  }, [promptLabels]);
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
+  }, [promptGroups]);
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
+  }, [archivedPromptIds]);
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.historyDeleted, JSON.stringify([...deletedPromptIds]));
+  }, [deletedPromptIds]);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -1028,6 +1100,172 @@ function App() {
       if (hit) return hit.content;
     }
     return null;
+  }
+
+  // ---- History row actions: all persisted, each with a visible effect ----
+  function togglePinPrompt(id: string) {
+    setPinnedPromptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleArchivePrompt(id: string) {
+    setArchivedPromptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    // Archiving implies leaving the Pinned section.
+    setPinnedPromptIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+  function deletePromptEntry(id: string) {
+    setDeletedPromptIds((prev) => new Set(prev).add(id));
+    setPinnedPromptIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setArchivedPromptIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setPromptLabels((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setPromptGroups((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+  function setPromptGroupId(id: string, group: string | null) {
+    setPromptGroups((prev) => {
+      const next = { ...prev };
+      if (group && group.trim()) next[id] = group.trim();
+      else delete next[id];
+      return next;
+    });
+  }
+  function startRename(id: string) {
+    setContextMenu(null);
+    setRowEdit({ id, mode: "rename" });
+  }
+  function startNewGroup(id: string) {
+    setContextMenu(null);
+    setRowEdit({ id, mode: "newgroup" });
+  }
+  function commitRowEdit(value: string) {
+    const edit = rowEdit;
+    setRowEdit(null);
+    if (!edit) return;
+    const v = value.trim();
+    if (edit.mode === "rename") {
+      setPromptLabels((prev) => {
+        const next = { ...prev };
+        if (v) next[edit.id] = v;
+        else delete next[edit.id];
+        return next;
+      });
+    } else if (v) {
+      setPromptGroupId(edit.id, v);
+    }
+  }
+  function forkPrompt(id: string) {
+    const text = findPromptText(id);
+    handleTabCreate();
+    if (text) updatePrompt(text);
+    composerRef.current?.focus();
+  }
+  async function savePromptToLibrary(id: string) {
+    const text = findPromptText(id);
+    if (!text) return;
+    const name = (promptLabels[id] ?? text.split("\n").find(Boolean) ?? "Saved prompt").slice(0, 60);
+    try {
+      await upsertPrompt({ name, body: text, category: "History" });
+      setHistoryNote("Saved to Prompt Library");
+    } catch {
+      setHistoryNote("Couldn't save — Prompt Library unavailable");
+    }
+  }
+
+  // Claude-class right-click menu for a history row. Section header, icons,
+  // shortcut accelerators, two flyout submenus (Open with / Move to group).
+  function openHistoryMenu(e: React.MouseEvent, item: HistoryPreview) {
+    e.preventDefault();
+    const id = item.id;
+    const text = findPromptText(id) ?? item.title;
+    const pinned = pinnedPromptIds.has(id);
+    const archived = archivedPromptIds.has(id);
+    const currentGroup = promptGroups[id] ?? null;
+    const groupNames = Array.from(new Set(Object.values(promptGroups))).sort((a, b) => a.localeCompare(b));
+
+    const groupSubmenu: ContextMenuItem[] = [
+      { label: "New group…", icon: <FolderPlus size={15} />, onClick: () => startNewGroup(id) },
+      ...(groupNames.length ? [{ label: "Move to", header: true } as ContextMenuItem] : []),
+      ...groupNames.map((g) => ({
+        label: currentGroup === g ? `${g}  ✓` : g,
+        icon: <FolderInput size={15} />,
+        onClick: () => setPromptGroupId(id, currentGroup === g ? null : g),
+      })),
+      ...(currentGroup
+        ? [{ label: "Remove from group", separator: true, icon: <X size={15} />, onClick: () => setPromptGroupId(id, null) }]
+        : []),
+    ];
+
+    const items: ContextMenuItem[] = [
+      { label: item.title.length > 34 ? `${item.title.slice(0, 34)}…` : item.title, header: true },
+      {
+        label: "Open with",
+        icon: <CornerUpLeft size={15} />,
+        shortcut: "O",
+        submenu: [
+          { label: "Restore to composer", icon: <CornerUpLeft size={15} />, onClick: () => updatePrompt(text) },
+          { label: "Open in new session", icon: <GitFork size={15} />, onClick: () => forkPrompt(id) },
+        ],
+      },
+      {
+        label: "Copy prompt",
+        icon: <Copy size={15} />,
+        shortcut: "⌘C",
+        onClick: () => {
+          void navigator.clipboard?.writeText(text);
+          setHistoryNote("Copied");
+        },
+      },
+      { label: "Save to Prompt Library", icon: <BookmarkPlus size={15} />, onClick: () => void savePromptToLibrary(id) },
+      {
+        label: pinned ? "Unpin" : "Pin to top",
+        icon: pinned ? <PinOff size={15} /> : <Pin size={15} />,
+        shortcut: "P",
+        separator: true,
+        onClick: () => togglePinPrompt(id),
+      },
+      { label: "Rename…", icon: <Pencil size={15} />, shortcut: "R", onClick: () => startRename(id) },
+      { label: "Move to group", icon: <FolderInput size={15} />, shortcut: "G", submenu: groupSubmenu },
+      {
+        label: archived ? "Unarchive" : "Archive",
+        icon: archived ? <ArchiveRestore size={15} /> : <Archive size={15} />,
+        shortcut: "A",
+        onClick: () => toggleArchivePrompt(id),
+      },
+      { label: "Delete", icon: <Trash2 size={15} />, shortcut: "⌫", danger: true, separator: true, onClick: () => deletePromptEntry(id) },
+    ];
+    setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
 
   // Right-click menu for the conversation area — real, clickable actions
@@ -2195,11 +2433,106 @@ function App() {
       )
       .slice()
       .sort((a, b) => ((a as { ts?: number }).ts ?? 0) - ((b as { ts?: number }).ts ?? 0));
-    const all = recentPromptPreviews(everyMessage as unknown as ChatMessage[]);
-    if (!historyFilter.trim()) return all;
+    const base = recentPromptPreviews(everyMessage as unknown as ChatMessage[]);
+    const rows: HistoryRow[] = base
+      .filter((p) => !deletedPromptIds.has(p.id))
+      .map((p) => ({
+        ...p,
+        title: promptLabels[p.id] ?? p.title,
+        pinned: pinnedPromptIds.has(p.id),
+        group: promptGroups[p.id] ?? null,
+        archived: archivedPromptIds.has(p.id),
+      }));
+    if (!historyFilter.trim()) return rows;
     const needle = historyFilter.trim().toLowerCase();
-    return all.filter((item) => item.title.toLowerCase().includes(needle) || item.detail.toLowerCase().includes(needle));
-  }, [tabs, activeTabId, messages, historyFilter]);
+    return rows.filter(
+      (r) =>
+        r.title.toLowerCase().includes(needle) ||
+        r.detail.toLowerCase().includes(needle) ||
+        (r.group ?? "").toLowerCase().includes(needle),
+    );
+  }, [
+    tabs,
+    activeTabId,
+    messages,
+    historyFilter,
+    pinnedPromptIds,
+    promptLabels,
+    promptGroups,
+    deletedPromptIds,
+    archivedPromptIds,
+  ]);
+
+  // Partition the (filtered) rows into Pinned / named groups / Recent /
+  // Archived sections for a Claude-style organized list.
+  const historyView = useMemo(() => {
+    const live = recentPrompts.filter((r) => !r.archived);
+    const archived = recentPrompts.filter((r) => r.archived);
+    const pinned = live.filter((r) => r.pinned);
+    const groupMap = new Map<string, HistoryRow[]>();
+    const ungrouped: HistoryRow[] = [];
+    for (const r of live) {
+      if (r.pinned) continue;
+      if (r.group) {
+        const arr = groupMap.get(r.group) ?? [];
+        arr.push(r);
+        groupMap.set(r.group, arr);
+      } else {
+        ungrouped.push(r);
+      }
+    }
+    const groups = Array.from(groupMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return { pinned, groups, ungrouped, archived };
+  }, [recentPrompts]);
+
+  // One history row — inline rename/new-group input when being edited,
+  // otherwise a click-to-restore / right-click-for-actions button.
+  function renderHistoryRow(item: HistoryRow) {
+    if (rowEdit?.id === item.id) {
+      return (
+        <div className="history-rename" key={item.id}>
+          <input
+            autoFocus
+            defaultValue={rowEdit.mode === "rename" ? item.title : ""}
+            placeholder={rowEdit.mode === "rename" ? "Rename prompt" : "New group name"}
+            aria-label={rowEdit.mode === "rename" ? "Rename prompt" : "New group name"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRowEdit(e.currentTarget.value);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setRowEdit(null);
+              }
+            }}
+            onBlur={(e) => commitRowEdit(e.currentTarget.value)}
+          />
+        </div>
+      );
+    }
+    return (
+      <button
+        className={`history-row${item.pinned ? " pinned" : ""}`}
+        key={item.id}
+        onClick={() => {
+          const text = findPromptText(item.id);
+          if (text) updatePrompt(text);
+        }}
+        onContextMenu={(e) => openHistoryMenu(e, item)}
+        title="Click to restore · right-click for actions"
+        type="button"
+      >
+        <span className="history-row-main">
+          <strong>
+            {item.pinned ? <Pin size={11} className="pin-dot" /> : null}
+            {item.title}
+          </strong>
+          <small>{item.detail}</small>
+        </span>
+        <time>{item.time || ""}</time>
+      </button>
+    );
+  }
 
   // Project name shown in the minimal top bar (basename of the cwd).
   const repoName = useMemo(() => {
@@ -2504,38 +2837,53 @@ function App() {
                 )}
               </div>
             ) : (
-              recentPrompts.map((item, index) => (
-                <button
-                  className={index === 0 ? "active" : ""}
-                  key={item.id}
-                  onClick={() => {
-                    const text = findPromptText(item.id);
-                    if (text) updatePrompt(text);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    const text = findPromptText(item.id) ?? item.title;
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      items: [
-                        { label: "Restore to composer", onClick: () => updatePrompt(text) },
-                        { label: "Copy prompt", onClick: () => void navigator.clipboard?.writeText(text) },
-                      ],
-                    });
-                  }}
-                  title="Restore this prompt to the composer"
-                  type="button"
-                >
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.detail}</small>
-                  </span>
-                  <time>{item.time || ""}</time>
-                </button>
-              ))
+              <>
+                {historyView.pinned.length > 0 ? (
+                  <div className="history-group">
+                    <div className="history-section-head">
+                      <Pin size={12} /> Pinned
+                    </div>
+                    {historyView.pinned.map(renderHistoryRow)}
+                  </div>
+                ) : null}
+
+                {historyView.groups.map(([name, rows]) => (
+                  <div className="history-group" key={`hg-${name}`}>
+                    <div className="history-section-head">
+                      <FolderInput size={12} /> {name}
+                    </div>
+                    {rows.map(renderHistoryRow)}
+                  </div>
+                ))}
+
+                {historyView.ungrouped.length > 0 ? (
+                  <div className="history-group">
+                    {historyView.pinned.length > 0 || historyView.groups.length > 0 ? (
+                      <div className="history-section-head">
+                        <History size={12} /> Recent
+                      </div>
+                    ) : null}
+                    {historyView.ungrouped.map(renderHistoryRow)}
+                  </div>
+                ) : null}
+
+                {historyView.archived.length > 0 ? (
+                  <div className="history-group archived">
+                    <button
+                      type="button"
+                      className="history-section-head toggle"
+                      onClick={() => setShowArchived((v) => !v)}
+                    >
+                      <Archive size={12} /> Archived ({historyView.archived.length})
+                      <ChevronDown size={13} className={`chev${showArchived || historyFilter.trim() ? " open" : ""}`} />
+                    </button>
+                    {showArchived || historyFilter.trim() ? historyView.archived.map(renderHistoryRow) : null}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
+          {historyNote ? <div className="history-toast">{historyNote}</div> : null}
         </section>
 
         <section className="sidebar-health" aria-label="Tool health">

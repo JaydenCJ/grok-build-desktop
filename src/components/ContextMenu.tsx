@@ -1,12 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 export interface ContextMenuItem {
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
   danger?: boolean;
   disabled?: boolean;
   /** Insert a divider ABOVE this item. */
   separator?: boolean;
+  /** Render as a non-interactive section label (e.g. the target's name). */
+  header?: boolean;
+  /** Right-aligned accelerator hint (e.g. "P", "R", "⌫"). Single letters also
+   *  work as live keyboard accelerators while the menu is open. */
+  shortcut?: string;
+  /** Optional leading icon. */
+  icon?: ReactNode;
+  /** Nested flyout menu. */
+  submenu?: ContextMenuItem[];
 }
 
 export interface ContextMenuState {
@@ -22,16 +31,20 @@ interface Props {
 
 /**
  * A real, app-owned right-click menu (replaces the suppressed WebView menu).
- * Positioned at the cursor, clamped to the viewport, closes on click-outside,
- * Esc, scroll, or after an item runs.
+ * Claude-Desktop-class: section headers, leading icons, right-aligned shortcut
+ * hints (which double as live keyboard accelerators), and hover flyout
+ * submenus. Positioned at the cursor, clamped to the viewport, closes on
+ * click-outside, Esc, scroll, or after an item runs.
  */
 export function ContextMenu({ menu, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState({ x: menu?.x ?? 0, y: menu?.y ?? 0 });
+  const [openSub, setOpenSub] = useState<number | null>(null);
 
   // Clamp into the viewport once measured.
   useLayoutEffect(() => {
     if (!menu) return;
+    setOpenSub(null);
     const el = ref.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
@@ -44,8 +57,39 @@ export function ContextMenu({ menu, onClose }: Props) {
   useEffect(() => {
     if (!menu) return;
     const close = () => onClose();
+    const run = (item: ContextMenuItem) => {
+      if (item.disabled || !item.onClick) return;
+      onClose();
+      queueMicrotask(() => item.onClick?.());
+    };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Live accelerators: a letter shortcut, or Delete/Backspace → "⌫"/"D".
+      const key =
+        e.key.length === 1
+          ? e.key.toLowerCase()
+          : e.key === 'Delete' || e.key === 'Backspace'
+            ? 'del'
+            : '';
+      if (!key) return;
+      const hit = menu.items.find((it) => {
+        if (it.header || it.disabled || !it.shortcut) return false;
+        const s = it.shortcut.toLowerCase();
+        if (key === 'del') return s === '⌫' || s === 'del' || s === 'd';
+        return s === key;
+      });
+      if (hit && (hit.onClick || hit.submenu)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (hit.submenu) {
+          setOpenSub(menu.items.indexOf(hit));
+        } else {
+          run(hit);
+        }
+      }
     };
     // Defer so the opening contextmenu/click doesn't immediately close it.
     const t = window.setTimeout(() => {
@@ -65,32 +109,82 @@ export function ContextMenu({ menu, onClose }: Props) {
 
   if (!menu) return null;
 
+  const run = (item: ContextMenuItem) => {
+    if (item.disabled || !item.onClick) return;
+    onClose();
+    queueMicrotask(() => item.onClick?.());
+  };
+
+  const renderLeaf = (item: ContextMenuItem, key: string) => (
+    <button
+      key={key}
+      type="button"
+      role="menuitem"
+      className={`ctx-item${item.danger ? ' danger' : ''}`}
+      disabled={item.disabled}
+      onClick={() => run(item)}
+    >
+      {item.icon ? <span className="ctx-icon">{item.icon}</span> : null}
+      <span className="ctx-label">{item.label}</span>
+      {item.shortcut ? <span className="ctx-shortcut">{item.shortcut}</span> : null}
+    </button>
+  );
+
   return (
     <div
       ref={ref}
       className="ctx-menu"
       style={{ left: pos.x, top: pos.y }}
       role="menu"
-      // Don't let clicks inside bubble to the window-level close-on-click.
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
+      onMouseLeave={() => setOpenSub(null)}
     >
       {menu.items.map((item, i) => (
-        <div key={`${item.label}-${i}`}>
+        <div
+          key={`${item.label}-${i}`}
+          className="ctx-row"
+          onMouseEnter={() => setOpenSub(item.submenu && !item.disabled ? i : null)}
+        >
           {item.separator ? <div className="ctx-sep" /> : null}
-          <button
-            type="button"
-            role="menuitem"
-            className={`ctx-item${item.danger ? ' danger' : ''}`}
-            disabled={item.disabled}
-            onClick={() => {
-              onClose();
-              // Run after close so focus/scroll side-effects settle.
-              queueMicrotask(() => item.onClick());
-            }}
-          >
-            {item.label}
-          </button>
+          {item.header ? (
+            <div className="ctx-header">{item.label}</div>
+          ) : item.submenu ? (
+            <>
+              <div
+                role="menuitem"
+                tabIndex={0}
+                aria-haspopup="menu"
+                aria-expanded={openSub === i}
+                className={`ctx-item has-sub${openSub === i ? ' open' : ''}${item.disabled ? ' is-disabled' : ''}`}
+              >
+                {item.icon ? <span className="ctx-icon">{item.icon}</span> : null}
+                <span className="ctx-label">{item.label}</span>
+                {item.shortcut ? <span className="ctx-shortcut">{item.shortcut}</span> : null}
+                <span className="ctx-chevron" aria-hidden>›</span>
+              </div>
+              {openSub === i ? (
+                <div className="ctx-menu ctx-submenu" role="menu">
+                  {item.submenu.map((sub, j) =>
+                    sub.header ? (
+                      <div key={`sub-h-${j}`} className="ctx-header">
+                        {sub.label}
+                      </div>
+                    ) : sub.separator ? (
+                      <div key={`sub-s-${j}`}>
+                        <div className="ctx-sep" />
+                        {renderLeaf(sub, `sub-${j}`)}
+                      </div>
+                    ) : (
+                      renderLeaf(sub, `sub-${j}`)
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            renderLeaf(item, `leaf-${i}`)
+          )}
         </div>
       ))}
     </div>
