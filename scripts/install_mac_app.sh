@@ -2,12 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Grok Desktop.app"
+APP_NAME="Grok Build Desktop.app"
 SOURCE_APP="$ROOT_DIR/src-tauri/target/release/bundle/macos/$APP_NAME"
 TARGET_DIR="${GROK_DESKTOP_INSTALL_DIR:-$HOME/Applications}"
 TARGET_APP="$TARGET_DIR/$APP_NAME"
 
 cd "$ROOT_DIR"
+# Remove the pre-rename bundle so we don't leave a stale "Grok Desktop.app"
+# next to the new "Grok Build Desktop.app". Same bundle id, so permissions
+# and app data carry over.
+rm -rf "$TARGET_DIR/Grok Desktop.app" 2>/dev/null || true
 npm run mac:build
 
 mkdir -p "$TARGET_DIR"

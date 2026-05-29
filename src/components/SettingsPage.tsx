@@ -322,7 +322,7 @@ export function SettingsPage(props: SettingsPageProps) {
               <div className="set-about">
                 <div className="set-about-mark">G</div>
                 <div>
-                  <div className="set-about-name">Grok Desktop</div>
+                  <div className="set-about-name">Grok Build Desktop</div>
                   <div className="set-about-ver">v{props.appVersion}</div>
                   <div className="set-about-grok">{props.grokVersionLine}</div>
                 </div>
