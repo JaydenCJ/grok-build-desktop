@@ -2547,7 +2547,16 @@ function App() {
       return (
         <div className="history-rename" key={item.id}>
           <input
-            autoFocus
+            // Callback ref instead of autoFocus: React's autoFocus doesn't
+            // reliably grab focus in the production WebView when the input
+            // appears via a state change (the composer kept focus, so typed
+            // text went there instead of here). Focusing on mount is robust.
+            ref={(el) => {
+              if (el) {
+                el.focus();
+                el.select();
+              }
+            }}
             defaultValue={rowEdit.mode === "rename" ? item.title : ""}
             placeholder={rowEdit.mode === "rename" ? "Rename prompt" : "New group name"}
             aria-label={rowEdit.mode === "rename" ? "Rename prompt" : "New group name"}
