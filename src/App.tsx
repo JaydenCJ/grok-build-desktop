@@ -23,7 +23,6 @@ import {
   FolderInput,
   FolderPlus,
   GitBranch,
-  GitFork,
   Globe2,
   History,
   Layers3,
@@ -430,7 +429,15 @@ const primaryNavItems = [
 ];
 
 type HistoryPreview = { id: string; title: string; detail: string; time: string };
-type HistoryRow = HistoryPreview & { pinned: boolean; group: string | null; archived: boolean };
+type HistoryRow = HistoryPreview & {
+  pinned: boolean;
+  group: string | null;
+  archived: boolean;
+  /** Last-activity timestamp (newest conversation sorts first). */
+  lastTs: number;
+  /** True when this is the conversation currently open. */
+  active: boolean;
+};
 
 // Brand mark — a constructed geometric "G" monogram (monoline grotesque,
 // matched to the app's Geist display face). Crisp and flat in-app so it stays
@@ -449,22 +456,6 @@ function BrandGlyph({ size = 18 }: { size?: number }) {
       />
     </svg>
   );
-}
-
-function recentPromptPreviews(messages: ChatMessage[]): HistoryPreview[] {
-  const userMessages = messages.filter((message) => message.role === "user");
-  const recent = userMessages.slice(-60).reverse();
-  return recent.map((message) => {
-    const firstLine = message.content.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
-    const title = firstLine.length > 56 ? `${firstLine.slice(0, 56)}…` : firstLine || "Untitled prompt";
-    const detail = message.meta?.workflow ?? "task";
-    return {
-      id: message.id,
-      title,
-      detail,
-      time: timeLabel(message.ts),
-    };
-  });
 }
 
 const contextFiles = [
@@ -823,7 +814,6 @@ function App() {
   const [promptLabels, setPromptLabels] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyLabels));
   const [promptGroups, setPromptGroups] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyGroups));
   const [archivedPromptIds, setArchivedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyArchived));
-  const [deletedPromptIds, setDeletedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyDeleted));
   const [showArchived, setShowArchived] = useState(false);
   // Inline editing for a history row: rename (custom label) or new-group entry.
   const [rowEdit, setRowEdit] = useState<{ id: string; mode: "rename" | "newgroup" } | null>(null);
@@ -846,9 +836,6 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
   }, [archivedPromptIds]);
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyDeleted, JSON.stringify([...deletedPromptIds]));
-  }, [deletedPromptIds]);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -1054,52 +1041,71 @@ function App() {
     setDrafts((current) => ({ ...current, [mode]: value }));
   }
 
-  // Find a prompt's text by message id across the active conversation and all
-  // stored sessions (history aggregates across sessions).
-  function findPromptText(id: string): string | null {
-    const inActive = messages.find((m) => m.id === id);
-    if (inActive) return inActive.content;
-    for (const t of tabs) {
-      const hit = (t.messages as unknown as ChatMessage[]).find((m) => m.id === id);
-      if (hit) return hit.content;
-    }
-    return null;
+  // First user prompt of a conversation (session/tab id) — used for copy /
+  // save-to-library actions in the history menu.
+  function sessionFirstPrompt(id: string): string | null {
+    const tab = tabs.find((t) => t.id === id);
+    const msgs =
+      ((id === activeTabId ? (messages as unknown as TabMessage[]) : tab?.messages) ?? []);
+    return msgs.find((m) => m.role === "user")?.content ?? null;
   }
 
   // Clicking a HISTORY row returns you to THAT task's conversation (Claude /
   // Codex behaviour) — NOT just refilling the composer (that lives in the
   // right-click "Restore to composer" action). If the message lives in another
   // session tab we switch to it first, then scroll+flash the message in place.
-  function goToHistoryPrompt(id: string) {
+  // Switch to a whole conversation (session/tab). The HISTORY list is now a
+  // list of conversations — clicking one loads that conversation in full, the
+  // way Claude / ChatGPT switch chats. `id` is a tab id.
+  function switchToSession(id: string) {
     setPaletteOpen(false);
-    const inActive = messages.some((m) => m.id === id);
-    if (!inActive) {
-      const owner = tabs.find((t) =>
-        (t.messages as unknown as ChatMessage[]).some((m) => m.id === id),
-      );
-      if (owner && owner.id !== activeTabId) {
-        // Persist the live tab, then load the owner tab's messages/cwd.
-        setTabs((current) =>
-          current.map((t) =>
-            t.id === activeTabId
-              ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
-              : t,
-          ),
-        );
-        setActiveTabId(owner.id);
-        setCodingCwd(owner.cwd);
-        setMessages(owner.messages as unknown as ChatMessage[]);
-      } else if (!owner) {
-        // Orphaned/aggregated prompt with no live message — fall back to the
-        // old behaviour so the click is never a no-op.
-        const text = findPromptText(id);
-        if (text) updatePrompt(text);
-        return;
+    if (id === activeTabId) return;
+    const target = tabs.find((t) => t.id === id);
+    if (!target) return;
+    // Persist the current conversation back into its tab, then load the target.
+    setTabs((current) =>
+      current.map((t) =>
+        t.id === activeTabId
+          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+          : t,
+      ),
+    );
+    setActiveTabId(target.id);
+    setCodingCwd(target.cwd);
+    setMessages(target.messages as unknown as ChatMessage[]);
+    setSessionNotice(null);
+  }
+
+  // Delete a whole conversation. Works on ANY conversation (this is the fix for
+  // "some conversations can't be deleted" — the old delete only hid a message
+  // preview while the underlying message stayed). If the active conversation is
+  // deleted, fall back to the newest remaining one, or a fresh empty session.
+  function deleteSession(id: string) {
+    const remaining = tabs.filter((t) => t.id !== id);
+    if (remaining.length === 0) {
+      // Last conversation → reset to a single fresh, empty one.
+      const fresh = makeTab("", []);
+      setTabs([fresh]);
+      setActiveTabId(fresh.id);
+      setCodingCwd(fresh.cwd);
+      setMessages([]);
+    } else {
+      if (id === activeTabId) {
+        const next = remaining
+          .slice()
+          .sort((a, b) => b.createdAt - a.createdAt)[0];
+        setActiveTabId(next.id);
+        setCodingCwd(next.cwd);
+        setMessages(next.messages as unknown as ChatMessage[]);
       }
+      setTabs(remaining);
     }
-    // Bump the nonce so repeated clicks on the same row re-scroll/flash.
-    setFocusMessage({ id, nonce: focusMessageRef.current + 1 });
-    focusMessageRef.current += 1;
+    // Drop any per-conversation metadata so it doesn't linger.
+    setPinnedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
+    setArchivedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
+    setPromptLabels((p) => { const n = { ...p }; delete n[id]; return n; });
+    setPromptGroups((p) => { const n = { ...p }; delete n[id]; return n; });
+    setContextMenu(null);
   }
 
   // ---- History row actions: all persisted, each with a visible effect ----
@@ -1123,33 +1129,6 @@ function App() {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
       next.delete(id);
-      return next;
-    });
-  }
-  function deletePromptEntry(id: string) {
-    setDeletedPromptIds((prev) => new Set(prev).add(id));
-    setPinnedPromptIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setArchivedPromptIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setPromptLabels((prev) => {
-      if (!(id in prev)) return prev;
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    setPromptGroups((prev) => {
-      if (!(id in prev)) return prev;
-      const next = { ...prev };
-      delete next[id];
       return next;
     });
   }
@@ -1185,14 +1164,8 @@ function App() {
       setPromptGroupId(edit.id, v);
     }
   }
-  function forkPrompt(id: string) {
-    const text = findPromptText(id);
-    handleTabCreate();
-    if (text) updatePrompt(text);
-    composerRef.current?.focus();
-  }
   async function savePromptToLibrary(id: string) {
-    const text = findPromptText(id);
+    const text = sessionFirstPrompt(id);
     if (!text) return;
     const name = (promptLabels[id] ?? text.split("\n").find(Boolean) ?? "Saved prompt").slice(0, 60);
     try {
@@ -1207,8 +1180,11 @@ function App() {
   // shortcut accelerators, two flyout submenus (Open with / Move to group).
   function openHistoryMenu(e: React.MouseEvent, item: HistoryPreview) {
     e.preventDefault();
-    const id = item.id;
-    const text = findPromptText(id) ?? item.title;
+    const id = item.id; // tab/session id
+    const sessionTab = tabs.find((t) => t.id === id);
+    const sessionMsgs =
+      ((id === activeTabId ? (messages as unknown as TabMessage[]) : sessionTab?.messages) ?? []);
+    const text = sessionMsgs.find((m) => m.role === "user")?.content ?? item.title;
     const pinned = pinnedPromptIds.has(id);
     const archived = archivedPromptIds.has(id);
     const currentGroup = promptGroups[id] ?? null;
@@ -1230,16 +1206,13 @@ function App() {
     const items: ContextMenuItem[] = [
       { label: item.title.length > 34 ? `${item.title.slice(0, 34)}…` : item.title, header: true },
       {
-        label: "Open with",
+        label: "Open conversation",
         icon: <CornerUpLeft size={15} />,
-        shortcut: "O",
-        submenu: [
-          { label: "Restore to composer", icon: <CornerUpLeft size={15} />, onClick: () => updatePrompt(text) },
-          { label: "Open in new session", icon: <GitFork size={15} />, onClick: () => forkPrompt(id) },
-        ],
+        shortcut: "↵",
+        onClick: () => switchToSession(id),
       },
       {
-        label: "Copy prompt",
+        label: "Copy first prompt",
         icon: <Copy size={15} />,
         shortcut: "⌘C",
         onClick: () => {
@@ -1263,7 +1236,7 @@ function App() {
         shortcut: "A",
         onClick: () => toggleArchivePrompt(id),
       },
-      { label: "Delete", icon: <Trash2 size={15} />, shortcut: "⌫", danger: true, separator: true, onClick: () => deletePromptEntry(id) },
+      { label: "Delete conversation", icon: <Trash2 size={15} />, shortcut: "⌫", danger: true, separator: true, onClick: () => deleteSession(id) },
     ];
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -2358,10 +2331,6 @@ function App() {
   }, [busyRunner, drafts, mode]);
 
   const conversationScrollRef = useRef<HTMLDivElement>(null);
-  // History-click "return to this task" target. The nonce lets the same id be
-  // re-focused on repeated clicks (state identity alone wouldn't re-fire).
-  const [focusMessage, setFocusMessage] = useState<{ id: string; nonce: number } | null>(null);
-  const focusMessageRef = useRef(0);
   const stickToBottomRef = useRef(true);
   useEffect(() => {
     const node = conversationScrollRef.current;
@@ -2383,29 +2352,40 @@ function App() {
 
   const [historyFilter, setHistoryFilter] = useState("");
   const historySearchInputRef = useRef<HTMLInputElement | null>(null);
+  // HISTORY is a list of CONVERSATIONS (sessions/tabs), newest first — the way
+  // Claude / ChatGPT show chats. Each row is one whole conversation, titled by
+  // its first prompt; clicking it loads that conversation. (It used to list
+  // every individual prompt, which read as "messages", not tasks.)
   const recentPrompts = useMemo(() => {
-    // Aggregate prompts across ALL sessions (not just the active tab) so that
-    // creating a New Session never makes the history list look "wiped" — the
-    // user's earlier conversations stay visible regardless of which tab is
-    // open. Active tab uses live `messages`; others use their stored copy.
-    const everyMessage = tabs
-      .flatMap((t) =>
-        (t.id === activeTabId
-          ? (messages as unknown as TabMessage[])
-          : t.messages) ?? [],
-      )
-      .slice()
-      .sort((a, b) => ((a as { ts?: number }).ts ?? 0) - ((b as { ts?: number }).ts ?? 0));
-    const base = recentPromptPreviews(everyMessage as unknown as ChatMessage[]);
-    const rows: HistoryRow[] = base
-      .filter((p) => !deletedPromptIds.has(p.id))
-      .map((p) => ({
-        ...p,
-        title: promptLabels[p.id] ?? p.title,
-        pinned: pinnedPromptIds.has(p.id),
-        group: promptGroups[p.id] ?? null,
-        archived: archivedPromptIds.has(p.id),
-      }));
+    const firstUserLine = (msgs: TabMessage[]): string => {
+      const u = msgs.find((m) => m.role === "user");
+      return u?.content.split("\n").map((s) => s.trim()).find(Boolean) ?? "";
+    };
+    const rows: HistoryRow[] = tabs
+      .map((t) => {
+        const msgs =
+          ((t.id === activeTabId ? (messages as unknown as TabMessage[]) : t.messages) ??
+            []);
+        const fp = firstUserLine(msgs);
+        const promptCount = msgs.filter((m) => m.role === "user").length;
+        const lastTs = msgs.length
+          ? Math.max(...msgs.map((m) => (m as { ts?: number }).ts ?? 0))
+          : t.createdAt;
+        const fallback = fp ? (fp.length > 56 ? `${fp.slice(0, 56)}…` : fp) : "New conversation";
+        return {
+          id: t.id,
+          title: promptLabels[t.id] ?? fallback,
+          detail:
+            promptCount > 0 ? `${promptCount} message${promptCount > 1 ? "s" : ""}` : "empty",
+          time: timeLabel(lastTs),
+          pinned: pinnedPromptIds.has(t.id),
+          group: promptGroups[t.id] ?? null,
+          archived: archivedPromptIds.has(t.id),
+          lastTs,
+          active: t.id === activeTabId,
+        };
+      })
+      .sort((a, b) => b.lastTs - a.lastTs);
     if (!historyFilter.trim()) return rows;
     const needle = historyFilter.trim().toLowerCase();
     return rows.filter(
@@ -2422,7 +2402,6 @@ function App() {
     pinnedPromptIds,
     promptLabels,
     promptGroups,
-    deletedPromptIds,
     archivedPromptIds,
   ]);
 
@@ -2459,7 +2438,7 @@ function App() {
         label: p.title,
         hint: p.detail ? `History · ${p.detail}` : "History",
         group: "History",
-        run: () => goToHistoryPrompt(p.id),
+        run: () => switchToSession(p.id),
       })),
     [recentPrompts],
   );
@@ -2504,12 +2483,13 @@ function App() {
     }
     return (
       <button
-        className={`history-row${item.pinned ? " pinned" : ""}`}
+        className={`history-row${item.pinned ? " pinned" : ""}${item.active ? " active" : ""}`}
         key={item.id}
-        onClick={() => goToHistoryPrompt(item.id)}
+        onClick={() => switchToSession(item.id)}
         onContextMenu={(e) => openHistoryMenu(e, item)}
-        title="Click to jump to this task · right-click for actions"
+        title="Open this conversation · right-click for actions"
         type="button"
+        aria-current={item.active ? "true" : undefined}
       >
         <span className="history-row-main">
           <strong>
@@ -2771,7 +2751,7 @@ function App() {
 
         <section className="nav-section history-nav">
           <div className="nav-head">
-            <span>History</span>
+            <span>Conversations</span>
             {/* Refresh icon — clears the filter input so the user sees the
                 full recent-prompts list again. Was a decorative icon before. */}
             <button
@@ -2792,7 +2772,7 @@ function App() {
             <input
               ref={historySearchInputRef}
               aria-label="Search history"
-              placeholder="Filter recent prompts..."
+              placeholder="Search conversations..."
               onChange={(event) => setHistoryFilter(event.currentTarget.value)}
               value={historyFilter}
             />
@@ -2808,7 +2788,7 @@ function App() {
                     <code>{historyFilter.trim()}</code>
                   </>
                 ) : (
-                  <span>Your prompts will show up here.</span>
+                  <span>Your conversations will show up here.</span>
                 )}
               </div>
             ) : (
@@ -3028,11 +3008,7 @@ function App() {
                   </p>
                 </div>
               ) : (
-                <MessageList
-                  messages={messageRefs}
-                  focusId={focusMessage?.id ?? null}
-                  focusNonce={focusMessage?.nonce ?? 0}
-                />
+                <MessageList messages={messageRefs} />
               )}
             </div>
 

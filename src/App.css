@@ -4129,6 +4129,14 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .history-section-head .chev { margin-left: auto; transition: transform 120ms ease; }
 .history-section-head .chev.open { transform: rotate(180deg); }
 .history-row .pin-dot { color: var(--accent); margin-right: 5px; vertical-align: -1px; }
+/* Active conversation — subtle mono highlight (overrides the legacy teal
+   `.history-list button.active` rule, which predates the graphite theme). */
+.history-list button.history-row.active {
+  background: var(--accent-soft);
+  color: var(--text-1);
+}
+.history-list button.history-row.active svg { color: var(--accent); }
+.history-list button.history-row.active strong { color: var(--text-1); }
 .history-rename { padding: 5px 8px; }
 .history-rename input {
   width: 100%; box-sizing: border-box; padding: 8px 9px;

@@ -278,7 +278,7 @@ for (const action of [
   "Save to Prompt Library",
   "togglePinPrompt",
   "toggleArchivePrompt",
-  "deletePromptEntry",
+  "deleteSession",
   "setPromptGroupId",
 ]) {
   assert.ok(app.includes(action), `History context menu missing real action: ${action}`);
@@ -336,18 +336,14 @@ assert.ok(app.includes('className="titlebar-icon-btn"'),
   "title bar must have a day/night theme toggle");
 assert.ok(app.includes("openPanelMenu") && app.includes("Tools & MCP"),
   "top-right must open a panels menu wired to Preview/Context/Terminal/Tools");
-// 11) Clicking a HISTORY row must RETURN to that task's conversation (jump +
-//     flash), not silently refill the composer. Regression guard for the
-//     "点了历史没有回到那个任务" bug.
-assert.ok(app.includes("goToHistoryPrompt"),
-  "history rows must navigate via goToHistoryPrompt (jump to the task)");
-assert.ok(app.includes("focusId=") && app.includes("focusNonce="),
-  "MessageList must receive focusId/focusNonce so it can scroll to the clicked task");
-assert.ok(read("src/components/MessageList.tsx").includes("data-message-id") &&
-  read("src/components/MessageList.tsx").includes("scrollToIndex"),
-  "MessageList must anchor messages + scroll-to-index for history jumps");
-assert.ok(css.includes(".message.message-flash"),
-  "jumped-to message must flash (message-flash animation)");
+// 11) The sidebar lists CONVERSATIONS (sessions), and clicking one switches to
+//     that whole conversation — not individual messages within one chat.
+assert.ok(app.includes("switchToSession") && app.includes("deleteSession"),
+  "history rows must switch/delete whole conversations (sessions)");
+assert.ok(app.includes("recentPrompts") && app.includes("tabs") && app.includes("activeTabId"),
+  "conversation list must be derived from sessions (tabs)");
+assert.ok(app.includes('item.active ? " active"') || app.includes("active ? \" active\""),
+  "the open conversation must be marked active in the sidebar");
 // 12) Live phase must be spelled out (thinking…/writing…/working…), not just a
 //     token counter — the user asked to always see what Grok is doing now.
 assert.ok(read("src/components/StatusBar.tsx").includes("writing…") &&
