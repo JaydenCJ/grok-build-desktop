@@ -275,8 +275,13 @@ impl RunQueue {
                 // pipe fills and grok BLOCKS on stderr write, which makes
                 // stdout silent and trips our 60s "no output timeout" — even
                 // though grok is alive and would have produced text just fine.
+                // Keep the tail of stderr so a non-zero exit can report grok's
+                // ACTUAL error (e.g. "invalid reasoning effort: max") instead of
+                // a useless generic "likely a crash".
+                let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
                 if let Some(stderr) = spawned.child.stderr.take() {
                     use tokio::io::{AsyncBufReadExt, BufReader};
+                    let tail = stderr_tail.clone();
                     tokio::spawn(async move {
                         let mut reader = BufReader::new(stderr);
                         let mut line = String::new();
@@ -285,6 +290,12 @@ impl RunQueue {
                             match reader.read_line(&mut line).await {
                                 Ok(0) | Err(_) => break,
                                 Ok(_) => {
+                                    if let Ok(mut t) = tail.lock() {
+                                        t.push_str(&line);
+                                        if t.len() > 4096 {
+                                            *t = t[t.len() - 4096..].to_string();
+                                        }
+                                    }
                                     // Surface unfiltered stderr to the host
                                     // process — useful when diagnosing grok
                                     // misbehavior. Set
@@ -396,11 +407,23 @@ impl RunQueue {
                         // crashes mid-run, and a clear message tells the user
                         // it's the CLI (and that retrying usually works).
                         Ok(s) => {
+                            // Pull grok's real error off the stderr tail (last
+                            // non-empty line) so the message is actionable.
+                            let detail = stderr_tail
+                                .lock()
+                                .ok()
+                                .and_then(|t| {
+                                    t.lines()
+                                        .rev()
+                                        .map(str::trim)
+                                        .find(|l| !l.is_empty() && !l.starts_with("For more information"))
+                                        .map(|l| l.to_string())
+                                })
+                                .map(|l| format!(" — {l}"))
+                                .unwrap_or_else(|| " — likely a grok CLI crash, try again".to_string());
                             let msg = match s.code() {
-                                Some(c) => format!(
-                                    "grok exited with code {c} — likely a grok CLI crash, try again"
-                                ),
-                                None => "grok was terminated by a signal — likely a grok CLI crash, try again".to_string(),
+                                Some(c) => format!("grok exited with code {c}{detail}"),
+                                None => format!("grok was terminated by a signal{detail}"),
                             };
                             (RunState::Failed, Some(msg))
                         }
