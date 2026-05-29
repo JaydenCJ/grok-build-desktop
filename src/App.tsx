@@ -1872,6 +1872,18 @@ function App() {
         run: () => togglePanel("tools"),
       },
       {
+        id: "toggle-preview",
+        label: previewOpen ? "Close Preview" : "Open Preview",
+        group: "View",
+        run: () => togglePanel("preview"),
+      },
+      {
+        id: "toggle-context",
+        label: contextOpen ? "Close Context inspector" : "Open Context inspector",
+        group: "View",
+        run: () => togglePanel("context"),
+      },
+      {
         id: "toggle-terminal",
         label: terminalOpen ? "Close Terminal panel" : "Open Terminal panel",
         group: "View",
@@ -1915,7 +1927,7 @@ function App() {
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sidebarCollapsed, toolsOpen, terminalOpen, themeMode]);
+  }, [sidebarCollapsed, toolsOpen, terminalOpen, themeMode, previewOpen, contextOpen]);
 
   // Global keyboard router — only fires while the palette isn't already in a
   // text-input state. Each shortcut is also surfaced via the palette so users
@@ -2161,6 +2173,14 @@ function App() {
     return all.filter((item) => item.title.toLowerCase().includes(needle) || item.detail.toLowerCase().includes(needle));
   }, [tabs, activeTabId, messages, historyFilter]);
 
+  // Project name shown in the minimal top bar (basename of the cwd).
+  const repoName = useMemo(() => {
+    const trimmed = codingCwd.trim().replace(/\/+$/, "");
+    if (!trimmed) return "Pick a project";
+    const parts = trimmed.split("/");
+    return parts[parts.length - 1] || trimmed;
+  }, [codingCwd]);
+
   const modelOptions = useMemo(() => {
     const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
     const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
@@ -2217,10 +2237,6 @@ function App() {
     [inspectOutput],
   );
   const { skillItems, agentItems, pluginItems, mcpItems, hookItems, permissionsSource } = inspectSummary;
-  const grokVersion = useMemo(
-    () => grokInspectLine(inspectOutput, /Version:\s*([^\n]+)/i, grokStatus?.version || "unknown"),
-    [inspectOutput, grokStatus?.version],
-  );
   const activeRun = useActiveRun();
   const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
   const activeRunId = activeRun?.id ?? null;
@@ -2519,116 +2535,25 @@ function App() {
       </aside>
 
       <section className={`workspace dock-${dockPosition}`}>
-        <header className="window-titlebar">
-          <div className="repo-controls">
-            <label className="repo-picker">
-              <FolderGit2 size={16} />
-              <span>Repo</span>
-              <input
-                aria-label="Project path"
-                onChange={(event) => setCodingCwd(event.currentTarget.value)}
-                value={codingCwd}
-                placeholder="Click the folder button to pick a project"
-              />
-              <button
-                aria-label="Pick project folder"
-                className="repo-pick-button"
-                disabled={folderPickerBusy}
-                onClick={pickFolder}
-                title="Open folder picker"
-                type="button"
-              >
-                {folderPickerBusy ? <Loader2 className="spin" size={15} /> : <FolderDown size={15} />}
-              </button>
-            </label>
-            <label className="model-chip" title={modelIsVerified ? "Grok model" : "Model not in grok CLI list — may fall back to default"}>
-              <Sparkles size={15} />
-              <select
-                aria-label="Grok model"
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  if (isGrokModelId(value)) {
-                    changeModelPreset(value);
-                  } else {
-                    setModelPreset("custom");
-                    setCustomModel(value);
-                    setReasoningEffort(grokModelPresets.custom.defaultReasoning);
-                  }
-                }}
-                value={modelPreset === "custom" ? "custom" : modelPreset}
-              >
-                {modelOptions.map((id) => {
-                  const verified = availableModels.length === 0 || availableModels.includes(id);
-                  const label = verified ? id : `${id} · not in CLI`;
-                  return (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  );
-                })}
-                <option value="custom">Custom…</option>
-              </select>
-              {!modelIsVerified ? <CircleAlert size={13} /> : null}
-            </label>
-          </div>
-          <div className="title-center">
-            <span>Grok Code</span>
-            <small>{grokVersion}</small>
-          </div>
-          <div className="top-actions">
-            <button
-              aria-pressed={previewOpen}
-              className={`panel-toggle ${previewOpen ? "active" : ""}`}
-              onClick={() => togglePanel("preview")}
-              type="button"
-            >
-              <Globe2 size={15} />
-              <span>Preview</span>
-            </button>
-            <button
-              aria-pressed={contextOpen}
-              className={`panel-toggle ${contextOpen ? "active" : ""}`}
-              onClick={() => togglePanel("context")}
-              type="button"
-            >
-              <PanelRight size={15} />
-              <span>Context</span>
-            </button>
-            <button
-              aria-pressed={terminalOpen}
-              className={`panel-toggle ${terminalOpen ? "active" : ""}`}
-              onClick={() => togglePanel("terminal")}
-              type="button"
-            >
-              <SquareTerminal size={15} />
-              <span>Terminal</span>
-            </button>
-            <button
-              aria-pressed={toolsOpen}
-              className={`panel-toggle ${toolsOpen ? "active" : ""}`}
-              onClick={() => togglePanel("tools")}
-              type="button"
-            >
-              <Wrench size={15} />
-              <span>Tools</span>
-            </button>
-            {/* Theme + dock position moved into Settings → General to declutter
-                the header (Claude-Desktop-style minimal top bar). A single
-                Settings gear stays here for one-click access. */}
-            <button
-              className="panel-toggle"
-              onClick={() => setSettingsOpen(true)}
-              type="button"
-              title="Settings (⌘,)"
-              aria-label="Open settings"
-            >
-              <Settings size={15} />
-              <span>Settings</span>
-            </button>
-            <span className={`connection-pill ${isGrokReady ? "ready" : "blocked"}`}>
-              {isGrokReady ? <CheckCircle2 size={15} /> : <CircleAlert size={15} />}
-              {statusLabel}
-            </span>
+        {/* Minimal, Claude-Desktop-style top bar. The old toolbar row (Repo
+            input, model chip, Preview/Context/Terminal/Tools/Settings, status
+            pill) is gone — those all live in the sidebar, ⌘K palette, the
+            bottom status bar, and Settings now. What stays here is just the
+            project chip (click → folder picker), a draggable spacer, a tiny
+            connection dot, and the contextual Stop button while running. */}
+        <header className="window-titlebar minimal" data-tauri-drag-region>
+          <button
+            className="repo-chip"
+            onClick={pickFolder}
+            type="button"
+            disabled={folderPickerBusy}
+            title={codingCwd ? codingCwd : "Pick a project folder"}
+          >
+            {folderPickerBusy ? <Loader2 className="spin" size={14} /> : <FolderGit2 size={14} />}
+            <span>{repoName}</span>
+          </button>
+          <div className="titlebar-spacer" data-tauri-drag-region />
+          <div className="titlebar-right">
             {grokIsRunning && activeRunId ? (
               <button
                 className="primary-run"
@@ -2636,10 +2561,16 @@ function App() {
                 type="button"
                 title="Stop the current run"
               >
-                <X size={17} />
+                <X size={15} />
                 <span>Stop</span>
               </button>
-            ) : null}
+            ) : (
+              <span
+                className={`conn-dot ${isGrokReady ? "ready" : "blocked"}`}
+                title={statusLabel}
+                aria-label={statusLabel}
+              />
+            )}
           </div>
         </header>
 
