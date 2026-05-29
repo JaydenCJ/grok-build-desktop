@@ -24,7 +24,25 @@ impl Config {
     /// - `Ok(Some(cfg))` if everything parses.
     /// - `Err(_)` if token is set but allowlist is missing/invalid.
     pub fn from_env() -> Result<Option<Self>, ConfigError> {
-        // Best-effort .env load. Ignore errors (file may not exist, or already loaded).
+        // Load .env from stable locations FIRST, because the installed .app is
+        // launched with cwd "/" (so a cwd-relative `dotenvy::dotenv()` alone
+        // never finds the project's .env). Order: ~/.grok-desktop/.env, then
+        // ~/Library/Application Support/Grok Desktop/.env, then cwd fallback
+        // (covers `tauri dev`, where cwd is the project root). `from_path`
+        // does not override vars already set, so the first hit wins.
+        if let Ok(home) = std::env::var("HOME") {
+            let candidates = [
+                PathBuf::from(&home).join(".grok-desktop/.env"),
+                PathBuf::from(&home)
+                    .join("Library/Application Support/Grok Desktop/.env"),
+            ];
+            for path in candidates {
+                if path.is_file() {
+                    let _ = dotenvy::from_path(&path);
+                }
+            }
+        }
+        // Best-effort cwd .env load (dev mode). Ignore errors.
         let _ = dotenvy::dotenv();
 
         let bot_token = match std::env::var("TELEGRAM_BOT_TOKEN") {
