@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import struct
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,15 @@ from typing import Any
 
 APP_DIR = Path.home() / "Library" / "Application Support" / "Grok Desktop"
 STATE_PATH = APP_DIR / "chrome_state.json"
+# Desktop → Chrome command channel. The Tauri app writes a command here; this
+# host polls it and pushes the command up to the extension over stdout. (The
+# extension can't be reached directly because Chrome — not the desktop app —
+# spawns this host, so a shared file is the bridge for the reverse direction.)
+COMMAND_PATH = APP_DIR / "chrome_command.json"
+
+# stdout is shared between the main request/response loop and the command-poll
+# thread; serialize every framed write so they never interleave.
+_WRITE_LOCK = threading.Lock()
 
 
 def read_message() -> dict[str, Any] | None:
@@ -35,9 +45,30 @@ def read_message() -> dict[str, Any] | None:
 
 def write_message(message: dict[str, Any]) -> None:
     payload = json.dumps(message, separators=(",", ":")).encode("utf-8")
-    sys.stdout.buffer.write(struct.pack("<I", len(payload)))
-    sys.stdout.buffer.write(payload)
-    sys.stdout.buffer.flush()
+    with _WRITE_LOCK:
+        sys.stdout.buffer.write(struct.pack("<I", len(payload)))
+        sys.stdout.buffer.write(payload)
+        sys.stdout.buffer.flush()
+
+
+def poll_commands(stop: "threading.Event") -> None:
+    """Watch COMMAND_PATH; when it changes, push the command to the extension."""
+    last_sig: str | None = None
+    while not stop.is_set():
+        try:
+            if COMMAND_PATH.exists():
+                raw = COMMAND_PATH.read_text(encoding="utf-8")
+                # Signature = mtime+len so re-issuing the same command (new
+                # mtime) still fires.
+                sig = f"{COMMAND_PATH.stat().st_mtime_ns}:{len(raw)}"
+                if sig != last_sig:
+                    last_sig = sig
+                    command = json.loads(raw)
+                    write_message({"type": "dispatch", "command": command})
+        except Exception:
+            # Never let a malformed command file kill the bridge.
+            pass
+        stop.wait(0.4)
 
 
 def load_state() -> dict[str, Any]:
@@ -148,6 +179,11 @@ def main() -> int:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     save_state({**load_state(), "connected": True, "updatedAt": int(time.time() * 1000)})
 
+    # Start the desktop → Chrome command poller (daemon thread; dies with us).
+    stop = threading.Event()
+    poller = threading.Thread(target=poll_commands, args=(stop,), daemon=True)
+    poller.start()
+
     while True:
         message = read_message()
         if message is None:
@@ -173,6 +209,7 @@ def main() -> int:
             save_state(error_state)
             write_message({"ok": False, "error": str(exc)})
 
+    stop.set()
     save_state({**load_state(), "connected": False, "updatedAt": int(time.time() * 1000)})
     return 0
 

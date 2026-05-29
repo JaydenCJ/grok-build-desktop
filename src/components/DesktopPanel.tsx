@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   CAPABILITY_LABELS,
+  chromeDispatch,
   desktopActivate,
   desktopQuery,
   listDesktopApps,
@@ -26,6 +27,27 @@ export function DesktopPanel({ onInsertContext }: Props) {
   const [apps, setApps] = useState<DesktopApp[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [chromeCmd, setChromeCmd] = useState('');
+  const [chromeNote, setChromeNote] = useState<string | null>(null);
+
+  async function sendToChrome() {
+    const text = chromeCmd.trim();
+    if (!text) return;
+    setChromeNote(null);
+    // A URL → navigate the controlled tab; otherwise show it as an agent note.
+    const isUrl = /^https?:\/\//i.test(text);
+    try {
+      await chromeDispatch(isUrl ? { action: 'navigate', url: text } : { action: 'note', text });
+      setChromeNote(
+        isUrl
+          ? `Navigating controlled tab → ${text}`
+          : `Sent to controlled tab: "${text}". (Load the extension + Control a tab to see it.)`,
+      );
+      setChromeCmd('');
+    } catch (e) {
+      setChromeNote(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   useEffect(() => {
     void refresh();
@@ -118,9 +140,37 @@ export function DesktopPanel({ onInsertContext }: Props) {
           </div>
         ))}
       </div>
+      <div className="desktop-chrome">
+        <div className="desktop-head">
+          <h3 className="desktop-title">Drive Chrome</h3>
+          <p className="desktop-sub">
+            Send a command to the controlled Chrome tab through the native bridge.
+            A URL navigates it; other text shows as an agent note on the page.
+            Requires the extension loaded + a tab in “Control”.
+          </p>
+        </div>
+        <div className="set-inline">
+          <input
+            value={chromeCmd}
+            placeholder="https://example.com  or  a note for the tab"
+            onChange={(e) => setChromeCmd(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void sendToChrome();
+              }
+            }}
+          />
+          <button type="button" onClick={() => void sendToChrome()}>
+            Send to Chrome
+          </button>
+        </div>
+        {chromeNote ? <p className="desktop-hint">{chromeNote}</p> : null}
+      </div>
+
       <p className="desktop-foot">
-        Want grok to call these directly? Not yet — see the security note in{' '}
-        <code>src-tauri/src/desktop.rs</code>.
+        The desktop → Chrome bridge writes <code>chrome_command.json</code>; the
+        native host polls it and pushes to the extension.
       </p>
     </div>
   );

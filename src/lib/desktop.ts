@@ -48,6 +48,19 @@ export async function desktopActivate(app: string): Promise<void> {
   await invoke('desktop_activate', { app });
 }
 
+/**
+ * Desktop → Chrome: send a command to the controlled tab through the native
+ * bridge. The Rust side writes chrome_command.json; the native host pushes it
+ * to the extension. `command` shapes:
+ *   { action:"navigate", url }
+ *   { action:"cursor"|"note", text|label, x?, y? }
+ *   { action:"dom", domAction:{...} }
+ */
+export async function chromeDispatch(command: Record<string, unknown>): Promise<void> {
+  if (!hasTauri()) throw new Error('Tauri runtime unavailable');
+  await invoke('chrome_dispatch', { command });
+}
+
 export const CAPABILITY_LABELS: Record<string, { label: string; hint: string }> = {
   safari_url: { label: 'Read Safari URL', hint: 'Current tab in the frontmost window' },
   safari_title: { label: 'Read Safari title', hint: 'Current tab title' },

@@ -4753,6 +4753,37 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   color: var(--grok-text-4);
   line-height: 1.5;
 }
+.desktop-chrome {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.desktop-chrome .set-inline { display: flex; gap: 6px; }
+.desktop-chrome .set-inline input {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+}
+.desktop-chrome .set-inline button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.desktop-hint { margin: 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
 
 /* ===== Trace timeline (tool / subagent / task cards) ===== */
 .trace-timeline {
