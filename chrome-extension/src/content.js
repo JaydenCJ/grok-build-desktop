@@ -19,26 +19,39 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      /* Full-viewport border that lights up while the agent is controlling. */
+      /* Controlled-tab indicator — Claude-in-Chrome-style animated marching-
+         ants dashes around the whole viewport. pointer-events:none so it can
+         NEVER block the user's real clicks or typing (works independently). */
       .gd-frame {
         position: fixed;
         inset: 0;
         pointer-events: none;
         z-index: 2147483640;
-        border: 0 solid transparent;
-        transition: border-width 220ms ease, border-color 220ms ease,
-                    box-shadow 220ms ease;
+        opacity: 0;
+        transition: opacity 200ms ease;
       }
       .gd-frame.controlling {
-        border-width: 4px;
-        border-color: rgba(247, 144, 9, 0.85);
-        box-shadow: inset 0 0 0 1px rgba(247, 144, 9, 0.35),
-                    inset 0 0 80px rgba(247, 144, 9, 0.18);
-        animation: gd-frame-pulse 2.6s ease-in-out infinite;
+        --gd-dash: #f5b301;          /* amber, like the reference border */
+        opacity: 1;
+        background:
+          linear-gradient(90deg, var(--gd-dash) 50%, transparent 0) repeat-x top,
+          linear-gradient(90deg, var(--gd-dash) 50%, transparent 0) repeat-x bottom,
+          linear-gradient(0deg,  var(--gd-dash) 50%, transparent 0) repeat-y left,
+          linear-gradient(0deg,  var(--gd-dash) 50%, transparent 0) repeat-y right;
+        background-size: 18px 3px, 18px 3px, 3px 18px, 3px 18px;
+        box-shadow: inset 0 0 90px rgba(245, 179, 1, 0.12);
+        animation: gd-march 0.55s linear infinite;
       }
-      @keyframes gd-frame-pulse {
-        0%, 100% { border-color: rgba(247, 144, 9, 0.85); }
-        50%      { border-color: rgba(247, 144, 9, 0.55); }
+      /* Watching (not controlling) — calm steady sage edge, no animation. */
+      .gd-frame.watching {
+        opacity: 1;
+        box-shadow: inset 0 0 0 2px rgba(111, 159, 123, 0.45);
+      }
+      @keyframes gd-march {
+        to {
+          background-position:
+            18px top, -18px bottom, left -18px, right 18px;
+        }
       }
 
       /* Badge cluster top-right. */
@@ -320,6 +333,7 @@
       badge.classList.remove("visible");
       badge.classList.remove("controlling");
       frame.classList.remove("controlling");
+      frame.classList.remove("watching");
       cursor.classList.remove("visible");
       return;
     }
@@ -327,7 +341,9 @@
     const isControlling = tabState.status === "controlling";
     status.textContent = isControlling ? "controlling" : "watching";
     badge.classList.toggle("controlling", isControlling);
+    // Controlled → animated amber marching ants; watched → calm sage edge.
     frame.classList.toggle("controlling", isControlling);
+    frame.classList.toggle("watching", !isControlling);
     badge.classList.add("visible");
   }
 
