@@ -46,7 +46,11 @@ export function QueueDock() {
     setResumeBannerVisible(false);
   };
 
-  if (!active && queue.items.length === 0 && !resumeBannerVisible) return null;
+  // Only surface the dock when it has something to manage: queued tasks
+  // waiting behind the active run, or a resume banner. A lone active run with
+  // nothing queued shows its status in the StatusBar instead — no redundant
+  // "▶ Running … expand" bar (keeps the conversation clean, Claude-style).
+  if (queue.items.length === 0 && !resumeBannerVisible) return null;
 
   return (
     <div className="queue-dock">
