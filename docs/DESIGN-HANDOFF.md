@@ -249,7 +249,7 @@ If Grok Build Desktop ends up halfway between **Cursor's density** and **Linear'
 | `src/App.tsx` | Main React tree. 3300+ lines, but the layout structure (sidebar / workspace / composer / status) is clear. |
 | `src/components/*` | Composer, MessageList, MessageItem, StatusBar, QueueDock, PromptLibrary, AgentOverlay. |
 | `src/App.css` | All styling — single file. New v0.3.0 section near the bottom (search `===== F: Non-blocking UI`). |
-| `docs/superpowers/specs/` | Engineering specs for F, E, G2/G3 — useful background on architecture. |
+| `docs/architecture.md` | Architecture overview — useful background on how the pieces fit together. |
 | `chrome-extension/` | Browser extension (separate concern from main app). |
 
 ✱ = active design target
