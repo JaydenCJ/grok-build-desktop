@@ -4003,6 +4003,8 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--text-2);
   user-select: none;
 }
@@ -4033,6 +4035,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+  flex-shrink: 0;
 }
 .detail-toggle:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
 .detail-toggle.active { background: var(--bg-4); color: var(--text-1); border-color: var(--border-2); }
@@ -4044,6 +4047,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   justify-content: center;
   width: 28px;
   height: 28px;
+  flex-shrink: 0;
   border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
@@ -4053,6 +4057,25 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
     border-color 140ms var(--ease-out);
 }
 .titlebar-icon-btn:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
+/* Day/night toggle: a clearly-readable sun/moon, not a faint dot. Full-contrast
+   icon + a hairline border so it reads as a tappable control at a glance. */
+.titlebar-icon-btn.theme-toggle {
+  color: var(--text-1);
+  border-color: var(--border);
+  background: var(--bg-2);
+}
+.titlebar-icon-btn.theme-toggle:hover {
+  background: var(--bg-4);
+  border-color: var(--border-strong);
+}
+/* Pin the icon's box so flexbox can't squish it to a sliver (it was collapsing
+   to 2px wide inside the row → reading as a "dot"). */
+.titlebar-icon-btn svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  min-width: 17px;
+}
 
 /* Bottom-left account strip is a full-width Settings button now. */
 .account-strip {

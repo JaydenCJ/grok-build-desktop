@@ -332,8 +332,8 @@ assert.ok(read("src/lib/mcp.ts").includes("--args=${a}"),
 assert.ok(app.includes('aria-label="Agent effort"') && app.includes('className="run-select"'),
   "run-config selects must be in the composer footer (below the chat box)");
 // 10) Top bar: day/night theme toggle + a panels menu (Preview/Context/Terminal/Tools).
-assert.ok(app.includes('className="titlebar-icon-btn"'),
-  "title bar must have a day/night theme toggle");
+assert.ok(app.includes('titlebar-icon-btn theme-toggle') && app.includes("<Moon size"),
+  "title bar must have a clear day/night (sun/moon) theme toggle");
 assert.ok(app.includes("openPanelMenu") && app.includes("Tools & MCP"),
   "top-right must open a panels menu wired to Preview/Context/Terminal/Tools");
 // 11) The sidebar lists CONVERSATIONS (sessions), and clicking one switches to
