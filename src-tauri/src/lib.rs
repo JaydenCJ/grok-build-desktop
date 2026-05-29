@@ -1424,9 +1424,20 @@ async fn grok_mcp_add(
         argv.push(cmd);
     }
     if let Some(a) = args {
-        if !a.is_empty() {
-            argv.push("--args".into());
-            argv.extend(a);
+        // Emit each arg as its own `--args=VALUE`. `grok mcp add` uses clap's
+        // multi-value `--args <ARGS>...`, which rejects a bare value starting
+        // with '-' (e.g. npx's `-y`) as "unexpected argument '-y'". The `=`
+        // form binds the value to the flag so leading-dash args are accepted.
+        // Also expand a literal `$HOME` so filesystem/git servers get a real
+        // path instead of the unexpanded placeholder.
+        let home = env::var("HOME").unwrap_or_default();
+        for arg in a {
+            let expanded = if home.is_empty() {
+                arg
+            } else {
+                arg.replace("$HOME", &home)
+            };
+            argv.push(format!("--args={}", expanded));
         }
     }
     if let Some(envs) = env_pairs {

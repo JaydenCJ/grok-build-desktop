@@ -28,12 +28,14 @@ import {
   History,
   Layers3,
   Loader2,
+  Moon,
   MoreHorizontal,
   PanelRight,
   Pencil,
   Pin,
   PinOff,
   Play,
+  Sun,
   Plus,
   RefreshCcw,
   Search,
@@ -1686,6 +1688,24 @@ function App() {
     if (next && target === "preview") void refreshStaticPreview();
   }
 
+  // Top-right "panels" menu — Preview / Context / Terminal / Tools, each opens
+  // its panel (Claude-style). A ✓ marks the currently-open panel. Anchored
+  // under the button.
+  function openPanelMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({
+      x: Math.round(b.right),
+      y: Math.round(b.bottom + 6),
+      items: [
+        { label: "Preview", icon: <Globe2 size={15} />, shortcut: previewOpen ? "✓" : undefined, onClick: () => togglePanel("preview") },
+        { label: "Context inspector", icon: <PanelRight size={15} />, shortcut: contextOpen ? "✓" : undefined, onClick: () => togglePanel("context") },
+        { label: "Terminal", icon: <TerminalSquare size={15} />, shortcut: terminalOpen ? "✓" : undefined, onClick: () => togglePanel("terminal") },
+        { label: "Tools & MCP", icon: <Wrench size={15} />, separator: true, onClick: () => setToolsPageOpen(true) },
+      ],
+    });
+  }
+
   async function refreshGrokMcp() {
     setBusyRunner("mcp");
     try {
@@ -2964,16 +2984,24 @@ function App() {
                 aria-label={statusLabel}
               />
             )}
-            {/* Single top-right "details" toggle — opens the right drawer
-                (Context inspector + Skills/MCP/Agents/… tabs, plus Preview /
-                Terminal). One clean button, Claude-Desktop-style, instead of
-                the old toolbar row. */}
+            {/* Day / night theme toggle (also ⌘⇧L). */}
+            <button
+              className="titlebar-icon-btn"
+              type="button"
+              aria-label={themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              title={themeMode === "dark" ? "Light theme (⌘⇧L)" : "Dark theme (⌘⇧L)"}
+              onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+            >
+              {themeMode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            {/* Panels menu — Preview / Context / Terminal / Tools, each opens
+                its panel (Claude-Desktop-style). */}
             <button
               className={`detail-toggle${contextOpen || previewOpen || terminalOpen || toolsOpen ? " active" : ""}`}
               type="button"
-              aria-label="Toggle details panel"
-              title="Details — context, preview, terminal, tools"
-              onClick={() => togglePanel("context")}
+              aria-label="Open panels menu"
+              title="Panels — Preview, Context, Terminal, Tools"
+              onClick={openPanelMenu}
             >
               <PanelRight size={16} />
             </button>
@@ -3144,6 +3172,53 @@ function App() {
                     <option key={policy} value={policy}>
                       {actionPolicies[policy].label}
                     </option>
+                  ))}
+                </select>
+                {/* Run config — moved here from the inspector so it's one
+                    glance below the chat box (Claude-style). Labels are
+                    self-describing since the footer has no separate captions. */}
+                <select
+                  aria-label="Agent effort"
+                  className="run-select"
+                  title="Agent effort — how hard Grok works per turn"
+                  value={effortLevel}
+                  onChange={(event) => setEffortLevel(event.currentTarget.value as EffortLevel)}
+                >
+                  {(Object.keys(effortLevels) as EffortLevel[]).map((k) => (
+                    <option key={k} value={k}>{`Effort: ${effortLevels[k].label}`}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Reasoning effort"
+                  className="run-select"
+                  title="Reasoning effort — extra thinking budget on hard paths"
+                  value={reasoningEffort}
+                  onChange={(event) => setReasoningEffort(event.currentTarget.value as ReasoningEffort)}
+                >
+                  {(Object.keys(reasoningEfforts) as ReasoningEffort[]).map((k) => (
+                    <option key={k} value={k}>{`Reasoning: ${reasoningEfforts[k].label}`}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Permission mode"
+                  className="run-select"
+                  title="Permission mode — maps to grok --permission-mode"
+                  value={permissionMode}
+                  onChange={(event) => setPermissionMode(event.currentTarget.value as PermissionMode)}
+                >
+                  {(Object.keys(permissionModes) as PermissionMode[]).map((k) => (
+                    <option key={k} value={k}>{`Perm: ${permissionModes[k].label}`}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Best-of-N"
+                  className="run-select"
+                  title="Best-of-N — run N ways in parallel, keep the best"
+                  value={bestOfN}
+                  onChange={(event) => setBestOfN(Number(event.currentTarget.value))}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{`Best-of-${n}`}</option>
                   ))}
                 </select>
                 <span className="composer-hint" aria-hidden="true">
