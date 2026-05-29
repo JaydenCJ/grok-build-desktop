@@ -432,6 +432,21 @@ const primaryNavItems = [
 type HistoryPreview = { id: string; title: string; detail: string; time: string };
 type HistoryRow = HistoryPreview & { pinned: boolean; group: string | null; archived: boolean };
 
+// Brand mark — a sharp four-point spark. Minimal, monochrome, and cohesive
+// with the ✦ Grok activity mark used in the status bar; reads as "AI / Grok"
+// without copying any trademark. Inherits currentColor so it adapts to the
+// chip's theme-aware foreground.
+function BrandGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden focusable="false">
+      <path
+        d="M12 1.4C12.45 6.95 17.05 11.55 22.6 12C17.05 12.45 12.45 17.05 12 22.6C11.55 17.05 6.95 12.45 1.4 12C6.95 11.55 11.55 6.95 12 1.4Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function recentPromptPreviews(messages: ChatMessage[]): HistoryPreview[] {
   const userMessages = messages.filter((message) => message.role === "user");
   const recent = userMessages.slice(-60).reverse();
@@ -2682,7 +2697,7 @@ function App() {
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="brand">
-          <div className="brand-mark">G</div>
+          <div className="brand-mark"><BrandGlyph size={18} /></div>
           <div>
             <h1>Grok Build Desktop</h1>
             <span>Grok Build for engineers</span>
@@ -2875,7 +2890,7 @@ function App() {
           title="Settings (⌘,)"
           onClick={() => setSettingsOpen(true)}
         >
-          <div className={`avatar${isGrokReady ? " ready" : ""}`}>G</div>
+          <div className={`avatar${isGrokReady ? " ready" : ""}`}><BrandGlyph size={17} /></div>
           <div className="account-text">
             {/* Real data: active model + live grok connection status. */}
             <strong>{activeModel}</strong>
