@@ -2913,15 +2913,20 @@ function App() {
                 {isGrokReady ? "Grok" : "Offline"}
               </span>
             )}
-            {/* Day / night theme toggle (also ⌘⇧L). */}
+            {/* Day / night theme toggle (also ⌘⇧L). Bordered + full-contrast
+                sun/moon so it reads as a control, not a stray dot. */}
             <button
-              className="titlebar-icon-btn"
+              className="titlebar-icon-btn theme-toggle"
               type="button"
               aria-label={themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={themeMode === "dark" ? "Light theme (⌘⇧L)" : "Dark theme (⌘⇧L)"}
+              title={themeMode === "dark" ? "Switch to light mode (⌘⇧L)" : "Switch to dark mode (⌘⇧L)"}
               onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
             >
-              {themeMode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              {themeMode === "dark" ? (
+                <Sun size={17} strokeWidth={2.25} />
+              ) : (
+                <Moon size={17} strokeWidth={2.25} />
+              )}
             </button>
             {/* Panels menu — Preview / Context / Terminal / Tools, each opens
                 its panel (Claude-Desktop-style). */}
