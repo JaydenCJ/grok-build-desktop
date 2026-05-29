@@ -49,6 +49,7 @@ import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { SettingsPage } from "./components/SettingsPage";
+import { ToolsPage } from "./components/ToolsPage";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -808,6 +809,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
+  // Dedicated Tools / MCP hub (community-tool integration).
+  const [toolsPageOpen, setToolsPageOpen] = useState(false);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -1866,8 +1869,14 @@ function App() {
         run: () => setSidebarCollapsed((v) => !v),
       },
       {
-        id: "toggle-tools",
-        label: toolsOpen ? "Close Tools panel" : "Open Tools panel",
+        id: "open-tools",
+        label: "Open Tools & MCP",
+        group: "View",
+        run: () => setToolsPageOpen(true),
+      },
+      {
+        id: "toggle-inspector",
+        label: toolsOpen ? "Close Context inspector" : "Open Context inspector (advanced)",
         group: "View",
         run: () => togglePanel("tools"),
       },
@@ -2335,6 +2344,7 @@ function App() {
         appVersion="0.4.0"
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
+      <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
       <aside className="app-sidebar">
         <div className="mac-lights" aria-hidden="true">
           <span className="red" />
@@ -2345,8 +2355,8 @@ function App() {
         <div className="brand">
           <div className="brand-mark">G</div>
           <div>
-            <h1>Grok Desktop</h1>
-            <span>Grok desktop for engineers</span>
+            <h1>Grok Build Desktop</h1>
+            <span>Grok Build for engineers</span>
           </div>
           {/* The chevron previously looked clickable but did nothing. Now it
               opens the ⌘K palette — the natural "what can I do?" affordance. */}
@@ -2381,8 +2391,8 @@ function App() {
                   // files) is unified here.
                   setPaletteOpen(true);
                 } else if (item.label === "Tools") {
-                  togglePanel("tools");
-                  setInspectorTab("context");
+                  // Dedicated Tools / MCP hub (community-tool integration).
+                  setToolsPageOpen(true);
                 } else if (item.label === "Settings") {
                   // Dedicated Settings page (Claude-Desktop-style modal).
                   setSettingsOpen(true);
@@ -2392,7 +2402,7 @@ function App() {
               // not hardcoded to "New Session". Otherwise every button looks
               // selected and the user can't tell which panel is current.
               const isActive =
-                (item.label === "Tools" && toolsOpen) ||
+                (item.label === "Tools" && toolsPageOpen) ||
                 (item.label === "Settings" && settingsOpen) ||
                 (item.label === "Search" && paletteOpen);
               return (
