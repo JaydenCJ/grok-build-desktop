@@ -432,16 +432,20 @@ const primaryNavItems = [
 type HistoryPreview = { id: string; title: string; detail: string; time: string };
 type HistoryRow = HistoryPreview & { pinned: boolean; group: string | null; archived: boolean };
 
-// Brand mark — a sharp four-point spark. Minimal, monochrome, and cohesive
-// with the ✦ Grok activity mark used in the status bar; reads as "AI / Grok"
-// without copying any trademark. Inherits currentColor so it adapts to the
-// chip's theme-aware foreground.
+// Brand mark — a constructed geometric "G" monogram (monoline grotesque,
+// matched to the app's Geist display face). Crisp and flat in-app so it stays
+// sharp at chip size and adapts to the theme-aware foreground; the dock icon
+// carries the richer graphite material. Same letterform everywhere → one
+// identity. Self-contained path (no font dependency for rasterized icons).
 function BrandGlyph({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden focusable="false">
       <path
-        d="M12 1.4C12.45 6.95 17.05 11.55 22.6 12C17.05 12.45 12.45 17.05 12 22.6C11.55 17.05 6.95 12.45 1.4 12C6.95 11.55 11.55 6.95 12 1.4Z"
-        fill="currentColor"
+        d="M18.5 8.2 A7.6 7.6 0 1 0 19.6 12 L13 12"
+        stroke="currentColor"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
