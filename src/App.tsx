@@ -1481,7 +1481,10 @@ function App() {
     if (bestOfN > 1) args.push("--best-of-n", String(bestOfN));
     if (experimentalMemory) args.push("--experimental-memory");
     if (!webSearchEnabled) args.push("--disable-web-search");
-    if (!subagentsEnabled) args.push("--no-subagents");
+    // grok rejects `--no-subagents` together with `--best-of-n` ("cannot be
+    // used with") — best-of-n fans work out to subagents. So only disable
+    // subagents when we're NOT running best-of-n. (Another grok-exit-2 cause.)
+    if (!subagentsEnabled && bestOfN <= 1) args.push("--no-subagents");
     if (selfCheck) args.push("--check");
     args.push("--max-turns", "12");
     if (mode === "coding" && codingCwd.trim()) {

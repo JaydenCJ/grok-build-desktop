@@ -1079,9 +1079,10 @@ fn grok_args(
         args.push(reasoning_effort);
     }
 
-    if let Some(best_of_n) = normalized_best_of_n(best_of_n) {
+    let best_of_n = normalized_best_of_n(best_of_n);
+    if let Some(n) = best_of_n {
         args.push("--best-of-n".to_string());
-        args.push(best_of_n.to_string());
+        args.push(n.to_string());
     }
 
     if experimental_memory {
@@ -1092,7 +1093,9 @@ fn grok_args(
         args.push("--disable-web-search".to_string());
     }
 
-    if !subagents_enabled {
+    // grok rejects `--no-subagents` together with `--best-of-n` (best-of-n
+    // fans out to subagents). Only disable subagents when not running best-of-n.
+    if !subagents_enabled && best_of_n.is_none() {
         args.push("--no-subagents".to_string());
     }
 
