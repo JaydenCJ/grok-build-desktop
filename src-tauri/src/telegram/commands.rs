@@ -135,7 +135,13 @@ async fn handle_grok(
     }
 
     let cwd = resolve_cwd(&config);
-    let args = default_grok_args();
+    // CRITICAL: the queue spawns grok with exactly these args — it does NOT
+    // append the prompt itself (the desktop UI pushes `-p` before enqueue).
+    // Without `-p <prompt>` grok runs with no task, blocks on stdin (null),
+    // and exits code 1. So append the prompt here.
+    let mut args = default_grok_args();
+    args.push("-p".to_string());
+    args.push(prompt.clone());
 
     let placeholder = bot
         .send_message(msg.chat.id, "🤖 enqueuing…")
