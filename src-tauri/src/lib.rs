@@ -994,8 +994,9 @@ fn normalized_reasoning_effort(reasoning_effort: Option<String>) -> Option<Strin
         "low" => Some("low".to_string()),
         "medium" => Some("medium".to_string()),
         "high" => Some("high".to_string()),
-        "xhigh" => Some("xhigh".to_string()),
-        "max" => Some("max".to_string()),
+        // grok's --reasoning-effort has no "max"; its real maximum is "xhigh".
+        // Passing "max" makes grok exit code 2, so map the UI's Max → xhigh.
+        "xhigh" | "max" => Some("xhigh".to_string()),
         _ => None,
     }
 }

@@ -1459,7 +1459,12 @@ function App() {
     if (activeModel) args.push("--model", activeModel);
     if (effortLevel) args.push("--effort", effortLevel);
     if (reasoningEffort && reasoningEffort !== "off") {
-      args.push("--reasoning-effort", reasoningEffort);
+      // grok's --reasoning-effort accepts: none|minimal|low|medium|high|xhigh.
+      // The UI's "Max" is NOT a valid grok value — sending it makes grok exit
+      // with code 2 ("invalid reasoning effort: max") and reply NOTHING (this
+      // was the "grok 压根不回我" bug). Map Max → xhigh (grok's real maximum).
+      const r = reasoningEffort === "max" ? "xhigh" : reasoningEffort;
+      args.push("--reasoning-effort", r);
     }
     // Action policy → REAL grok permission behavior (was previously prompt-only).
     //   review   → no permission flag (the preamble asks Grok to stay read-only)
