@@ -2242,13 +2242,25 @@ function App() {
           handleTabCreate();
         }
       } else if (e.key === "Escape") {
-        if (paletteOpen) setPaletteOpen(false);
+        // Esc closes whatever transient surface is open: palette first, then
+        // any open dock panel (Preview / Context / Terminal / Tools). Without
+        // this, Esc did nothing for the panels — they could only be closed by
+        // toggling them off again.
+        if (paletteOpen) {
+          setPaletteOpen(false);
+        } else if (previewOpen || contextOpen || terminalOpen || toolsOpen) {
+          e.preventDefault();
+          setPreviewOpen(false);
+          setContextOpen(false);
+          setTerminalOpen(false);
+          setToolsOpen(false);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paletteOpen]);
+  }, [paletteOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
