@@ -1515,6 +1515,10 @@ function App() {
       args.push("--permission-mode", permissionMode);
     }
     if (bestOfN > 1) args.push("--best-of-n", String(bestOfN));
+    // Behavioural guidance at the system-prompt level (grok-native), instead of
+    // a preamble in the user turn. Coding mode only; chat stays freeform.
+    const rules = buildGrokRules();
+    if (rules) args.push("--rules", rules);
     if (experimentalMemory) args.push("--experimental-memory");
     if (!webSearchEnabled) args.push("--disable-web-search");
     // grok rejects `--no-subagents` together with `--best-of-n` ("cannot be
@@ -1536,42 +1540,40 @@ function App() {
     return args;
   }
 
-  // Wraps the raw user prompt with a coding-session preamble in coding mode.
-  // Chat mode passes through unchanged.
+  // The user turn is EXACTLY what the user typed. grok-build already ships a
+  // strong coding system prompt, so durable behavioural guidance is appended at
+  // the system level via `--rules` (see buildGrokRules) instead of bolting a
+  // 25-line preamble onto every user turn. That keeps the model on-task, makes
+  // the chat bubble an exact mirror of the request, and avoids fighting
+  // grok-build's own prompt. Operational settings (effort/reasoning/best-of-n/
+  // permission/web/subagents) ride as real CLI flags — never echoed as prose.
   function buildPromptWithPreamble(raw: string): string {
-    if (mode !== "coding") return raw;
-    const workflow = codingPresets.find((preset) => preset.id === codingWorkflow);
-    const policy = actionPolicies[actionPolicy];
-    return [
-      "Grok Desktop Professional Coding Session",
-      "",
-      `Workflow: ${workflow?.label ?? "Custom"} - ${workflow?.description ?? "User-defined task"}`,
-      `Action policy: ${policy.label} - ${policy.detail}`,
-      `Model engine: ${activeModel} - ${activeModelMeta.detail}`,
-      `Grok effort: ${effortLevels[effortLevel].label} - ${effortLevels[effortLevel].detail}`,
-      `Reasoning effort: ${activeReasoningLabel} - ${reasoningEfforts[reasoningEffort].detail}`,
-      `Permission mode: ${permissionModes[permissionMode].label} - ${permissionModes[permissionMode].detail}`,
-      `Best-of-N: ${bestOfN}`,
-      `Experimental memory: ${experimentalMemory ? "enabled" : "off"}`,
-      `Web search: ${webSearchEnabled ? "enabled for current docs and version-sensitive facts" : "disabled"}`,
-      `Subagents: ${subagentsEnabled ? "enabled" : "disabled"}`,
-      `Self-check: ${selfCheck ? "enabled with grok --check" : "disabled"}`,
-      `Project path from UI: ${codingCwd.trim() || "default Grok Desktop project root"}`,
-      `Grok ecosystem: ${grokInspectCount(ecosystemRun?.output ?? "", "Skills")} skills, ${grokInspectCount(ecosystemRun?.output ?? "", "MCP Servers")} MCP servers, ${grokInspectCount(ecosystemRun?.output ?? "", "Agents")} agents, ${grokInspectCount(ecosystemRun?.output ?? "", "Plugins")} plugins discovered by grok inspect.`,
-      "",
-      "Professional expectations:",
-      "- Optimize for a senior programmer who wants high signal and minimal ceremony.",
-      "- Start with a quick repository map before editing: entry points, likely files, commands, and risk boundaries.",
-      "- Prefer exact file paths, exact commands, and concrete implementation details.",
-      "- If changing code, keep edits narrow and make verification easy.",
-      "- If the request is ambiguous, make the safest useful assumption and state it briefly.",
-      "- Use Grok's tools, MCP servers, skills, plugins, hooks, and subagents when they clearly improve the result.",
-      "- When web search is enabled, use it only for unstable/version-sensitive facts and cite sources in the response.",
-      "- For hard implementation or debugging, reason privately, then return crisp evidence, changes, and verification.",
-      "",
-      "Task:",
-      raw,
-    ].join("\n");
+    return raw;
+  }
+
+  // Durable, system-level guidance for grok-build, passed via `--rules` (grok
+  // appends it to the agent's own system prompt — verified the model honours
+  // it). Kept TIGHT: only high-value additions beyond grok-build's defaults.
+  // We deliberately do NOT report grok's own ecosystem back to it (it discovers
+  // its 90+ skills / MCP servers itself via `grok inspect`; the old preamble
+  // hard-said "0 skills" before inspect had run, which was actively wrong).
+  function buildGrokRules(): string | null {
+    if (mode !== "coding") return null;
+    const rules = [
+      "Operate as a senior engineer: high signal, minimal ceremony.",
+      "Before editing, quickly map the repo — entry points, likely files, build/test commands, risk boundaries.",
+      "Prefer exact file paths, exact commands, and concrete diffs over prose.",
+      "Keep edits narrow and make verification easy: give one command to verify each change.",
+      "If the request is ambiguous, make the safest useful assumption and state it in one line.",
+    ];
+    // The only action-policy intent not already enforced by a CLI flag:
+    // "review" has no grok permission flag, so the read-only contract lives here.
+    if (actionPolicy === "review") {
+      rules.push(
+        "Stay read-only: analyze and propose changes, but do not edit files or run mutating commands.",
+      );
+    }
+    return rules.join("\n");
   }
 
   function handleEnqueued(info: { runId: string; position: number; prompt: string; rawText?: string }) {

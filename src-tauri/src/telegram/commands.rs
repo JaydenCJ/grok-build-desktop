@@ -300,12 +300,21 @@ fn default_grok_args() -> Vec<String> {
         "grok-build".into(),
         "--effort".into(),
         "medium".into(),
+        // Same system-level guidance the desktop UI sends via --rules, so remote
+        // (Telegram) runs behave like the app — without bloating the user turn.
+        "--rules".into(),
+        GROK_SENIOR_RULES.into(),
         "--no-subagents".into(),
         "--disable-web-search".into(),
         "--max-turns".into(),
         "12".into(),
     ]
 }
+
+/// Durable senior-engineer guidance appended to grok-build's system prompt
+/// (mirrors the desktop UI's buildGrokRules). Kept tight — grok-build already
+/// has a strong coding prompt.
+const GROK_SENIOR_RULES: &str = "Operate as a senior engineer: high signal, minimal ceremony.\nBefore editing, quickly map the repo — entry points, likely files, build/test commands, risk boundaries.\nPrefer exact file paths, exact commands, and concrete diffs over prose.\nKeep edits narrow and make verification easy: give one command to verify each change.\nIf the request is ambiguous, make the safest useful assumption and state it in one line.";
 
 fn resolve_cwd(config: &Config) -> String {
     if let Some(p) = &config.default_cwd {
