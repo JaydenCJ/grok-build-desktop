@@ -2617,22 +2617,15 @@ function App() {
   const modelOptions = useMemo(() => {
     const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
     const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
-    // Mode-aware model list.
-    //   CODE mode  → lock to the Grok Build coding agent(s) the CLI actually
-    //                reports. grok-4.3 et al. are chat/reasoning models that
-    //                can't drive Grok Build's coding loop, so they must NOT be
-    //                pickable here (that was the failing case).
-    //   CHAT mode  → free choice: every preset (grok-4.3, grok-latest, …) so
-    //                you can pick a reasoning model for product thinking.
-    if (mode === "coding") {
-      return fromCli.length > 0 ? fromCli : ["grok-build"];
-    }
-    // Chat: union of CLI-reported + declared presets, CLI ones first.
-    const merged: string[] = [];
-    for (const id of [...fromCli, ...declared]) {
-      if (!merged.includes(id)) merged.push(id);
-    }
-    return merged;
+    // The grok CLI is authoritative about which models THIS login can actually
+    // run. When it reported them (the normal case), offer ONLY those — hardcoded
+    // presets grok doesn't know (grok-build-0.1, grok-4.3, grok-latest, …) make
+    // grok exit "unknown model id" and reply NOTHING, so they must never be
+    // selectable. Power users who know a real id can still type it via "Custom…".
+    if (fromCli.length > 0) return fromCli;
+    // CLI reported nothing (offline / parse miss): best-effort fallback so the
+    // dropdown isn't empty. Coding locks to grok-build; chat shows the presets.
+    return mode === "coding" ? ["grok-build"] : declared;
   }, [availableModels, mode]);
   const modelIsVerified = availableModels.length === 0 || availableModels.includes(activeModel) || modelPreset === "custom";
 
