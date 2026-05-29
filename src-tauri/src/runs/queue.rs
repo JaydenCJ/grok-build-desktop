@@ -316,14 +316,17 @@ impl RunQueue {
                 let mut consecutive_fail = 0u32;
 
                 // No-output timeout: how long we'll wait between stdout lines
-                // before assuming grok is wedged. grok with `--effort medium`
-                // can legitimately spend > 60s "thinking" before producing
-                // the first NDJSON event, so the default has to be generous.
+                // before assuming grok is wedged. The timer resets on EVERY
+                // line, so a grok that's actively thinking (streaming-json emits
+                // `thought` events continuously) never trips it. It only fires
+                // when grok is TRULY silent — e.g. blocked on a macOS permission
+                // prompt, or wedged. `--effort max` + plan mode can stay silent
+                // a while before the first event, so the default is generous.
                 // Tunable via env var so power users can tighten it.
                 let no_output_secs: u64 = std::env::var("GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(240);
+                    .unwrap_or(420);
                 loop {
                     line.clear();
                     let read_fut = reader.read_line(&mut line);
@@ -331,12 +334,18 @@ impl RunQueue {
                         tokio::time::timeout(std::time::Duration::from_secs(no_output_secs), read_fut).await;
                     match outcome {
                         Err(_) => {
-                            // N seconds no output and not exited
+                            // N seconds with zero output and not exited → wedged.
+                            // Usually a macOS permission prompt waiting offscreen
+                            // (grant/deny it), or genuinely stuck. Make the error
+                            // actionable instead of a bare "timeout".
                             process::kill_group(spawned.pgid).await;
                             self.finalize(
                                 &rec.id,
                                 RunState::Failed,
-                                Some(format!("no output timeout ({}s)", no_output_secs)),
+                                Some(format!(
+                                    "no output for {no_output_secs}s — grok went silent. \
+                                     Check for a macOS permission prompt, or lower Effort/Reasoning.",
+                                )),
                             )
                             .await;
                             return;
