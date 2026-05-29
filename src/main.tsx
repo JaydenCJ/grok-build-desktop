@@ -11,6 +11,23 @@ void ensureStreamListenersAttached().catch((e) => {
   console.warn("[grok-desktop] failed to attach Tauri stream listeners", e);
 });
 
+// Suppress the WebView's native context menu (Reload / Inspect Element /
+// Services) — it looks unfinished in a shipped desktop app. Keep it on real
+// editable fields so right-click → Paste still works in the composer/inputs.
+window.addEventListener(
+  "contextmenu",
+  (e) => {
+    const t = e.target as HTMLElement | null;
+    const editable =
+      t &&
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable);
+    if (!editable) e.preventDefault();
+  },
+  { capture: true },
+);
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null }

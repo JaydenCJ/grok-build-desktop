@@ -2514,24 +2514,25 @@ function App() {
           </button>
         </section>
 
-        <div className="account-strip">
+        {/* Whole strip is the Settings affordance now — clicking anywhere
+            (avatar, name, or gear) opens Settings. Previously only the tiny
+            gear was clickable, which read as "broken". */}
+        <button
+          className="account-strip"
+          type="button"
+          aria-label="Open settings"
+          title="Settings (⌘,)"
+          onClick={() => setSettingsOpen(true)}
+        >
           <div className="avatar">GD</div>
-          <div>
+          <div className="account-text">
             <strong>Grok Developer</strong>
             <span>Local workspace</span>
           </div>
-          {/* The footer gear used to be a decorative icon — wire it to open
-              the Permissions tab in Tools (where auth/policy/effort live). */}
-          <button
-            className="account-settings"
-            type="button"
-            aria-label="Open settings"
-            title="Settings (⌘,)"
-            onClick={() => setSettingsOpen(true)}
-          >
+          <span className="account-settings" aria-hidden="true">
             <Settings size={16} />
-          </button>
-        </div>
+          </span>
+        </button>
       </aside>
 
       <section className={`workspace dock-${dockPosition}`}>
@@ -2571,6 +2572,19 @@ function App() {
                 aria-label={statusLabel}
               />
             )}
+            {/* Single top-right "details" toggle — opens the right drawer
+                (Context inspector + Skills/MCP/Agents/… tabs, plus Preview /
+                Terminal). One clean button, Claude-Desktop-style, instead of
+                the old toolbar row. */}
+            <button
+              className={`detail-toggle${contextOpen || previewOpen || terminalOpen || toolsOpen ? " active" : ""}`}
+              type="button"
+              aria-label="Toggle details panel"
+              title="Details — context, preview, terminal, tools"
+              onClick={() => togglePanel("context")}
+            >
+              <PanelRight size={16} />
+            </button>
           </div>
         </header>
 

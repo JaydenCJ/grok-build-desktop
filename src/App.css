@@ -3935,6 +3935,45 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 .conn-dot.ready { background: var(--success); }
 .conn-dot.blocked { background: var(--warn); }
 
+/* Top-right details toggle — opens the right inspector drawer. */
+.detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.detail-toggle:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
+.detail-toggle.active { background: var(--bg-4); color: var(--text-1); border-color: var(--border-2); }
+
+/* Bottom-left account strip is a full-width Settings button now. */
+.account-strip {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 120ms ease;
+}
+.account-strip:hover { background: var(--bg-3); }
+.account-text { display: flex; flex-direction: column; min-width: 0; }
+.account-strip .account-settings {
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-strip:hover .account-settings { color: var(--text-1); }
+
 /* ===== Settings page (Claude-Desktop-style modal) ===== */
 .settings-overlay {
   position: fixed;
