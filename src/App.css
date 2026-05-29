@@ -4046,6 +4046,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   justify-content: center;
 }
 .account-strip:hover .account-settings { color: var(--text-1); }
+.avatar { transition: box-shadow 220ms var(--ease-out); }
 .avatar.ready { box-shadow: 0 0 0 2px var(--success); }
 
 /* ===== App-owned right-click context menu ===== */
