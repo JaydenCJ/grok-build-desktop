@@ -360,5 +360,25 @@ assert.ok(app.includes('className="titlebar-icon-btn"'),
   "title bar must have a day/night theme toggle");
 assert.ok(app.includes("openPanelMenu") && app.includes("Tools & MCP"),
   "top-right must open a panels menu wired to Preview/Context/Terminal/Tools");
+// 11) Clicking a HISTORY row must RETURN to that task's conversation (jump +
+//     flash), not silently refill the composer. Regression guard for the
+//     "点了历史没有回到那个任务" bug.
+assert.ok(app.includes("goToHistoryPrompt"),
+  "history rows must navigate via goToHistoryPrompt (jump to the task)");
+assert.ok(app.includes("focusId=") && app.includes("focusNonce="),
+  "MessageList must receive focusId/focusNonce so it can scroll to the clicked task");
+assert.ok(read("src/components/MessageList.tsx").includes("data-message-id") &&
+  read("src/components/MessageList.tsx").includes("scrollToIndex"),
+  "MessageList must anchor messages + scroll-to-index for history jumps");
+assert.ok(css.includes(".message.message-flash"),
+  "jumped-to message must flash (message-flash animation)");
+// 12) Live phase must be spelled out (thinking…/writing…/working…), not just a
+//     token counter — the user asked to always see what Grok is doing now.
+assert.ok(read("src/components/StatusBar.tsx").includes("writing…") &&
+  read("src/components/StatusBar.tsx").includes("working…"),
+  "StatusBar must surface the live phase (writing…/working…)");
+// 13) Best-of-N defaults to 1 (real token streaming; best-of-n>1 dumps at once).
+assert.ok(app.includes('storageKeys.bestOfN) ?? "1"'),
+  "Best-of-N must default to 1 for natural streaming");
 
 console.log("smoke: ok");
