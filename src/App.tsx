@@ -2628,11 +2628,13 @@ function App() {
         m.role === "user"
           ? { runId: "", role: "user" as const, userText: m.content }
           : {
-              runId: m.runId ?? "",
+              // Live runs keep their real id; restored/legacy assistant
+              // messages get a STABLE synthetic id (msg:<id>) so MessageItem
+              // can key their worker-rendered markdown HTML and they don't all
+              // collide on "". fallbackText still feeds the worker + the
+              // plain-text fallback while parsing.
+              runId: m.runId || `msg:${m.id}`,
               role: "assistant" as const,
-              // Legacy assistant messages (loaded from session_state.json) have
-              // no runId — pass content as fallbackText so MessageItem renders
-              // it even when there's no streamStore snapshot.
               fallbackText: m.content,
             },
       ),
@@ -2719,12 +2721,6 @@ function App() {
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
-        <div className="mac-lights" aria-hidden="true">
-          <span className="red" />
-          <span className="yellow" />
-          <span className="green" />
-        </div>
-
         <div className="brand">
           <div className="brand-mark">G</div>
           <div>
@@ -3879,15 +3875,24 @@ function App() {
             <span>{actionPolicies[actionPolicy].label}</span>
           </div>
           <div className="status-cluster">
-            {grokIsRunning ? <Loader2 className="spin" size={13} /> : lastRun?.ok ? <CheckCircle2 size={13} /> : lastRun ? <CircleAlert size={13} /> : <Zap size={13} />}
+            {/* Only report a "last run" once a real run has actually happened
+                (totalRuns > 0). Otherwise a default/unavailable lastRun would
+                falsely scream "Last run failed · 0.0s" on a fresh launch. */}
+            {grokIsRunning ? (
+              <Loader2 className="spin" size={13} />
+            ) : lastRun && totalRuns > 0 ? (
+              lastRun.ok ? <CheckCircle2 size={13} /> : <CircleAlert size={13} />
+            ) : (
+              <Zap size={13} />
+            )}
             <span>
               {grokIsRunning
                 ? "Running"
-                : lastRun
+                : lastRun && totalRuns > 0
                   ? `${lastRun.ok ? "Last run ok" : "Last run failed"} · ${(lastRun.duration_ms / 1000).toFixed(1)}s`
                   : isGrokReady
                     ? "Idle · ready"
-                    : statusLabel}
+                    : "Ready"}
             </span>
           </div>
           <div className="status-cluster status-right">

@@ -313,4 +313,19 @@ for (const piece of ["history-section-head", "historyView", "pinnedPromptIds", "
 }
 assert.ok(css.includes(".ctx-submenu"), "submenu flyout style missing");
 
+// v0.4.0 UX pass — regression guards for the polish fixes:
+// 1) No duplicate fake macOS traffic-lights (the native titlebar has the real ones).
+assert.ok(!app.includes("mac-lights"), "fake .mac-lights traffic dots must stay removed");
+assert.ok(!css.includes(".mac-lights"), "dead .mac-lights CSS must stay removed");
+// 2) Status bar must not cry "Last run failed" before any run happened.
+assert.ok(app.includes("lastRun && totalRuns > 0"),
+  "status bar must gate the last-run label on an actual run (totalRuns > 0)");
+// 3) Primary buttons use the theme-flipping ink token, not hardcoded white
+//    (which is invisible on the dark-theme off-white accent).
+assert.ok(!/\.composer-send\s*\{[^}]*color:\s*white/s.test(css),
+  "composer-send must not hardcode white text (use --accent-ink)");
+// 4) Restored assistant messages render markdown via the worker, not raw <pre>.
+assert.ok(read("src/components/MessageItem.tsx").includes("scheduleMarkdownParse"),
+  "MessageItem must render restored messages through the markdown worker");
+
 console.log("smoke: ok");
