@@ -1772,6 +1772,14 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.themeMode, themeMode);
     window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
+    // CRITICAL: drive the `data-theme` attribute, not just the `theme-*`
+    // className. The legacy palette (--app-bg, --panel, …) flips via the
+    // `.app-shell.theme-light` class, but the v0.4.0 mono tokens
+    // (--bg-0..5, --text-1..4, used by TabBar / CommandPalette / FilePicker /
+    // TraceTimeline) flip via the `[data-theme="light"]` attribute selector.
+    // Without this line the new components stay dark in light mode — that's
+    // what produced the black block behind the tab strip.
+    document.documentElement.setAttribute("data-theme", themeMode);
   }, [themeMode]);
 
   // Persist sidebar-collapsed state so ⌘B is sticky across reloads.
