@@ -363,4 +363,16 @@ assert.ok(!app.includes("Grok Desktop Professional Coding Session"),
 assert.ok(!app.includes("discovered by grok inspect."),
   "must not echo grok's ecosystem back to it (the old line hard-said 0 skills)");
 
+// 15) Grok Skills hub — curated catalog + real install (writes SKILL.md to
+//     ~/.grok/skills) so grok-build discovers it.
+assert.ok(read("src/lib/skills.ts").includes("SKILL_CATALOG") &&
+  read("src/lib/skills.ts").includes("install_grok_skill"),
+  "skills lib must ship a catalog + install wrapper");
+for (const cmd of ["list_grok_skills", "install_grok_skill", "remove_grok_skill"]) {
+  assert.ok(libRs.includes(cmd), `missing Tauri command for skills: ${cmd}`);
+}
+assert.ok(read("src/components/ToolsPage.tsx").includes("SKILL_CATALOG") &&
+  read("src/components/ToolsPage.tsx").includes("tools-tab"),
+  "Tools page must expose a Skills tab");
+
 console.log("smoke: ok");

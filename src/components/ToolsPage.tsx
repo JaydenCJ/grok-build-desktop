@@ -8,6 +8,13 @@ import {
   type McpCatalogEntry,
   type ToolRun,
 } from '../lib/mcp';
+import {
+  SKILL_CATALOG,
+  installSkill,
+  listInstalledSkills,
+  removeSkill,
+  type SkillCatalogEntry,
+} from '../lib/skills';
 
 interface Props {
   open: boolean;
@@ -21,7 +28,9 @@ interface Props {
  * `grok mcp add` invocation; "Connected" reflects `grok mcp list`.
  */
 export function ToolsPage({ open, onClose }: Props) {
+  const [tab, setTab] = useState<'mcp' | 'skills'>('mcp');
   const [listOutput, setListOutput] = useState<string>('');
+  const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [query, setQuery] = useState('');
@@ -30,10 +39,14 @@ export function ToolsPage({ open, onClose }: Props) {
     const run = await listMcpServers();
     if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
   };
+  const refreshSkills = async () => {
+    setInstalledSkills(new Set(await listInstalledSkills()));
+  };
 
   useEffect(() => {
     if (!open) return;
     void refresh();
+    void refreshSkills();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -60,6 +73,45 @@ export function ToolsPage({ open, onClose }: Props) {
         e.category.includes(q),
     );
   }, [query]);
+
+  const filteredSkills = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return SKILL_CATALOG;
+    return SKILL_CATALOG.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.category.includes(q),
+    );
+  }, [query]);
+
+  const handleInstallSkill = async (entry: SkillCatalogEntry) => {
+    setBusy(entry.slug);
+    setNotice(null);
+    try {
+      await installSkill(entry);
+      setNotice({ kind: 'ok', text: `Installed "${entry.name}". Grok will pick it up on its next run.` });
+      await refreshSkills();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRemoveSkill = async (entry: SkillCatalogEntry) => {
+    setBusy(entry.slug);
+    setNotice(null);
+    try {
+      await removeSkill(entry.slug);
+      setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
+      await refreshSkills();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   if (!open) return null;
 
@@ -102,11 +154,21 @@ export function ToolsPage({ open, onClose }: Props) {
       <div className="tools-modal" onClick={(e) => e.stopPropagation()}>
         <div className="tools-head">
           <div>
-            <h2>Tools &amp; MCP</h2>
+            <h2>Tools &amp; Skills</h2>
             <p>
-              Connect community tools through the Model Context Protocol so Grok can use them —
-              files, GitHub, databases, the web, and more. Each tool maps to a{' '}
-              <code>grok mcp add</code> entry in <code>~/.grok/config.toml</code>.
+              {tab === 'mcp' ? (
+                <>
+                  Connect community tools through the Model Context Protocol so Grok can use them —
+                  files, GitHub, databases, the web, and more. Each maps to a{' '}
+                  <code>grok mcp add</code> entry in <code>~/.grok/config.toml</code>.
+                </>
+              ) : (
+                <>
+                  Install reusable coding skills Grok can invoke by name. Each writes a{' '}
+                  <code>SKILL.md</code> into <code>~/.grok/skills</code>; Grok discovers it on its
+                  next run.
+                </>
+              )}
             </p>
           </div>
           <button type="button" className="settings-close" aria-label="Close" onClick={onClose}>
@@ -114,15 +176,79 @@ export function ToolsPage({ open, onClose }: Props) {
           </button>
         </div>
 
+        <div className="tools-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'mcp'}
+            className={`tools-tab${tab === 'mcp' ? ' active' : ''}`}
+            onClick={() => setTab('mcp')}
+          >
+            MCP servers
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'skills'}
+            className={`tools-tab${tab === 'skills' ? ' active' : ''}`}
+            onClick={() => setTab('skills')}
+          >
+            Skills
+          </button>
+        </div>
+
         {notice ? <div className={`tools-notice ${notice.kind}`}>{notice.text}</div> : null}
 
         <input
           className="tools-search"
-          placeholder="Search tools (github, postgres, search…)"
+          placeholder={tab === 'mcp' ? 'Search tools (github, postgres, search…)' : 'Search skills (review, tests, debug…)'}
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
         />
 
+        {tab === 'skills' ? (
+          <div className="tools-grid">
+            {filteredSkills.map((entry) => {
+              const installed = installedSkills.has(entry.slug);
+              return (
+                <div key={entry.slug} className={`tool-mcp-card${installed ? ' is-connected' : ''}`}>
+                  <div className="tool-mcp-top">
+                    <span className="tool-mcp-name">{entry.name}</span>
+                    <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
+                  </div>
+                  <p className="tool-mcp-desc">{entry.description}</p>
+                  <code className="tool-mcp-cmd" title={`~/.grok/skills/${entry.slug}/SKILL.md`}>
+                    ~/.grok/skills/{entry.slug}
+                  </code>
+                  <div className="tool-mcp-actions">
+                    {installed ? (
+                      <>
+                        <span className="tool-mcp-badge">✓ Installed</span>
+                        <button
+                          type="button"
+                          className="tool-mcp-remove"
+                          disabled={busy !== null}
+                          onClick={() => void handleRemoveSkill(entry)}
+                        >
+                          {busy === entry.slug ? '…' : 'Remove'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="tool-mcp-add"
+                        disabled={busy !== null}
+                        onClick={() => void handleInstallSkill(entry)}
+                      >
+                        {busy === entry.slug ? 'Installing…' : 'Install'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div className="tools-grid">
           {filtered.map((entry) => {
             const connected = connectedIds.has(entry.id);
@@ -170,13 +296,21 @@ export function ToolsPage({ open, onClose }: Props) {
             );
           })}
         </div>
+        )}
 
         <div className="tools-foot">
-          <span>
-            Want a server not listed here? Any MCP server works — run{' '}
-            <code>grok mcp add &lt;name&gt; --command … --args …</code> in a terminal.
-          </span>
-          <button type="button" onClick={() => void refresh()}>
+          {tab === 'mcp' ? (
+            <span>
+              Want a server not listed here? Any MCP server works — run{' '}
+              <code>grok mcp add &lt;name&gt; --command … --args …</code> in a terminal.
+            </span>
+          ) : (
+            <span>
+              Write your own anytime: add a folder with a <code>SKILL.md</code> under{' '}
+              <code>~/.grok/skills</code>.
+            </span>
+          )}
+          <button type="button" onClick={() => void (tab === 'mcp' ? refresh() : refreshSkills())}>
             Refresh
           </button>
         </div>

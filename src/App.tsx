@@ -1682,7 +1682,6 @@ function App() {
         { label: "Preview", icon: <Globe2 size={15} />, shortcut: previewOpen ? "✓" : undefined, onClick: () => togglePanel("preview") },
         { label: "Context inspector", icon: <PanelRight size={15} />, shortcut: contextOpen ? "✓" : undefined, onClick: () => togglePanel("context") },
         { label: "Terminal", icon: <TerminalSquare size={15} />, shortcut: terminalOpen ? "✓" : undefined, onClick: () => togglePanel("terminal") },
-        { label: "Tools & MCP", icon: <Wrench size={15} />, separator: true, onClick: () => setToolsPageOpen(true) },
       ],
     });
   }
@@ -2918,10 +2917,13 @@ function App() {
               </button>
             ) : (
               <span
-                className={`conn-dot ${isGrokReady ? "ready" : "blocked"}`}
-                title={isGrokReady ? "Grok connected · grok.com" : `Grok ${statusLabel.toLowerCase()}`}
+                className={`conn-pill ${isGrokReady ? "ready" : "blocked"}`}
+                title={isGrokReady ? "Connected to grok.com" : `Grok ${statusLabel.toLowerCase()}`}
                 aria-label={isGrokReady ? "Grok connected" : "Grok not connected"}
-              />
+              >
+                <span className="conn-dot-mini" aria-hidden />
+                {isGrokReady ? "Grok" : "Offline"}
+              </span>
             )}
             {/* Day / night theme toggle (also ⌘⇧L). */}
             <button
@@ -2939,7 +2941,7 @@ function App() {
               className={`detail-toggle${contextOpen || previewOpen || terminalOpen || toolsOpen ? " active" : ""}`}
               type="button"
               aria-label="Open panels menu"
-              title="Panels — Preview, Context, Terminal, Tools"
+              title="Panels — Preview, Context, Terminal"
               onClick={openPanelMenu}
             >
               <PanelRight size={16} />
@@ -3139,17 +3141,10 @@ function App() {
                     <option key={k} value={k}>{`Reasoning: ${reasoningEfforts[k].label}`}</option>
                   ))}
                 </select>
-                <select
-                  aria-label="Permission mode"
-                  className="run-select"
-                  title="Permission mode — maps to grok --permission-mode"
-                  value={permissionMode}
-                  onChange={(event) => setPermissionMode(event.currentTarget.value as PermissionMode)}
-                >
-                  {(Object.keys(permissionModes) as PermissionMode[]).map((k) => (
-                    <option key={k} value={k}>{`Perm: ${permissionModes[k].label}`}</option>
-                  ))}
-                </select>
+                {/* Raw grok --permission-mode lives in Settings → Permissions
+                    (advanced). The composer footer uses the friendlier "Action
+                    policy" (Review/Plan/Patch/Autopilot) as the single
+                    permission control, so the two no longer overlap. */}
                 <select
                   aria-label="Best-of-N"
                   className="run-select"
