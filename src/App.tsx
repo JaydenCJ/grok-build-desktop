@@ -44,7 +44,6 @@ import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
-import { TabBar } from "./components/TabBar";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
@@ -951,22 +950,6 @@ function App() {
   // ── Multi-session tabs ───────────────────────────────────────────────────
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
   // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
-  function handleTabSelect(id: string) {
-    const next = tabs.find((t) => t.id === id);
-    if (!next) return;
-    // First, snapshot the *current* active tab's state back into the tabs
-    // array so we don't lose unsaved messages when switching.
-    setTabs((current) =>
-      current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
-          : t,
-      ),
-    );
-    setActiveTabId(id);
-    setCodingCwd(next.cwd);
-    setMessages(next.messages as unknown as ChatMessage[]);
-  }
   function handleTabCreate() {
     // Persist current tab first.
     setTabs((current) => {
@@ -999,24 +982,6 @@ function App() {
       setLastRun(null);
     });
   }
-  function handleTabClose(id: string) {
-    setTabs((current) => {
-      if (current.length <= 1) return current;
-      const remaining = current.filter((t) => t.id !== id);
-      // If we just closed the active tab, jump to the next one.
-      if (id === activeTabId) {
-        const fallback = remaining[0]!;
-        setActiveTabId(fallback.id);
-        setCodingCwd(fallback.cwd);
-        setMessages(fallback.messages as unknown as ChatMessage[]);
-      }
-      return remaining;
-    });
-  }
-  function handleTabRename(id: string, name: string) {
-    setTabs((current) => current.map((t) => (t.id === id ? { ...t, name } : t)));
-  }
-
   // Persist tabs (and the active id) whenever the array changes. This is the
   // single source of truth across reloads; localStorage hydrates on next boot.
   useEffect(() => {
@@ -2586,14 +2551,11 @@ function App() {
 
         <section className="workbench">
           <div className="conversation-panel">
-            <TabBar
-              tabs={tabs}
-              activeId={activeTabId}
-              onSelect={handleTabSelect}
-              onCreate={handleTabCreate}
-              onClose={handleTabClose}
-              onRename={handleTabRename}
-            />
+            {/* Session tabs removed per request — Claude-Desktop-style single
+                conversation. New Session starts fresh; earlier conversations
+                stay reachable from the HISTORY sidebar (which aggregates
+                across sessions). The tabs state machinery is retained purely
+                as the per-session history store. */}
             <div className="conversation-scroll" ref={conversationScrollRef}>
               {messages.length === 0 ? (
                 <div className="empty-state">
@@ -2701,6 +2663,31 @@ function App() {
                       {modeCopy[item].title}
                     </option>
                   ))}
+                </select>
+                <select
+                  aria-label="Grok model"
+                  className="model-select-footer"
+                  title={modelIsVerified ? `Model: ${activeModel}` : `${activeModel} — not in grok CLI list, may fall back`}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (isGrokModelId(value)) {
+                      changeModelPreset(value);
+                    } else {
+                      setModelPreset("custom");
+                      setCustomModel(value);
+                    }
+                  }}
+                  value={modelPreset === "custom" ? "custom" : modelPreset}
+                >
+                  {modelOptions.map((id) => {
+                    const verified = availableModels.length === 0 || availableModels.includes(id);
+                    return (
+                      <option key={id} value={id}>
+                        {verified ? id : `${id} · not in CLI`}
+                      </option>
+                    );
+                  })}
+                  <option value="custom">Custom…</option>
                 </select>
                 <select
                   aria-label="Coding workflow"
