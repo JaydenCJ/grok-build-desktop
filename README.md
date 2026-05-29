@@ -10,6 +10,14 @@ Tauri 2 · React 19 · TypeScript · Vite 7 · Rust
 
 **English** · [日本語](#日本語) · [中文](#中文)
 
+<br/>
+
+<img src="docs/screenshots/hero-light.png" alt="Grok Build Desktop — main window" width="900">
+
+<sub>Light and dark, theme-aware throughout.</sub>
+
+<img src="docs/screenshots/hero-dark.png" alt="Grok Build Desktop — dark mode" width="900">
+
 </div>
 
 ---
@@ -29,10 +37,12 @@ Grok is the only model path exposed in the UI. The model selector reflects exact
 
 - **Non-blocking streaming UI** — Grok runs use `--output-format streaming-json`; events flow through a Rust queue → typed Tauri events → a `useSyncExternalStore` store → an off-thread markdown Web Worker. The composer, panels, and theme toggle stay fully interactive while a run streams. Text reveals with natural typewriter pacing.
 - **FIFO run queue** — type a new prompt while one is still streaming and it joins the queue (persisted in SQLite, survives restart).
-- **Settings & Tools pages** — a Claude-Desktop-style Settings modal (General / Model / Permissions / Workspace / About) and a Tools page that is an **MCP integration hub** with a catalog of community servers you can add/remove.
+- **Conversation history** — the sidebar lists your conversations newest-first, each titled by its first prompt; click one to reopen it in full. Rename, pin, group, archive, or delete any conversation; archived ones stay searchable from ⌘K.
+- **Tools & Skills hub** — one page, two tabs. **MCP servers**: a catalog of community servers you can add/remove (`grok mcp`). **Skills**: a curated set of coding skills (code review, write tests, debug root-cause, commit message, PR description, explain codebase) that install a real `SKILL.md` into `~/.grok/skills` for Grok to discover.
+- **Coding workflows + action policy** — Analyze / Implement / Review / Debug / Tests / Refactor starters, with an action policy (Review only / Patch ready / Autopilot) that maps to real Grok permission behaviour. Effort, reasoning effort, and best-of-N are one glance below the chat box.
+- **Settings** — a Claude-Desktop-style modal (General / Model & reasoning / Permissions / Workspace / About).
 - **Prompt library** — reusable prompt templates in SQLite with search-as-you-type and one-click insert.
 - **Agent overlay** — a click-through, full-display edge border + animated cursor sprite that makes it obvious when Grok is acting. Strictly visual — no OS input synthesis.
-- **Coding workflows** — Analyze, Implement, Review, Debug, Tests, Refactor — with action policies (Review only / Patch ready / Autopilot) mapped to real Grok permission flags.
 - **Capability inspector** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions, combining `grok inspect` with managed `grok mcp` / `grok plugin` / `grok sessions`.
 
 ### Requirements
@@ -113,7 +123,9 @@ UI で公開されるモデル経路は Grok のみです。モデルセレク�
 
 - **ノンブロッキング・ストリーミング UI** — Grok 実行は `--output-format streaming-json` を使用。イベントは Rust キュー → 型付き Tauri イベント → `useSyncExternalStore` ストア → 別スレッドの Markdown Web Worker を経由します。実行中もコンポーザー・各パネル・テーマ切替は完全に操作可能で、テキストは自然なタイプライター速度で表示されます。
 - **FIFO 実行キュー** — ストリーミング中に新しいプロンプトを入力するとキューに加わります(SQLite に永続化、再起動後も保持)。
-- **設定 & ツールページ** — Claude Desktop 風の設定モーダル(General / Model / Permissions / Workspace / About)と、コミュニティ製サーバーを追加・削除できる **MCP 統合ハブ** としての Tools ページ。
+- **会話履歴** — サイドバーに会話(セッション)を新しい順で一覧。最初のプロンプトがタイトルになり、クリックでその会話を丸ごと再開。リネーム・ピン・グループ・アーカイブ・削除に対応し、アーカイブも ⌘K で検索可能。
+- **ツール & スキル ハブ** — 1 ページ 2 タブ。**MCP servers**: コミュニティ製サーバーを追加・削除(`grok mcp`)。**Skills**: 実用的なコーディングスキル(コードレビュー / テスト作成 / 原因デバッグ / コミットメッセージ / PR 説明 / コードベース解説)を `~/.grok/skills` に実際の `SKILL.md` として導入。
+- **設定** — Claude Desktop 風モーダル(General / Model & reasoning / Permissions / Workspace / About)。
 - **プロンプトライブラリ** — SQLite に保存される再利用可能なテンプレート。逐次検索とワンクリック挿入。
 - **エージェント・オーバーレイ** — クリックスルーの全画面エッジボーダー＋アニメーションするカーソル。Grok の動作を明示します。完全に視覚的で、OS への入力合成は行いません。
 - **コーディング・ワークフロー** — Analyze / Implement / Review / Debug / Tests / Refactor。アクションポリシー(Review only / Patch ready / Autopilot)は実際の Grok 権限フラグに対応します。
@@ -188,7 +200,9 @@ UI 中只暴露 Grok 这一条模型路径。模型选择器严格反映本机 G
 
 - **非阻塞流式 UI** — Grok 运行使用 `--output-format streaming-json`;事件经 Rust 队列 → 类型化 Tauri 事件 → `useSyncExternalStore` store → 独立线程的 Markdown Web Worker。运行期间输入框、各面板、主题切换都保持完全可交互,文字以自然的打字机节奏逐字呈现。
 - **FIFO 运行队列** — 上一条还在流式输出时再输入新 prompt,会自动加入队列(SQLite 持久化,重启不丢)。
-- **设置页 & 工具页** — Claude Desktop 风格的设置弹窗(General / Model / Permissions / Workspace / About);工具页是一个 **MCP 集成中心**,内置社区服务器目录,可一键增删。
+- **会话历史** — 侧栏按时间倒序列出每个会话,以首条 prompt 为标题,点击即可完整重开。可重命名 / 置顶 / 分组 / 归档 / 删除任意会话;归档后仍可在 ⌘K 搜索到。
+- **工具 & 技能中心** — 一页两个标签。**MCP servers**:社区服务器目录,一键增删(`grok mcp`)。**Skills**:精选编程技能(代码评审 / 写测试 / 根因调试 / 提交信息 / PR 描述 / 讲解代码库),一键把真实 `SKILL.md` 装进 `~/.grok/skills` 供 Grok 发现。
+- **设置** — Claude Desktop 风格弹窗(General / Model & reasoning / Permissions / Workspace / About)。
 - **Prompt 库** — 存于 SQLite 的可复用模板,边打边搜、一键插入。
 - **Agent 浮层** — 穿透点击的全屏边缘高亮 + 动画光标,让 Grok 正在操作时一目了然。纯视觉,不做任何操作系统级输入合成。
 - **编程工作流** — Analyze / Implement / Review / Debug / Tests / Refactor;动作策略(Review only / Patch ready / Autopilot)对应真实的 Grok 权限标志。
