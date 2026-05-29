@@ -2253,7 +2253,7 @@ function App() {
     : grokStatus?.installed
       ? "Login needed"
       : "Connect needed";
-  const workspacePath = codingCwd.trim() || "/Users/you/Projects/grok-desktop";
+  const workspacePath = codingCwd.trim() || "No project selected";
   const visibleRuns = history.length > 0 ? history : lastRun ? [lastRun] : [];
   const previewFiles = staticPreview?.files ?? [];
   const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
