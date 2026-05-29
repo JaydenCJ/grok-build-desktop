@@ -413,11 +413,23 @@ impl RunQueue {
                                 .lock()
                                 .ok()
                                 .and_then(|t| {
+                                    // Prefer clap's "error: …" line; else the last
+                                    // meaningful (non-Usage) line.
                                     t.lines()
-                                        .rev()
                                         .map(str::trim)
-                                        .find(|l| !l.is_empty() && !l.starts_with("For more information"))
-                                        .map(|l| l.to_string())
+                                        .find(|l| l.starts_with("error:"))
+                                        .map(str::to_string)
+                                        .or_else(|| {
+                                            t.lines()
+                                                .rev()
+                                                .map(str::trim)
+                                                .find(|l| {
+                                                    !l.is_empty()
+                                                        && !l.starts_with("For more information")
+                                                        && !l.starts_with("Usage:")
+                                                })
+                                                .map(str::to_string)
+                                        })
                                 })
                                 .map(|l| format!(" — {l}"))
                                 .unwrap_or_else(|| " — likely a grok CLI crash, try again".to_string());
