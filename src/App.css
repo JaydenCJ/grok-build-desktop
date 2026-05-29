@@ -3978,8 +3978,9 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  gap: 1px;
   height: 28px;
+  padding: 0 6px;
   border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
@@ -3988,6 +3989,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 }
 .detail-toggle:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
 .detail-toggle.active { background: var(--bg-4); color: var(--text-1); border-color: var(--border-2); }
+.detail-toggle .detail-caret { color: var(--text-3); margin-left: -1px; }
 /* Title-bar icon button (day/night toggle) — matches the detail toggle. */
 .titlebar-icon-btn {
   display: inline-flex;
