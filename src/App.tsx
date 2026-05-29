@@ -2157,19 +2157,29 @@ function App() {
 
   const modelOptions = useMemo(() => {
     const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
-    const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
-    const merged: string[] = [];
-    for (const id of fromCli.length > 0 ? fromCli : declared) {
-      if (!merged.includes(id)) merged.push(id);
-    }
-    if (fromCli.length > 0) {
-      for (const id of declared) {
-        if (!merged.includes(id)) merged.push(id);
-      }
-    }
-    return merged;
+    // LOCK to what `grok models` actually reports. Previously we appended all
+    // declared presets (grok-4.3, grok-latest, …) even when the CLI only
+    // exposed grok-build — so a user could pick grok-4.3, which is a chat
+    // model that fails in Grok Build's coding mode. When the CLI gives a
+    // definitive list, show EXACTLY that. Only fall back to the full preset
+    // list when the CLI returned nothing (offline / not logged in).
+    if (fromCli.length > 0) return fromCli;
+    return Object.keys(grokModelPresets).filter((id) => id !== "custom");
   }, [availableModels]);
   const modelIsVerified = availableModels.length === 0 || availableModels.includes(activeModel) || modelPreset === "custom";
+
+  // If the persisted model isn't actually available (e.g. a leftover grok-4.3
+  // selection on a grok.com login that only exposes grok-build), snap to the
+  // first available model. Keeps the locked dropdown self-consistent.
+  useEffect(() => {
+    if (availableModels.length === 0) return; // CLI didn't report — leave as-is
+    if (modelPreset === "custom") return;
+    if (modelOptions.includes(modelPreset)) return;
+    const fallback = modelOptions[0];
+    if (!fallback) return;
+    if (isGrokModelId(fallback)) changeModelPreset(fallback);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableModels, modelOptions, modelPreset]);
 
   const currentPolicy = actionPolicies[actionPolicy];
   const grokToolStatus = statusMap.grok;
