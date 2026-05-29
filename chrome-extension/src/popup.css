@@ -97,6 +97,11 @@ body {
 }
 .send-btn:hover { filter: brightness(1.15); }
 
+.send-status { margin: 6px 2px 0; font-size: 11.5px; line-height: 1.4; color: var(--text-2); }
+.send-status.ok { color: var(--sage); }
+.send-status.warn { color: #7a5a00; }
+.send-status.err { color: #a05050; }
+
 .safety { display: flex; flex-direction: column; gap: 4px; }
 .safety label { font-size: 11.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
 
