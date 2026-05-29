@@ -327,5 +327,16 @@ assert.ok(!/\.composer-send\s*\{[^}]*color:\s*white/s.test(css),
 // 4) Restored assistant messages render markdown via the worker, not raw <pre>.
 assert.ok(read("src/components/MessageItem.tsx").includes("scheduleMarkdownParse"),
   "MessageItem must render restored messages through the markdown worker");
+// 5) Sidebar must be a flex column whose history list scrolls — a fixed-track
+//    grid overflowed with many history items and clipped the composer + bottom
+//    buttons (the whole app-shell row grew past 100vh).
+assert.ok(css.includes(".app-sidebar > .history-nav { flex: 1 1 auto; }"),
+  "sidebar must let history-nav flex-grow so the list scrolls, not the sidebar");
+assert.ok(/\.history-list\s*\{[^}]*flex:\s*1 1 auto/s.test(css),
+  "history-list must flex + scroll so the sidebar can't grow past the viewport");
+// 6) The ≤1280px workspace layout must not reserve a dead fixed dock row
+//    (it left a big gap below the status bar; docks are absolute overlays).
+assert.ok(!css.includes("auto auto minmax(0, 1fr) 280px auto"),
+  "workspace ≤1280px must not reserve a dead 280px dock row");
 
 console.log("smoke: ok");
