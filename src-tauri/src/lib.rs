@@ -1958,6 +1958,29 @@ fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<
     }
 }
 
+/// Desktop → Chrome: write a command the native host will pick up and push to
+/// the extension (which acts on the controlled tab). The host polls
+/// chrome_command.json; writing it again with fresh content re-fires.
+#[tauri::command]
+fn chrome_dispatch(command: serde_json::Value) -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let dir = std::path::PathBuf::from(&home).join("Library/Application Support/Grok Desktop");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir failed: {e}"))?;
+    let path = dir.join("chrome_command.json");
+    // Stamp with a nonce so re-issuing the same command still changes the file
+    // signature the host watches.
+    let mut obj = command;
+    if let Some(map) = obj.as_object_mut() {
+        map.insert(
+            "ts".into(),
+            serde_json::json!(chrono::Utc::now().timestamp_millis()),
+        );
+    }
+    let body = serde_json::to_string(&obj).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| format!("write failed: {e}"))?;
+    Ok(())
+}
+
 // ── Agent overlay (G2) ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2186,6 +2209,7 @@ pub fn run() {
             delete_prompt,
             glob_files,
             read_file_safe,
+            chrome_dispatch,
             desktop::desktop_list_apps,
             desktop::desktop_query,
             desktop::desktop_activate,

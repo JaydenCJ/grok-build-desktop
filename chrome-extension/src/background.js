@@ -68,6 +68,11 @@ function connectNative() {
     nativeError = "";
 
     nativePort.onMessage.addListener((message) => {
+      // Desktop → Chrome command pushed up through the native host.
+      if (message?.type === "dispatch" && message.command) {
+        void handleDesktopDispatch(message.command);
+        return;
+      }
       nativeConnected = Boolean(message?.ok);
       nativeError = message?.ok ? "" : message?.error || "Native host reported an error.";
     });
@@ -112,6 +117,55 @@ function postNative(message) {
     nativePort = null;
     scheduleNativeReconnect();
     return false;
+  }
+}
+
+// Desktop → Chrome: act on a command the Tauri app wrote (pushed up by the
+// native host). Targets the controlled tab (or the active tab). Supported:
+//   { action:"navigate", url }            → load a URL in the tab
+//   { action:"cursor", x, y, label }      → pulse the agent cursor + label
+//   { action:"dom", domAction:{...} }     → forward a DOM action to content.js
+//   { action:"note"|undefined, text }     → show text as the agent action label
+async function handleDesktopDispatch(command) {
+  const state = await getState();
+  // Prefer a controlled tab; fall back to the active tab.
+  let tabId = Object.values(state).find((t) => t.status === "controlling")?.id;
+  if (!tabId) {
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+    tabId = active?.id;
+  }
+  if (!tabId) return;
+
+  const action = command.action || "note";
+  try {
+    if (action === "navigate" && command.url) {
+      await chrome.tabs.update(Number(tabId), { url: String(command.url) });
+      return;
+    }
+    if (action === "dom" && command.domAction) {
+      await ensureContent(Number(tabId));
+      await chrome.tabs.sendMessage(Number(tabId), {
+        type: "GROK_DESKTOP_AGENT_DOM_ACTION",
+        ...command.domAction,
+      });
+      return;
+    }
+    // cursor / note → visible agent feedback on the page.
+    await ensureContent(Number(tabId));
+    await chrome.tabs.sendMessage(Number(tabId), {
+      type: "GROK_DESKTOP_AGENT_CURSOR",
+      payload: {
+        x: Number(command.x) || 160,
+        y: Number(command.y) || 140,
+        label: String(command.label || command.text || "Grok"),
+        visible: true,
+        duration: 2600,
+        animate: true,
+        motionMs: 700,
+      },
+    });
+  } catch (_e) {
+    /* content script not present on this page (chrome://, store, etc.) */
   }
 }
 
