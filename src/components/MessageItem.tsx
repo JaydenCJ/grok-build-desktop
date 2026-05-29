@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import { useRunHtml, useRunSnapshot } from '../hooks/useRunSnapshot';
 import { useSmoothText } from '../hooks/useSmoothText';
+import { scheduleMarkdownParse } from '../lib/markdownWorker';
 import { TraceTimeline } from './TraceTimeline';
 
 interface Props {
@@ -12,7 +13,22 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   const snap = useRunSnapshot(runId);
   const html = useRunHtml(runId);
   const smooth = useSmoothText(runId);
+
+  // Restored/legacy assistant messages (loaded from storage after a restart)
+  // have stored text but no live run snapshot. Render them through the SAME
+  // off-thread markdown worker so code blocks and formatting survive a restart
+  // instead of showing raw ``` text. Falls back to plain text if the worker is
+  // unavailable. Keyed by the message's stable synthetic runId (msg:<id>).
+  useEffect(() => {
+    if (!snap && runId && fallbackText && html === undefined) {
+      scheduleMarkdownParse(runId, fallbackText);
+    }
+  }, [snap, runId, fallbackText, html]);
+
   if (!snap) {
+    if (html) {
+      return <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+    }
     if (fallbackText) return <pre className="message-body">{fallbackText}</pre>;
     return null;
   }

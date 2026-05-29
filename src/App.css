@@ -219,35 +219,10 @@ pre {
   border-right: 1px solid var(--line);
   color: var(--text);
   display: grid;
-  grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
   gap: 14px;
   min-width: 0;
   padding: 14px;
-}
-
-.mac-lights {
-  display: flex;
-  gap: 8px;
-  height: 14px;
-}
-
-.mac-lights span {
-  border-radius: 50%;
-  display: block;
-  height: 12px;
-  width: 12px;
-}
-
-.mac-lights .red {
-  background: #ff6259;
-}
-
-.mac-lights .yellow {
-  background: #ffbe2f;
-}
-
-.mac-lights .green {
-  background: #28c840;
 }
 
 .brand {
@@ -3421,7 +3396,7 @@ select:focus {
   border: none;
   border-radius: 6px;
   box-shadow: 0 1px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.18);
-  color: white;
+  color: var(--accent-ink);
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
@@ -3610,7 +3585,10 @@ select:focus {
   border-radius: 12px;
   border: none;
   background: linear-gradient(180deg, var(--grok-accent-hi), var(--grok-accent));
-  color: white;
+  /* Was hardcoded `white` — invisible in dark mode where the accent is an
+     off-white. --accent-ink flips with the theme so the label always
+     contrasts the button. */
+  color: var(--accent-ink);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.2px;
@@ -4547,7 +4525,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   overflow: hidden;
   transition: width 180ms ease, min-width 180ms ease, max-width 180ms ease;
 }
-.app-shell.sidebar-collapsed .app-sidebar > *:not(.mac-lights):not(.brand) {
+.app-shell.sidebar-collapsed .app-sidebar > *:not(.brand) {
   display: none;
 }
 .app-shell.sidebar-collapsed .app-sidebar .brand h1,
