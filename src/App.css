@@ -3985,6 +3985,39 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   justify-content: center;
 }
 .account-strip:hover .account-settings { color: var(--text-1); }
+.avatar.ready { box-shadow: 0 0 0 2px var(--success); }
+
+/* ===== App-owned right-click context menu ===== */
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 184px;
+  padding: 5px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop, 0 16px 40px -8px rgba(0,0,0,0.55));
+  animation: palette-fade 90ms ease-out;
+}
+.ctx-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctx-item:hover:not(:disabled) { background: var(--bg-4); }
+.ctx-item:disabled { color: var(--text-4); cursor: default; }
+.ctx-item.danger { color: var(--error); }
+.ctx-item.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--error) 14%, var(--bg-2)); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 
 /* ===== Settings page (Claude-Desktop-style modal) ===== */
 .settings-overlay {

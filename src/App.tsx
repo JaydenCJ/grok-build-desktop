@@ -49,6 +49,7 @@ import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
+import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -810,6 +811,8 @@ function App() {
     useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
   // Dedicated Tools / MCP hub (community-tool integration).
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
+  // App-owned right-click menu (replaces the suppressed WebView menu).
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -1013,6 +1016,52 @@ function App() {
   function updatePrompt(value: string) {
     setComposerValue(value);
     setDrafts((current) => ({ ...current, [mode]: value }));
+  }
+
+  // Find a prompt's text by message id across the active conversation and all
+  // stored sessions (history aggregates across sessions).
+  function findPromptText(id: string): string | null {
+    const inActive = messages.find((m) => m.id === id);
+    if (inActive) return inActive.content;
+    for (const t of tabs) {
+      const hit = (t.messages as unknown as ChatMessage[]).find((m) => m.id === id);
+      if (hit) return hit.content;
+    }
+    return null;
+  }
+
+  // Right-click menu for the conversation area — real, clickable actions
+  // (replaces the suppressed WebView menu). Selection-aware.
+  function openConversationMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    const selection = window.getSelection()?.toString().trim() ?? "";
+    const items: ContextMenuItem[] = [];
+    if (selection) {
+      items.push({
+        label: "Copy",
+        onClick: () => void navigator.clipboard?.writeText(selection),
+      });
+    }
+    items.push(
+      {
+        label: "New session",
+        separator: selection.length > 0,
+        onClick: () => {
+          handleTabCreate();
+          composerRef.current?.focus();
+        },
+      },
+      {
+        label: "Clear conversation",
+        disabled: messages.length === 0,
+        onClick: () => clearRunHistory(),
+      },
+      ...(grokIsRunning && activeRunId
+        ? [{ label: "Stop current run", danger: true, onClick: () => void cancelRun(activeRunId) }]
+        : []),
+      { label: "Settings…", separator: true, onClick: () => setSettingsOpen(true) },
+    );
+    setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
 
   function applyCodingPreset(preset: (typeof codingPresets)[number]) {
@@ -2335,6 +2384,7 @@ function App() {
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
+      <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="mac-lights" aria-hidden="true">
           <span className="red" />
@@ -2459,23 +2509,20 @@ function App() {
                   className={index === 0 ? "active" : ""}
                   key={item.id}
                   onClick={() => {
-                    // History now aggregates across sessions — the prompt may
-                    // live in the active tab or another one. Search live
-                    // messages first, then every stored tab.
-                    const inActive = messages.find((m) => m.id === item.id);
-                    if (inActive) {
-                      updatePrompt(inActive.content);
-                      return;
-                    }
-                    for (const t of tabs) {
-                      const hit = (t.messages as unknown as ChatMessage[]).find(
-                        (m) => m.id === item.id,
-                      );
-                      if (hit) {
-                        updatePrompt(hit.content);
-                        return;
-                      }
-                    }
+                    const text = findPromptText(item.id);
+                    if (text) updatePrompt(text);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const text = findPromptText(item.id) ?? item.title;
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      items: [
+                        { label: "Restore to composer", onClick: () => updatePrompt(text) },
+                        { label: "Copy prompt", onClick: () => void navigator.clipboard?.writeText(text) },
+                      ],
+                    });
                   }}
                   title="Restore this prompt to the composer"
                   type="button"
@@ -2524,10 +2571,11 @@ function App() {
           title="Settings (⌘,)"
           onClick={() => setSettingsOpen(true)}
         >
-          <div className="avatar">GD</div>
+          <div className={`avatar${isGrokReady ? " ready" : ""}`}>G</div>
           <div className="account-text">
-            <strong>Grok Developer</strong>
-            <span>Local workspace</span>
+            {/* Real data: active model + live grok connection status. */}
+            <strong>{activeModel}</strong>
+            <span>{isGrokReady ? "Connected · grok.com" : statusLabel}</span>
           </div>
           <span className="account-settings" aria-hidden="true">
             <Settings size={16} />
@@ -2589,7 +2637,7 @@ function App() {
         </header>
 
         <section className="workbench">
-          <div className="conversation-panel">
+          <div className="conversation-panel" onContextMenu={openConversationMenu}>
             {/* Session tabs removed per request — Claude-Desktop-style single
                 conversation. New Session starts fresh; earlier conversations
                 stay reachable from the HISTORY sidebar (which aggregates
