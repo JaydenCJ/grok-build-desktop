@@ -365,11 +365,44 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     if (message.type === "GROK_DESKTOP_PULSE_CURSOR") {
-      await chrome.tabs.sendMessage(Number(message.tabId), {
-        type: "GROK_DESKTOP_AGENT_CURSOR",
-        payload: message.payload || { x: 120, y: 120, visible: true, label: "Agent", animate: true }
-      });
+      // Resolve target: explicit tabId, else the active tab.
+      let tabId = message.tabId ? Number(message.tabId) : null;
+      if (!tabId) {
+        const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+        tabId = active?.id;
+      }
+      if (tabId) {
+        try {
+          await chrome.tabs.sendMessage(tabId, {
+            type: "GROK_DESKTOP_AGENT_CURSOR",
+            payload: message.payload || { x: 120, y: 120, visible: true, label: "Agent", animate: true },
+          });
+        } catch (_e) { /* content script not injected on this page */ }
+      }
       sendResponse({ ok: true, bridge: bridgeInfo() });
+      return;
+    }
+
+    // Command from the popup composer → forward to the Tauri app via the
+    // native bridge so the Grok agent can act on the controlled tab. Without
+    // the bridge we can't run AI commands, so report that clearly.
+    if (message.type === "GROK_DESKTOP_COMMAND") {
+      const port = connectNative();
+      if (!port) {
+        sendResponse({ ok: false, error: "bridge off — install native host to run commands", bridge: bridgeInfo() });
+        return;
+      }
+      try {
+        port.postMessage({
+          type: "command",
+          command: String(message.command || ""),
+          autoApprove: Boolean(message.autoApprove),
+          ts: Date.now(),
+        });
+        sendResponse({ ok: true, bridge: bridgeInfo() });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e), bridge: bridgeInfo() });
+      }
       return;
     }
 

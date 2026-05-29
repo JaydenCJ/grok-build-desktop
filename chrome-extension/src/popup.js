@@ -1,34 +1,34 @@
-const tabList = document.getElementById("tab-list");
-const refreshButton = document.getElementById("refresh");
-const snapshotAllButton = document.getElementById("snapshot-all");
-const trackButton = document.getElementById("track");
-const controlButton = document.getElementById("control");
-const bridgeStatus = document.getElementById("bridge-status");
-const focusGuardInput = document.getElementById("focus-guard");
-const visibleMotionInput = document.getElementById("visible-motion");
-const controlledOnlyInput = document.getElementById("controlled-only");
+// Grok Build Chrome companion — command panel popup.
+const $ = (id) => document.getElementById(id);
+const tabList = $("tab-list");
+const bridgeStatus = $("bridge-status");
+const riskBanner = $("risk-banner");
+const commandInput = $("command");
+const execMode = $("exec-mode");
+const execLabel = $("exec-label");
+const controlButton = $("control");
+const sendButton = $("send");
+const trackButton = $("track");
+const snapshotAllButton = $("snapshot-all");
+const refreshButton = $("refresh");
+const focusGuardInput = $("focus-guard");
+const visibleMotionInput = $("visible-motion");
+const controlledOnlyInput = $("controlled-only");
 
 function send(message) {
   return chrome.runtime.sendMessage(message);
 }
 
-function formatAge(timestamp) {
-  if (!timestamp) return "not scanned";
-  const seconds = Math.max(1, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
-}
-
-function snapshotSummary(snapshot) {
-  if (!snapshot) return "No page snapshot yet.";
-  const heading = snapshot.headings?.find((item) => item.text)?.text;
-  return heading || snapshot.description || snapshot.textSample || "Snapshot collected.";
+function formatAge(ts) {
+  if (!ts) return "not scanned";
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
 }
 
 function renderBridge(bridge = {}) {
-  bridgeStatus.textContent = bridge.connected ? "Bridge live" : "Local bridge off";
+  bridgeStatus.textContent = bridge.connected ? "bridge live" : "bridge off";
   bridgeStatus.classList.toggle("connected", Boolean(bridge.connected));
   bridgeStatus.title = bridge.error || bridge.host || "";
 }
@@ -48,66 +48,31 @@ async function updateSettings() {
       controlledTabsOnly: controlledOnlyInput.checked,
     },
   });
-  renderSettings(response.settings);
-  await render();
+  renderSettings(response?.settings);
 }
 
 function tabCard(tab) {
   const card = document.createElement("article");
-  card.className = "tab-card";
+  card.className = `tab-card ${tab.status || ""}`;
 
-  const meta = document.createElement("div");
-  meta.className = "tab-meta";
-
-  const status = document.createElement("span");
-  status.className = `status ${tab.status}`;
-  status.textContent = tab.status;
-
-  const age = document.createElement("span");
-  age.className = "age";
-  age.textContent = formatAge(tab.snapshot?.updatedAt || tab.updatedAt);
-
-  meta.append(status, age);
-
-  const title = document.createElement("strong");
+  const row1 = document.createElement("div");
+  row1.className = "row1";
+  const dot = document.createElement("span");
+  dot.className = "tab-dot";
+  const title = document.createElement("span");
+  title.className = "tab-title";
   title.textContent = tab.title || "Untitled";
+  const st = document.createElement("span");
+  st.className = "tab-status";
+  st.textContent = tab.status || "";
+  row1.append(dot, title, st);
 
-  const url = document.createElement("small");
-  url.textContent = tab.url || "";
-
-  const snapshot = document.createElement("p");
-  snapshot.className = "snapshot";
-  snapshot.textContent = snapshotSummary(tab.snapshot);
+  const url = document.createElement("div");
+  url.className = "tab-url";
+  url.textContent = (tab.url || "").replace(/^https?:\/\//, "");
 
   const actions = document.createElement("div");
   actions.className = "tab-actions";
-
-  const scan = document.createElement("button");
-  scan.textContent = "Scan";
-  scan.addEventListener("click", async () => {
-    scan.disabled = true;
-    scan.textContent = "Scanning";
-    await send({ type: "GROK_DESKTOP_SNAPSHOT_TAB", tabId: tab.id });
-    await render();
-  });
-
-  const cursor = document.createElement("button");
-  cursor.textContent = "Cursor";
-  cursor.addEventListener("click", () => {
-    send({
-      type: "GROK_DESKTOP_PULSE_CURSOR",
-      tabId: tab.id,
-      payload: {
-        x: 140,
-        y: 120,
-        label: "Grok Desktop",
-        visible: true,
-        duration: 1800,
-        animate: true,
-        motionMs: 680
-      }
-    });
-  });
 
   const toggle = document.createElement("button");
   toggle.textContent = tab.status === "controlling" ? "Watch" : "Control";
@@ -115,8 +80,16 @@ function tabCard(tab) {
     await send({
       type: "GROK_DESKTOP_SET_TAB_STATUS",
       tabId: tab.id,
-      status: tab.status === "controlling" ? "watching" : "controlling"
+      status: tab.status === "controlling" ? "watching" : "controlling",
     });
+    await render();
+  });
+
+  const scan = document.createElement("button");
+  scan.textContent = "Scan";
+  scan.addEventListener("click", async () => {
+    scan.disabled = true;
+    await send({ type: "GROK_DESKTOP_SNAPSHOT_TAB", tabId: tab.id });
     await render();
   });
 
@@ -127,52 +100,91 @@ function tabCard(tab) {
     await render();
   });
 
-  actions.append(scan, cursor, toggle, stop);
-  card.append(meta, title, url, snapshot, actions);
+  actions.append(toggle, scan, stop);
+  card.append(row1, url, actions);
   return card;
 }
 
 async function render() {
-  const response = await send({ type: "GROK_DESKTOP_GET_STATE" });
+  const response = (await send({ type: "GROK_DESKTOP_GET_STATE" })) || {};
   renderBridge(response.bridge);
   renderSettings(response.settings);
-  const tabs = Object.values(response.tabs || {}).sort((a, b) => b.updatedAt - a.updatedAt);
-
+  const tabs = Object.values(response.tabs || {}).sort(
+    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+  );
   tabList.textContent = "";
   if (!tabs.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "No monitored tabs yet.";
+    empty.textContent = "No controlled tabs yet — click “Control tab” to start.";
     tabList.append(empty);
     return;
   }
+  for (const tab of tabs) tabList.append(tabCard(tab));
+}
 
-  for (const tab of tabs) {
-    tabList.append(tabCard(tab));
+// Execute-mode toggle: Ask before acting  ↔  Run without confirming (high risk).
+let execModeValue = "ask";
+function applyExecMode() {
+  execMode.dataset.mode = execModeValue;
+  execLabel.textContent =
+    execModeValue === "auto" ? "Run without confirming" : "Ask before acting";
+  riskBanner.hidden = execModeValue !== "auto";
+}
+execMode.addEventListener("click", () => {
+  execModeValue = execModeValue === "auto" ? "ask" : "auto";
+  applyExecMode();
+});
+
+// Send a command to the controlled tab via the background → native bridge.
+async function sendCommand() {
+  const text = commandInput.value.trim();
+  if (!text) return;
+  sendButton.disabled = true;
+  try {
+    const res = await send({
+      type: "GROK_DESKTOP_COMMAND",
+      command: text,
+      autoApprove: execModeValue === "auto",
+    });
+    // Visible echo on the controlled tab so the user sees it landed.
+    await send({
+      type: "GROK_DESKTOP_PULSE_CURSOR",
+      payload: { x: 160, y: 140, label: text.slice(0, 40), visible: true, duration: 2200, animate: true, motionMs: 700 },
+    });
+    if (res && res.ok === false) {
+      bridgeStatus.textContent = res.error || "bridge off — connect to run";
+    }
+    commandInput.value = "";
+  } finally {
+    sendButton.disabled = false;
   }
 }
 
-trackButton.addEventListener("click", async () => {
-  await send({ type: "GROK_DESKTOP_TRACK_ACTIVE_TAB", status: "watching" });
-  await render();
+sendButton.addEventListener("click", () => void sendCommand());
+commandInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    void sendCommand();
+  }
 });
 
 controlButton.addEventListener("click", async () => {
   await send({ type: "GROK_DESKTOP_TRACK_ACTIVE_TAB", status: "controlling" });
   await render();
 });
-
-snapshotAllButton.addEventListener("click", async () => {
-  snapshotAllButton.disabled = true;
-  snapshotAllButton.textContent = "Scanning";
-  await send({ type: "GROK_DESKTOP_SNAPSHOT_ALL" });
-  snapshotAllButton.textContent = "Scan all";
-  snapshotAllButton.disabled = false;
+trackButton.addEventListener("click", async () => {
+  await send({ type: "GROK_DESKTOP_TRACK_ACTIVE_TAB", status: "watching" });
   await render();
 });
-
+snapshotAllButton.addEventListener("click", async () => {
+  await send({ type: "GROK_DESKTOP_SNAPSHOT_ALL" });
+  await render();
+});
 refreshButton.addEventListener("click", render);
 focusGuardInput.addEventListener("change", updateSettings);
 visibleMotionInput.addEventListener("change", updateSettings);
 controlledOnlyInput.addEventListener("change", updateSettings);
+
+applyExecMode();
 render();
