@@ -386,16 +386,28 @@ impl RunQueue {
                 // Wait exit.
                 let status = spawned.child.wait().await;
                 let cancelled = self.inner.lock().await.cancelled.contains(&rec.id);
-                let final_state = if cancelled {
-                    RunState::Cancelled
+                let (final_state, fail_err) = if cancelled {
+                    (RunState::Cancelled, None)
                 } else {
                     match status {
-                        Ok(s) if s.success() => RunState::Done,
-                        Ok(_) => RunState::Failed,
-                        Err(_) => RunState::Failed,
+                        Ok(s) if s.success() => (RunState::Done, None),
+                        // grok exited non-zero. Surface the code/signal so the
+                        // failure isn't a bare "error" — grok 0.2.x sometimes
+                        // crashes mid-run, and a clear message tells the user
+                        // it's the CLI (and that retrying usually works).
+                        Ok(s) => {
+                            let msg = match s.code() {
+                                Some(c) => format!(
+                                    "grok exited with code {c} — likely a grok CLI crash, try again"
+                                ),
+                                None => "grok was terminated by a signal — likely a grok CLI crash, try again".to_string(),
+                            };
+                            (RunState::Failed, Some(msg))
+                        }
+                        Err(e) => (RunState::Failed, Some(format!("could not wait on grok: {e}"))),
                     }
                 };
-                self.finalize(&rec.id, final_state, None).await;
+                self.finalize(&rec.id, final_state, fail_err).await;
             }
         }
     }
