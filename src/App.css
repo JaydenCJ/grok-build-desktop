@@ -3548,6 +3548,18 @@ select:focus {
   font-size: 13px;
   color: var(--grok-text-2);
 }
+/* Blinking typewriter caret shown while the smooth reveal is catching up. */
+.stream-caret {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--accent);
+  font-weight: 400;
+  animation: stream-caret-blink 1s steps(1) infinite;
+}
+@keyframes stream-caret-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
 .code-block {
   overflow-x: auto;
   padding: 12px 14px;

@@ -179,12 +179,43 @@ impl StreamerState {
         } else {
             ""
         };
-        let footer = self.render_footer();
 
-        if escaped.is_empty() {
-            format!("🤖 {footer}")
-        } else {
-            format!("<pre>{truncated_marker}{escaped}</pre>\n\n{footer}")
+        // Natural chat reply: plain text, no <pre> code-block (which Telegram
+        // renders with a "copy" button), no "✓ done · EndTurn" footer. Just
+        // the message — like talking to a person.
+        match self.final_state {
+            // Finished → the clean reply, nothing else.
+            Some(RunState::Done) => {
+                if escaped.is_empty() {
+                    "🤖 (no output)".to_string()
+                } else {
+                    format!("{truncated_marker}{escaped}")
+                }
+            }
+            Some(RunState::Failed) => {
+                let err = self.error.as_deref().unwrap_or("run failed");
+                if escaped.is_empty() {
+                    format!("⚠️ {err}")
+                } else {
+                    format!("{truncated_marker}{escaped}\n\n⚠️ {err}")
+                }
+            }
+            Some(RunState::Cancelled) => {
+                if escaped.is_empty() {
+                    "⛔ cancelled".to_string()
+                } else {
+                    format!("{truncated_marker}{escaped}\n\n⛔ cancelled")
+                }
+            }
+            // Still streaming → plain text with a tiny typing caret, or a
+            // status line while there's no text yet.
+            _ => {
+                if escaped.is_empty() {
+                    self.render_footer()
+                } else {
+                    format!("{truncated_marker}{escaped} ▍")
+                }
+            }
         }
     }
 

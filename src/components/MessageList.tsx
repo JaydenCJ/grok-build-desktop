@@ -60,6 +60,18 @@ export function MessageList({ messages }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.textChars, active?.thoughtChars, active?.htmlVersion, active?.state]);
 
+  // The typewriter buffer reveals text AFTER the raw tokens have all arrived,
+  // so the message keeps growing between token bursts with no snapshot change
+  // to trigger the effect above. While a run is actively running, gently keep
+  // the view pinned to the bottom (only if the user is already there).
+  useEffect(() => {
+    if (active?.state !== 'running') return;
+    const id = window.setInterval(() => {
+      if (atBottomRef.current) scrollToLast(false);
+    }, 180);
+    return () => window.clearInterval(id);
+  }, [active?.state]);
+
   return (
     <Virtuoso
       ref={ref}
