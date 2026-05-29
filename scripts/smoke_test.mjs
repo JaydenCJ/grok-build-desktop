@@ -380,5 +380,18 @@ assert.ok(read("src/components/StatusBar.tsx").includes("writing…") &&
 // 13) Best-of-N defaults to 1 (real token streaming; best-of-n>1 dumps at once).
 assert.ok(app.includes('storageKeys.bestOfN) ?? "1"'),
   "Best-of-N must default to 1 for natural streaming");
+// 14) grok-build adaptation: durable guidance goes through --rules (system
+//     prompt), NOT a preamble in the user turn. The old 25-line preamble — and
+//     especially its FALSE "0 skills … discovered by grok inspect" line — must
+//     be gone (grok discovers its own ecosystem; we never echo it back wrong).
+assert.ok(app.includes("buildGrokRules") && app.includes('args.push("--rules"'),
+  "coding guidance must be passed via --rules (grok-native), not a user-turn preamble");
+assert.ok(!app.includes("Grok Desktop Professional Coding Session"),
+  "the heavy user-turn preamble must be removed");
+assert.ok(!app.includes("discovered by grok inspect."),
+  "must not echo grok's ecosystem back to it (the old line hard-said 0 skills)");
+assert.ok(read("src-tauri/src/telegram/commands.rs").includes("GROK_SENIOR_RULES") &&
+  read("src-tauri/src/telegram/commands.rs").includes('"--rules"'),
+  "Telegram runs must send the same --rules guidance as the desktop UI");
 
 console.log("smoke: ok");
