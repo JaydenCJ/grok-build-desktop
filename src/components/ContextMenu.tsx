@@ -57,6 +57,18 @@ export function ContextMenu({ menu, onClose }: Props) {
   useEffect(() => {
     if (!menu) return;
     const close = () => onClose();
+    // Close on a click/right-click OUTSIDE the menu. This is a CAPTURE-phase
+    // listener so it fires BEFORE React's delegated onClick — if it also fired
+    // for clicks INSIDE the menu, the menu would unmount before the item's
+    // onClick ran and the action would silently never fire. That race passed
+    // in the dev preview but broke EVERY menu item in the production WebView.
+    // stopPropagation on the menu can't help (it's bubble-phase). So: skip
+    // in-menu clicks and let the item's own onClick close + run the action.
+    const closeIfOutside = (ev: Event) => {
+      const target = ev.target as Node | null;
+      if (target && ref.current && ref.current.contains(target)) return;
+      onClose();
+    };
     const run = (item: ContextMenuItem) => {
       if (item.disabled || !item.onClick) return;
       onClose();
@@ -93,14 +105,16 @@ export function ContextMenu({ menu, onClose }: Props) {
     };
     // Defer so the opening contextmenu/click doesn't immediately close it.
     const t = window.setTimeout(() => {
-      window.addEventListener('click', close, true);
+      window.addEventListener('click', closeIfOutside, true);
+      window.addEventListener('contextmenu', closeIfOutside, true);
       window.addEventListener('scroll', close, true);
       window.addEventListener('resize', close, true);
       window.addEventListener('keydown', onKey, true);
     }, 0);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener('click', close, true);
+      window.removeEventListener('click', closeIfOutside, true);
+      window.removeEventListener('contextmenu', closeIfOutside, true);
       window.removeEventListener('scroll', close, true);
       window.removeEventListener('resize', close, true);
       window.removeEventListener('keydown', onKey, true);

@@ -2505,6 +2505,29 @@ function App() {
     return { pinned, groups, ungrouped, archived };
   }, [recentPrompts]);
 
+  // Make ⌘K Search actually search the user's WORK, not just commands: each
+  // recent prompt becomes a searchable palette entry that restores it to the
+  // composer. (Search previously only filtered the command list, so typing a
+  // topic keyword found nothing — "search doesn't work".)
+  const historyPaletteActions = useMemo<PaletteAction[]>(
+    () =>
+      recentPrompts.slice(0, 50).map((p) => ({
+        id: `history-${p.id}`,
+        label: p.title,
+        hint: p.detail ? `History · ${p.detail}` : "History",
+        group: "History",
+        run: () => {
+          const text = findPromptText(p.id);
+          if (text) updatePrompt(text);
+        },
+      })),
+    [recentPrompts],
+  );
+  const allPaletteActions = useMemo(
+    () => [...paletteActions, ...historyPaletteActions],
+    [paletteActions, historyPaletteActions],
+  );
+
   // One history row — inline rename/new-group input when being edited,
   // otherwise a click-to-restore / right-click-for-actions button.
   function renderHistoryRow(item: HistoryRow) {
@@ -2666,7 +2689,7 @@ function App() {
     >
       <CommandPalette
         open={paletteOpen}
-        actions={paletteActions}
+        actions={allPaletteActions}
         onClose={() => setPaletteOpen(false)}
       />
       <SettingsPage
