@@ -36,6 +36,12 @@
   --accent-glow:  rgba(236,233,226,0.10);
   --accent-ink:   #131313;
 
+  /* Motion — strong custom curves (built-in CSS easings are too weak for UI).
+   * ease-out for enter/feedback (instant-feeling), in-out for on-screen moves. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --press: scale(0.97);
+
   /* Semantic — drained, not signal-bright */
   --success: #6F9F7B;
   --warn:    #B5985A;
@@ -3512,7 +3518,7 @@ button.status-cluster.status-action:disabled {
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
-  transition: all 120ms ease;
+  transition: color 120ms var(--ease-out), border-color 120ms var(--ease-out), background-color 120ms var(--ease-out);
 }
 .queue-item button:hover {
   color: var(--grok-danger);
@@ -3795,7 +3801,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   cursor: pointer;
   font-size: 12px;
   padding: 2px 6px;
-  transition: all 120ms ease;
+  transition: color 120ms var(--ease-out), border-color 120ms var(--ease-out), background-color 120ms var(--ease-out);
 }
 .prompt-library-edit:hover {
   border-color: var(--grok-accent);
@@ -4013,6 +4019,8 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out);
 }
 .titlebar-icon-btn:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border); }
 
@@ -4050,7 +4058,14 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   border: 1px solid var(--border-2);
   border-radius: 10px;
   box-shadow: var(--shadow-pop, 0 16px 40px -8px rgba(0,0,0,0.55));
-  animation: palette-fade 90ms ease-out;
+  /* Scale up from the cursor corner (not center) so the menu reads as
+   * springing from where it was opened. Subtle scale, never from 0. */
+  transform-origin: top left;
+  animation: ctx-menu-in 110ms var(--ease-out);
+}
+@keyframes ctx-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
 .ctx-item {
   width: 100%;
@@ -5014,4 +5029,21 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   word-break: break-all;
   max-height: 220px;
   overflow-y: auto;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Reduced motion (accessibility, non-negotiable). Honors the OS "reduce
+ * motion" setting: kill looping/decorative animations and movement-based
+ * transitions, but keep them as instant state changes so nothing breaks.
+ * Opacity/colour still settle instantly; comprehension is preserved.
+ * ────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
