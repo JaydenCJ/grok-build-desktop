@@ -90,6 +90,11 @@ export function CommandPalette({ open, actions, onClose }: Props) {
               setHighlight(0);
             }}
             onKeyDown={(e) => {
+              // While an IME is composing (Chinese/Japanese/Korean), Enter
+              // commits the candidate and arrows move it — they must NOT
+              // navigate or select the palette. Without this, typing pinyin and
+              // pressing Enter to confirm the characters fired a result early.
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setHighlight((h) => Math.min(h + 1, Math.max(0, filtered.length - 1)));
