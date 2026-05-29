@@ -32,8 +32,6 @@ for (const label of [
   "Context Files",
   "Command History",
   "Theme",
-  "Dark",
-  "Light",
   "Stop",
 ]) {
   assert.ok(app.includes(label), `App UI missing label: ${label}`);
@@ -247,5 +245,49 @@ assert.ok(css.includes("--grok-bg-0"),
   "Grok-themed CSS tokens missing (--grok-bg-0..4 expected)");
 assert.ok(css.includes("--grok-accent"),
   "Grok accent color token missing");
+
+// v0.4.0: rename to Grok Build Desktop
+assert.ok(tauriConf.productName === "Grok Build Desktop",
+  "tauri productName must be 'Grok Build Desktop'");
+assert.ok(app.includes("Grok Build Desktop"),
+  "Sidebar brand must read 'Grok Build Desktop'");
+
+// v0.4.0: real action policies (Plan + Autopilot) + risk warning
+assert.ok(app.includes('"plan"') && app.includes("--permission-mode") || app.includes('actionPolicy === "plan"'),
+  "Plan action policy must map to --permission-mode plan");
+assert.ok(app.includes("--always-approve"),
+  "Autopilot must pass --always-approve to grok");
+assert.ok(app.includes("autopilot-warning"),
+  "Autopilot risk warning banner missing");
+
+// v0.4.0: dedicated Settings page (theme/Dark/Light moved here)
+assert.ok(existsSync(join(root, "src/components/SettingsPage.tsx")),
+  "SettingsPage component missing");
+const settingsSrc = read("src/components/SettingsPage.tsx");
+assert.ok(settingsSrc.includes("Dark") && settingsSrc.includes("Light"),
+  "SettingsPage must host the Dark/Light theme control");
+assert.ok(app.includes("<SettingsPage"), "App must render SettingsPage");
+
+// v0.4.0: Tools = MCP integration hub
+assert.ok(existsSync(join(root, "src/components/ToolsPage.tsx")),
+  "ToolsPage (MCP hub) component missing");
+assert.ok(existsSync(join(root, "src/lib/mcp.ts")), "mcp lib wrapper missing");
+assert.ok(read("src/lib/mcp.ts").includes("MCP_CATALOG"),
+  "mcp lib must export the community MCP catalog");
+assert.ok(app.includes("<ToolsPage"), "App must render ToolsPage");
+for (const cmd of ["grok_mcp_add", "grok_mcp_remove"]) {
+  assert.ok(libRs.includes(cmd), `missing Tauri command for MCP: ${cmd}`);
+}
+
+// v0.4.0: minimal header + model picker in composer footer
+assert.ok(app.includes("window-titlebar minimal"),
+  "Minimal Claude-Desktop-style top bar missing");
+assert.ok(app.includes("model-select-footer"),
+  "Model picker must be in the composer footer");
+
+// Regression guard: conversation panel must be flex (a 2-row grid let the
+// TabBar steal the scroll row and collapsed MessageList to 0 height).
+assert.ok(!css.includes("grid-template-rows: minmax(0, 1fr) auto"),
+  "conversation-panel must not use the 2-row grid that collapsed the chat");
 
 console.log("smoke: ok");
