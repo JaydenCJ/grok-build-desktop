@@ -28,9 +28,14 @@ function stateSuffix(snap: RunSnapshot | undefined): string | null {
   if (snap.state === 'done') return `done${snap.stopReason ? ' · ' + snap.stopReason : ''}`;
   if (snap.state === 'cancelled') return 'cancelled';
   if (snap.state === 'failed') return `failed${snap.error ? ': ' + snap.error : ''}`;
+  // Spell out exactly what Grok is doing right now (the user asked to always
+  // see the live phase, Claude/Codex-style):
+  //   thought event  → reasoning privately       → "thinking…"
+  //   text event     → emitting the answer        → "writing…"
+  //   running, none   → spun up, nothing back yet  → "working…"
   if (snap.lastEventType === 'thought') return 'thinking…';
-  // While streaming text, omit the suffix — the live token counter already
-  // signals "writing", and the minimal form looks cleaner (matches Claude).
+  if (snap.lastEventType === 'text') return 'writing…';
+  if (snap.state === 'running' || snap.state === 'queued') return 'working…';
   return null;
 }
 

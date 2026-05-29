@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { MessageItem } from './MessageItem';
 import { useActiveRun } from '../hooks/useActiveRun';
@@ -7,6 +7,9 @@ export interface MessageRef {
   runId: string;
   role: 'user' | 'assistant';
   userText?: string;
+  /** Stable message id — used to scroll/flash a specific message when the
+   *  user clicks it in the HISTORY sidebar ("return to that task"). */
+  id?: string;
   /**
    * Fallback content for assistant messages that have no live streamStore
    * snapshot — typically legacy messages loaded from session_state.json
@@ -17,10 +20,16 @@ export interface MessageRef {
 
 interface Props {
   messages: MessageRef[];
+  /** When set (with a fresh nonce), scroll to the message with this id and
+   *  flash it. The nonce lets the same id be re-focused on repeated clicks. */
+  focusId?: string | null;
+  focusNonce?: number;
 }
 
-export function MessageList({ messages }: Props) {
+export function MessageList({ messages, focusId, focusNonce }: Props) {
   const ref = useRef<VirtuosoHandle>(null);
+  // The message currently flashing after a history-click jump.
+  const [flashId, setFlashId] = useState<string | null>(null);
   // Whether the viewport is pinned to the bottom. We only auto-follow
   // streaming text while this is true, so a user who scrolls up to read
   // history is never yanked back down.
@@ -72,6 +81,23 @@ export function MessageList({ messages }: Props) {
     return () => window.clearInterval(id);
   }, [active?.state]);
 
+  // History-click jump: scroll the requested message into view (centered) and
+  // flash it for ~1.3s so the user sees exactly which task they returned to.
+  // Virtuoso virtualizes the list, so off-screen messages aren't in the DOM —
+  // we must scroll by index, not querySelector. The nonce makes a repeat click
+  // on the same message re-trigger this effect.
+  useEffect(() => {
+    if (!focusId) return;
+    const idx = messages.findIndex((m) => m.id === focusId);
+    if (idx < 0) return;
+    atBottomRef.current = false; // don't fight the jump with bottom-follow
+    ref.current?.scrollToIndex({ index: idx, align: 'center', behavior: 'smooth' });
+    setFlashId(focusId);
+    const t = window.setTimeout(() => setFlashId(null), 1300);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, focusNonce]);
+
   return (
     <Virtuoso
       ref={ref}
@@ -84,15 +110,16 @@ export function MessageList({ messages }: Props) {
       style={{ height: '100%' }}
       increaseViewportBy={{ top: 200, bottom: 600 }}
       itemContent={(_, msg) => {
+        const flash = msg.id && msg.id === flashId ? ' message-flash' : '';
         if (msg.role === 'user') {
           return (
-            <div className="message message-user">
+            <div className={`message message-user${flash}`} data-message-id={msg.id}>
               <pre className="message-body">{msg.userText}</pre>
             </div>
           );
         }
         return (
-          <div className="message message-assistant">
+          <div className={`message message-assistant${flash}`} data-message-id={msg.id}>
             <MessageItem runId={msg.runId} fallbackText={msg.fallbackText} />
           </div>
         );

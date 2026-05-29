@@ -1104,6 +1104,42 @@ function App() {
     return null;
   }
 
+  // Clicking a HISTORY row returns you to THAT task's conversation (Claude /
+  // Codex behaviour) — NOT just refilling the composer (that lives in the
+  // right-click "Restore to composer" action). If the message lives in another
+  // session tab we switch to it first, then scroll+flash the message in place.
+  function goToHistoryPrompt(id: string) {
+    setPaletteOpen(false);
+    const inActive = messages.some((m) => m.id === id);
+    if (!inActive) {
+      const owner = tabs.find((t) =>
+        (t.messages as unknown as ChatMessage[]).some((m) => m.id === id),
+      );
+      if (owner && owner.id !== activeTabId) {
+        // Persist the live tab, then load the owner tab's messages/cwd.
+        setTabs((current) =>
+          current.map((t) =>
+            t.id === activeTabId
+              ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+              : t,
+          ),
+        );
+        setActiveTabId(owner.id);
+        setCodingCwd(owner.cwd);
+        setMessages(owner.messages as unknown as ChatMessage[]);
+      } else if (!owner) {
+        // Orphaned/aggregated prompt with no live message — fall back to the
+        // old behaviour so the click is never a no-op.
+        const text = findPromptText(id);
+        if (text) updatePrompt(text);
+        return;
+      }
+    }
+    // Bump the nonce so repeated clicks on the same row re-scroll/flash.
+    setFocusMessage({ id, nonce: focusMessageRef.current + 1 });
+    focusMessageRef.current += 1;
+  }
+
   // ---- History row actions: all persisted, each with a visible effect ----
   function togglePinPrompt(id: string) {
     setPinnedPromptIds((prev) => {
@@ -2439,6 +2475,10 @@ function App() {
   }, [busyRunner, drafts, mode]);
 
   const conversationScrollRef = useRef<HTMLDivElement>(null);
+  // History-click "return to this task" target. The nonce lets the same id be
+  // re-focused on repeated clicks (state identity alone wouldn't re-fire).
+  const [focusMessage, setFocusMessage] = useState<{ id: string; nonce: number } | null>(null);
+  const focusMessageRef = useRef(0);
   const stickToBottomRef = useRef(true);
   useEffect(() => {
     const node = conversationScrollRef.current;
@@ -2536,10 +2576,7 @@ function App() {
         label: p.title,
         hint: p.detail ? `History · ${p.detail}` : "History",
         group: "History",
-        run: () => {
-          const text = findPromptText(p.id);
-          if (text) updatePrompt(text);
-        },
+        run: () => goToHistoryPrompt(p.id),
       })),
     [recentPrompts],
   );
@@ -2586,12 +2623,9 @@ function App() {
       <button
         className={`history-row${item.pinned ? " pinned" : ""}`}
         key={item.id}
-        onClick={() => {
-          const text = findPromptText(item.id);
-          if (text) updatePrompt(text);
-        }}
+        onClick={() => goToHistoryPrompt(item.id)}
         onContextMenu={(e) => openHistoryMenu(e, item)}
-        title="Click to restore · right-click for actions"
+        title="Click to jump to this task · right-click for actions"
         type="button"
       >
         <span className="history-row-main">
@@ -2691,7 +2725,7 @@ function App() {
     () =>
       messages.map((m) =>
         m.role === "user"
-          ? { runId: "", role: "user" as const, userText: m.content }
+          ? { runId: "", role: "user" as const, userText: m.content, id: m.id }
           : {
               // Live runs keep their real id; restored/legacy assistant
               // messages get a STABLE synthetic id (msg:<id>) so MessageItem
@@ -2701,6 +2735,7 @@ function App() {
               runId: m.runId || `msg:${m.id}`,
               role: "assistant" as const,
               fallbackText: m.content,
+              id: m.id,
             },
       ),
     [messages],
@@ -3114,7 +3149,11 @@ function App() {
                   </p>
                 </div>
               ) : (
-                <MessageList messages={messageRefs} />
+                <MessageList
+                  messages={messageRefs}
+                  focusId={focusMessage?.id ?? null}
+                  focusNonce={focusMessage?.nonce ?? 0}
+                />
               )}
             </div>
 

@@ -3531,6 +3531,17 @@ button.status-cluster.status-action:disabled {
   display: block;
   padding: 14px 22px;
 }
+
+/* History-click "return to this task" — flash the jumped-to message so the
+   user sees exactly where they landed, then fade back to normal. */
+.message.message-flash {
+  animation: message-flash 1.3s ease-out;
+}
+@keyframes message-flash {
+  0%   { background: var(--accent-glow); box-shadow: inset 3px 0 0 var(--grok-accent); }
+  60%  { background: var(--accent-glow); box-shadow: inset 3px 0 0 var(--grok-accent); }
+  100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
 .message.message-user {
   background: linear-gradient(180deg, transparent, rgba(255, 122, 69, 0.04));
 }
