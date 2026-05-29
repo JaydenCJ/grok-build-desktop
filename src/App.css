@@ -2195,6 +2195,26 @@ select:focus {
   margin-left: auto;
 }
 
+/* Clickable status chips (project / model / policy) — reset the button and
+   add a clear hover so they read as interactive, not dead text. */
+button.status-cluster.status-action {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 7px;
+  margin: -3px 0;
+}
+button.status-cluster.status-action:hover:not(:disabled) {
+  background: var(--button-hover);
+  color: var(--text);
+}
+button.status-cluster.status-action:disabled {
+  cursor: default;
+}
+
 .status-cwd {
   overflow: hidden;
   text-overflow: ellipsis;

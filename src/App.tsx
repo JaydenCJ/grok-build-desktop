@@ -3861,19 +3861,44 @@ function App() {
         </details>
 
         <footer className="workspace-statusbar" aria-label="Workspace status">
-          <div className="status-cluster">
+          {/* These chips looked like controls but were dead text. Now they're
+              real buttons: project → folder picker, model → Model settings,
+              policy → Permissions settings. */}
+          <button
+            type="button"
+            className="status-cluster status-action"
+            onClick={pickFolder}
+            disabled={folderPickerBusy}
+            title="Pick the project folder Grok runs in"
+          >
             <FolderGit2 size={13} />
             <span className="status-cwd" title={workspacePath}>{workspacePath}</span>
-          </div>
-          <div className="status-cluster">
+          </button>
+          <button
+            type="button"
+            className="status-cluster status-action"
+            onClick={() => {
+              setSettingsSection("model");
+              setSettingsOpen(true);
+            }}
+            title="Change model & reasoning"
+          >
             <Sparkles size={13} />
             <span>{activeModel}</span>
             {!modelIsVerified ? <span className="status-warn">unverified</span> : null}
-          </div>
-          <div className="status-cluster">
+          </button>
+          <button
+            type="button"
+            className="status-cluster status-action"
+            onClick={() => {
+              setSettingsSection("permissions");
+              setSettingsOpen(true);
+            }}
+            title="Change action policy & permissions"
+          >
             <ShieldCheck size={13} />
             <span>{actionPolicies[actionPolicy].label}</span>
-          </div>
+          </button>
           <div className="status-cluster">
             {/* Only report a "last run" once a real run has actually happened
                 (totalRuns > 0). Otherwise a default/unavailable lastRun would

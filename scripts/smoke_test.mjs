@@ -338,5 +338,11 @@ assert.ok(/\.history-list\s*\{[^}]*flex:\s*1 1 auto/s.test(css),
 //    (it left a big gap below the status bar; docks are absolute overlays).
 assert.ok(!css.includes("auto auto minmax(0, 1fr) 280px auto"),
   "workspace ≤1280px must not reserve a dead 280px dock row");
+// 7) Bottom-left status chips (project/model/policy) must be real clickable
+//    buttons, not dead text (they open the folder picker / model / permissions).
+assert.ok(app.includes('className="status-cluster status-action"'),
+  "status bar project/model/policy chips must be clickable buttons");
+assert.ok(css.includes("button.status-cluster.status-action"),
+  "clickable status chips need a hover affordance");
 
 console.log("smoke: ok");
