@@ -35,11 +35,16 @@ pub async fn run_dispatcher(
     streamer: Arc<StreamerRegistry>,
     config: Arc<Config>,
 ) {
-    let handler = Update::filter_message().branch(
-        dptree::entry()
-            .filter_command::<Command>()
-            .endpoint(handle_command),
-    );
+    let handler = Update::filter_message()
+        // Slash commands (/grok /status /queue /cancel /help) first…
+        .branch(
+            dptree::entry()
+                .filter_command::<Command>()
+                .endpoint(handle_command),
+        )
+        // …then any other text message = a normal-language prompt. This lets
+        // the user just chat with the bot without typing /grok every time.
+        .branch(dptree::endpoint(handle_plain_message));
 
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![queue, streamer, config])
@@ -47,6 +52,38 @@ pub async fn run_dispatcher(
         .build()
         .dispatch()
         .await;
+}
+
+/// Fallback for non-command messages: treat the raw text as a /grok prompt so
+/// plain-language conversation "just works".
+async fn handle_plain_message(
+    bot: Bot,
+    msg: Message,
+    queue: Arc<RunQueue>,
+    streamer: Arc<StreamerRegistry>,
+    config: Arc<Config>,
+) -> ResponseResult<()> {
+    let chat_id = msg.chat.id.0;
+    if !config.is_allowed(chat_id) {
+        eprintln!("[grok-desktop] telegram: rejected message from unauthorized chat_id={chat_id}");
+        bot.send_message(msg.chat.id, "🚫 Not authorized.").await?;
+        return Ok(());
+    }
+    let text = msg.text().unwrap_or("").trim().to_string();
+    // Ignore empty / non-text (stickers, photos) and stray slash input that
+    // didn't parse as a known command.
+    if text.is_empty() {
+        return Ok(());
+    }
+    if text.starts_with('/') {
+        bot.send_message(
+            msg.chat.id,
+            "Unknown command. Try /help, or just send a normal message to ask Grok.",
+        )
+        .await?;
+        return Ok(());
+    }
+    handle_grok(bot, msg, text, queue, streamer, config).await
 }
 
 async fn handle_command(
