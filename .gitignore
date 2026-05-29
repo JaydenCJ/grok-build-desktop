@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Secrets — never commit. .env.example stays tracked as the template.
+.env
+.env.local
+.env.*.local
 src-tauri/target/
 src-tauri/target
 *.dmg
