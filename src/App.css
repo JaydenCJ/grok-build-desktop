@@ -3990,6 +3990,36 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 .conn-dot.ready { background: var(--success); }
 .conn-dot.blocked { background: var(--warn); }
 
+/* Grok connection status — a small labelled pill so it reads as "Grok is
+   connected" at a glance, not a bare mystery dot. */
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-2);
+  user-select: none;
+}
+.conn-pill .conn-dot-mini {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-4);
+  flex-shrink: 0;
+}
+.conn-pill.ready { color: var(--text-1); }
+.conn-pill.ready .conn-dot-mini {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent);
+}
+.conn-pill.blocked .conn-dot-mini { background: var(--warn); }
+
 /* Top-right details toggle — opens the right inspector drawer. */
 .detail-toggle {
   display: inline-flex;
@@ -4360,6 +4390,31 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 }
 .tools-notice.ok { background: color-mix(in srgb, var(--success) 14%, var(--bg-3)); color: var(--success); border: 1px solid var(--success); }
 .tools-notice.err { background: color-mix(in srgb, var(--error) 12%, var(--bg-3)); color: var(--error); border: 1px solid var(--error); }
+/* Tools page tabs — MCP servers / Skills */
+.tools-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.tools-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.tools-tab:hover { color: var(--text-1); }
+.tools-tab.active { background: var(--bg-5); color: var(--text-1); }
+
 .tools-search {
   margin: 14px 0 12px;
   background: var(--bg-3);

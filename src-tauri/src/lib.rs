@@ -609,6 +609,67 @@ fn grok_home_dir() -> PathBuf {
         .join(".grok")
 }
 
+// ── Grok skills ─────────────────────────────────────────────────────────────
+// A skill is a folder with a SKILL.md (frontmatter name/description + body).
+// grok-build discovers them from ~/.grok/skills (and ~/.claude/skills). We let
+// users install a curated catalog with one click — install just writes the
+// SKILL.md; grok picks it up on the next run.
+fn grok_skills_dir() -> PathBuf {
+    grok_home_dir().join("skills")
+}
+
+fn safe_skill_slug(slug: &str) -> Result<String, String> {
+    let s = slug.trim();
+    if s.is_empty()
+        || s.contains('/')
+        || s.contains('\\')
+        || s.contains("..")
+        || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("invalid skill name".into());
+    }
+    Ok(s.to_string())
+}
+
+#[tauri::command]
+fn list_grok_skills() -> Vec<String> {
+    let mut out = Vec::new();
+    for base in [grok_skills_dir(), grok_home_dir().with_file_name(".claude").join("skills")] {
+        if let Ok(rd) = fs::read_dir(&base) {
+            for entry in rd.flatten() {
+                if entry.path().join("SKILL.md").exists() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if !out.contains(&name.to_string()) {
+                            out.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+#[tauri::command]
+fn install_grok_skill(slug: String, body: String) -> Result<(), String> {
+    let slug = safe_skill_slug(&slug)?;
+    let dir = grok_skills_dir().join(&slug);
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir failed: {e}"))?;
+    fs::write(dir.join("SKILL.md"), body).map_err(|e| format!("write failed: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_grok_skill(slug: String) -> Result<(), String> {
+    let slug = safe_skill_slug(&slug)?;
+    let dir = grok_skills_dir().join(&slug);
+    // Only remove a folder we'd recognise as a skill (has SKILL.md).
+    if dir.join("SKILL.md").exists() {
+        fs::remove_dir_all(&dir).map_err(|e| format!("remove failed: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn load_session_state() -> Result<Option<SessionState>, String> {
     let path = session_state_path();
@@ -2007,6 +2068,9 @@ pub fn run() {
             grok_mcp_remove,
             list_grok_plugins,
             list_grok_sessions,
+            list_grok_skills,
+            install_grok_skill,
+            remove_grok_skill,
             run_browser_task,
             run_absorb_repo,
             run_doctor,
