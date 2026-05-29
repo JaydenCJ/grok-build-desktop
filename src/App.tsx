@@ -1241,14 +1241,19 @@ function App() {
     ].join("\n");
   }
 
-  function handleEnqueued(info: { runId: string; position: number; prompt: string }) {
+  function handleEnqueued(info: { runId: string; position: number; prompt: string; rawText?: string }) {
     const now = Date.now();
     const userMessageId = makeId("u");
     const assistantMessageId = makeId("a");
     appendMessage({
       id: userMessageId,
       role: "user",
-      content: info.prompt,
+      // Show what the user ACTUALLY typed, not the wrapped prompt. In coding
+      // mode buildPromptWithPreamble prepends a long "Professional Coding
+      // Session" preamble for grok's benefit — that belongs in the request,
+      // not in the chat bubble. rawText is the clean original; fall back to
+      // prompt only for callers that don't pass it.
+      content: info.rawText ?? info.prompt,
       ts: now,
       meta: { workflow: mode === "coding" ? codingWorkflow : "chat" },
     });
