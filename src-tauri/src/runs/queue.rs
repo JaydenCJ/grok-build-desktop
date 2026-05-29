@@ -10,10 +10,8 @@ use tokio::io::AsyncBufReadExt;
 use tokio::sync::{broadcast, Mutex, Notify};
 
 /// Capacity of the broadcast channel that fans queue messages out to consumers
-/// (Tauri event forwarder, optional Telegram daemon, future subscribers).
-/// Large enough to absorb a burst of streaming-json events without lag for
-/// the slowest realistic consumer (a Telegram bot bounded by Telegram's
-/// 1 edit/sec recommendation).
+/// (the Tauri event forwarder and any future subscribers). Large enough to
+/// absorb a burst of streaming-json events without lag.
 const BROADCAST_CAPACITY: usize = 1024;
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,7 +81,7 @@ impl RunQueue {
     }
 
     /// Subscribe a fresh receiver to the queue's broadcast channel.
-    /// Used to attach additional consumers (e.g. Telegram daemon) after the
+    /// Used to attach additional consumers after the
     /// queue is already running. Each receiver gets every event from the
     /// moment of subscription; previously emitted events are not replayed.
     pub fn subscribe(&self) -> broadcast::Receiver<QueueMessage> {

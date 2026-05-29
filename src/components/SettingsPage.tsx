@@ -57,14 +57,10 @@ export interface SettingsPageProps {
   selfCheck: boolean;
   setSelfCheck: (v: boolean) => void;
 
-  // Integrations
+  // Workspace
   codingCwd: string;
   setCodingCwd: (v: string) => void;
   onPickFolder: () => void;
-  chromeExtensionId: string;
-  setChromeExtensionId: (v: string) => void;
-  telegramConfigured: boolean;
-  chromeConnected: boolean;
 
   // About
   appVersion: string;
@@ -75,7 +71,7 @@ const NAV: { id: SettingsSection; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'model', label: 'Model & reasoning' },
   { id: 'permissions', label: 'Permissions & policy' },
-  { id: 'integrations', label: 'Integrations' },
+  { id: 'integrations', label: 'Workspace' },
   { id: 'about', label: 'About' },
 ];
 
@@ -283,7 +279,7 @@ export function SettingsPage(props: SettingsPageProps) {
 
           {section === 'integrations' ? (
             <section className="settings-section">
-              <h2>Integrations</h2>
+              <h2>Workspace</h2>
               <Row title="Project folder" hint="Working directory Grok runs in (coding mode).">
                 <div className="set-inline">
                   <input
@@ -295,23 +291,6 @@ export function SettingsPage(props: SettingsPageProps) {
                     Pick…
                   </button>
                 </div>
-              </Row>
-              <Row title="Chrome extension id" hint="32-char id from chrome://extensions for the native bridge.">
-                <input
-                  value={props.chromeExtensionId}
-                  placeholder="abcdefghijklmnopabcdefghijklmnop"
-                  onChange={(e) => props.setChromeExtensionId(e.currentTarget.value)}
-                />
-              </Row>
-              <Row title="Chrome bridge" hint="Native messaging host connection status.">
-                <span className={`set-status ${props.chromeConnected ? 'is-on' : 'is-off'}`}>
-                  {props.chromeConnected ? 'Connected' : 'Not connected'}
-                </span>
-              </Row>
-              <Row title="Telegram remote" hint="Set TELEGRAM_BOT_TOKEN + allowlist in .env to enable.">
-                <span className={`set-status ${props.telegramConfigured ? 'is-on' : 'is-off'}`}>
-                  {props.telegramConfigured ? 'Configured' : 'Disabled'}
-                </span>
               </Row>
             </section>
           ) : null}
@@ -329,7 +308,7 @@ export function SettingsPage(props: SettingsPageProps) {
               </div>
               <p className="set-about-blurb">
                 A premium desktop client for the Grok Build CLI — non-blocking streaming, multi-session
-                tabs, prompt library, Telegram remote control, and a Chrome companion bridge.
+                tabs, and a prompt library.
               </p>
             </section>
           ) : null}

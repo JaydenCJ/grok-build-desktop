@@ -6,8 +6,6 @@
   "type": "module",
   "scripts": {
     "absorb": "python3 scripts/absorb_repo.py",
-    "chrome:check": "node --check chrome-extension/src/background.js && node --check chrome-extension/src/content.js && node --check chrome-extension/src/popup.js",
-    "chrome:host": "python3 scripts/install_chrome_native_host.py",
     "dev": "vite",
     "doctor": "python3 scripts/doctor.py",
     "build": "tsc && vite build",

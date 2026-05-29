@@ -9,7 +9,7 @@
 
 ## TL;DR for the designer
 
-This is a **Tauri 2 desktop client for the `grok` CLI** (xAI's Grok Build / Code agent). Think Claude Desktop, but for Grok. It already works (streams answers, queues runs, integrates Chrome, supports Telegram remote control, has a prompt library). The current visuals are an engineer's first pass — functional, themed in Grok orange on dark, but lacking the polish that makes Claude Desktop / Codex feel premium.
+This is a **Tauri 2 desktop client for the `grok` CLI** (xAI's Grok Build / Code agent). Think Claude Desktop, but for Grok. It already works (streams answers, queues runs, has a prompt library). The current visuals are an engineer's first pass — functional, themed in Grok orange on dark, but lacking the polish that makes Claude Desktop / Codex feel premium.
 
 **You design. We implement.** Deliver Figma frames, design tokens, or annotated PNGs — we'll translate to React + CSS.
 
@@ -250,7 +250,6 @@ If Grok Build Desktop ends up halfway between **Cursor's density** and **Linear'
 | `src/components/*` | Composer, MessageList, MessageItem, StatusBar, QueueDock, PromptLibrary, AgentOverlay. |
 | `src/App.css` | All styling — single file. New v0.3.0 section near the bottom (search `===== F: Non-blocking UI`). |
 | `docs/architecture.md` | Architecture overview — useful background on how the pieces fit together. |
-| `chrome-extension/` | Browser extension (separate concern from main app). |
 
 ✱ = active design target
 
