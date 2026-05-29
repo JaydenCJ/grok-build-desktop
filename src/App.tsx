@@ -78,7 +78,7 @@ type Runner =
   | "mcp-doctor"
   | "plugins"
   | "sessions";
-type ActionPolicy = "review" | "plan" | "patch" | "autopilot";
+type ActionPolicy = "review" | "patch" | "autopilot";
 type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions" | "desktop";
 type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -315,11 +315,6 @@ const actionPolicies: Record<
     detail: "Read, reason, propose. No file edits unless asked.",
     risk: "none",
   },
-  plan: {
-    label: "Plan",
-    detail: "Grok presents a plan first and waits — runs with --permission-mode plan, no edits until you approve.",
-    risk: "none",
-  },
   patch: {
     label: "Patch ready",
     detail: "Produce exact changes and apply narrow safe edits with normal approvals.",
@@ -492,12 +487,7 @@ function isMode(value: unknown): value is Mode {
 }
 
 function isActionPolicy(value: unknown): value is ActionPolicy {
-  return (
-    value === "review" ||
-    value === "plan" ||
-    value === "patch" ||
-    value === "autopilot"
-  );
+  return value === "review" || value === "patch" || value === "autopilot";
 }
 
 function isInspectorTab(value: unknown): value is InspectorTab {
@@ -1437,14 +1427,12 @@ function App() {
       const r = reasoningEffort === "max" ? "xhigh" : reasoningEffort;
       args.push("--reasoning-effort", r);
     }
-    // Action policy → REAL grok permission behavior (was previously prompt-only).
-    //   review   → no permission flag (the preamble asks Grok to stay read-only)
-    //   plan     → --permission-mode plan  (Grok plans, doesn't edit, waits)
-    //   patch    → respect the advanced permission-mode override, else default
+    // Action policy → REAL grok permission behavior.
+    //   review   → read-only contract (carried by --rules); no permission flag
+    //   patch    → respect the advanced Settings permission-mode override (incl.
+    //              "plan" for power users), else grok's default approvals
     //   autopilot→ --always-approve  (auto-approves EVERY tool call — risky)
-    if (actionPolicy === "plan") {
-      args.push("--permission-mode", "plan");
-    } else if (actionPolicy === "autopilot") {
+    if (actionPolicy === "autopilot") {
       args.push("--always-approve");
     } else if (permissionMode && permissionMode !== "default") {
       args.push("--permission-mode", permissionMode);
