@@ -4,6 +4,7 @@ const tabList = $("tab-list");
 const bridgeStatus = $("bridge-status");
 const riskBanner = $("risk-banner");
 const commandInput = $("command");
+const sendStatus = $("send-status");
 const execMode = $("exec-mode");
 const execLabel = $("exec-label");
 const controlButton = $("control");
@@ -136,26 +137,51 @@ execMode.addEventListener("click", () => {
   applyExecMode();
 });
 
-// Send a command to the controlled tab via the background → native bridge.
+function setSendStatus(text, kind) {
+  if (!sendStatus) return;
+  sendStatus.textContent = text || "";
+  sendStatus.hidden = !text;
+  sendStatus.className = `send-status${kind ? ` ${kind}` : ""}`;
+}
+
+// Send a command: show the agent cursor + label on the controlled tab (visible
+// proof), forward to the desktop bridge, and ALWAYS give clear feedback so the
+// button never feels dead.
 async function sendCommand() {
   const text = commandInput.value.trim();
   if (!text) return;
   sendButton.disabled = true;
+  setSendStatus("Sending…");
   try {
-    const res = await send({
-      type: "GROK_DESKTOP_COMMAND",
-      command: text,
-      autoApprove: execModeValue === "auto",
-    });
-    // Visible echo on the controlled tab so the user sees it landed.
-    await send({
-      type: "GROK_DESKTOP_PULSE_CURSOR",
-      payload: { x: 160, y: 140, label: text.slice(0, 40), visible: true, duration: 2200, animate: true, motionMs: 700 },
-    });
-    if (res && res.ok === false) {
-      bridgeStatus.textContent = res.error || "bridge off — connect to run";
+    // Make sure a tab is under control so the cursor/border have a home —
+    // auto-Control the active tab if nothing is controlled yet.
+    const state = (await send({ type: "GROK_DESKTOP_GET_STATE" })) || {};
+    const hasControlled = Object.values(state.tabs || {}).some((t) => t.status === "controlling");
+    if (!hasControlled) {
+      await send({ type: "GROK_DESKTOP_TRACK_ACTIVE_TAB", status: "controlling" });
     }
-    commandInput.value = "";
+
+    // Visible echo on the tab (injects the content script on demand).
+    const pulse = await send({
+      type: "GROK_DESKTOP_PULSE_CURSOR",
+      payload: { x: 160, y: 140, label: text.slice(0, 40), visible: true, duration: 2600, animate: true, motionMs: 700 },
+    });
+    // Forward to the desktop app via the native bridge (for grok to act on).
+    const cmd = await send({ type: "GROK_DESKTOP_COMMAND", command: text, autoApprove: execModeValue === "auto" });
+
+    if (pulse && pulse.ok === false) {
+      setSendStatus(pulse.error || "Couldn't reach the page.", "err");
+    } else if (cmd && cmd.ok === false) {
+      // Cursor shown, but no desktop bridge to actually run it.
+      setSendStatus("Shown on tab. Connect the desktop bridge to run commands.", "warn");
+      commandInput.value = "";
+    } else {
+      setSendStatus("✓ Sent to the controlled tab.", "ok");
+      commandInput.value = "";
+    }
+    await render();
+  } catch (e) {
+    setSendStatus(String(e && e.message ? e.message : e), "err");
   } finally {
     sendButton.disabled = false;
   }

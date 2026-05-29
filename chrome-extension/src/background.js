@@ -421,19 +421,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "GROK_DESKTOP_PULSE_CURSOR") {
       // Resolve target: explicit tabId, else the active tab.
       let tabId = message.tabId ? Number(message.tabId) : null;
+      let tabUrl = "";
       if (!tabId) {
         const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
         tabId = active?.id;
+        tabUrl = active?.url || "";
       }
-      if (tabId) {
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: "GROK_DESKTOP_AGENT_CURSOR",
-            payload: message.payload || { x: 120, y: 120, visible: true, label: "Agent", animate: true },
-          });
-        } catch (_e) { /* content script not injected on this page */ }
+      if (!tabId) {
+        sendResponse({ ok: false, error: "No active tab.", bridge: bridgeInfo() });
+        return;
       }
-      sendResponse({ ok: true, bridge: bridgeInfo() });
+      // Restricted pages (chrome://, the Web Store, etc.) can't host a content
+      // script — say so instead of silently doing nothing.
+      if (/^(chrome|edge|about|chrome-extension|https:\/\/chrome\.google\.com\/webstore):/i.test(tabUrl)) {
+        sendResponse({ ok: false, error: "This page is restricted — open a normal website.", bridge: bridgeInfo() });
+        return;
+      }
+      try {
+        // Content scripts only auto-inject into pages loaded AFTER the
+        // extension was enabled. Inject on demand so it works on tabs that
+        // were already open.
+        await ensureContent(tabId);
+        await chrome.tabs.sendMessage(tabId, {
+          type: "GROK_DESKTOP_AGENT_CURSOR",
+          payload: message.payload || { x: 120, y: 120, visible: true, label: "Agent", animate: true },
+        });
+        sendResponse({ ok: true, bridge: bridgeInfo() });
+      } catch (e) {
+        sendResponse({
+          ok: false,
+          error: "Couldn't reach the page — reload the tab, then try again.",
+          detail: String(e),
+          bridge: bridgeInfo(),
+        });
+      }
       return;
     }
 
