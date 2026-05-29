@@ -3024,8 +3024,8 @@ function App() {
             ) : (
               <span
                 className={`conn-dot ${isGrokReady ? "ready" : "blocked"}`}
-                title={statusLabel}
-                aria-label={statusLabel}
+                title={isGrokReady ? "Grok connected · grok.com" : `Grok ${statusLabel.toLowerCase()}`}
+                aria-label={isGrokReady ? "Grok connected" : "Grok not connected"}
               />
             )}
             {/* Day / night theme toggle (also ⌘⇧L). */}
@@ -3048,6 +3048,7 @@ function App() {
               onClick={openPanelMenu}
             >
               <PanelRight size={16} />
+              <ChevronDown size={11} className="detail-caret" />
             </button>
           </div>
         </header>
