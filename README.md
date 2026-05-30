@@ -2,11 +2,14 @@
 
 # Grok Build Desktop
 
-**A Grok-first desktop coding environment — Claude-Desktop-style, built on the official Grok Build CLI.**
+### A native desktop app for xAI's Grok CLI — a calm, Claude-Desktop-style home for coding with Grok.
 
-Repository context · streamed terminal output · coding workflows · local tool (MCP) integrations.
+If you live in the `grok` CLI, this gives it a real window: streaming answers, a sidebar of past conversations, MCP tools, and a Skills hub. No terminal-wrapper jank.
 
-Tauri 2 · React 19 · TypeScript · Vite 7 · Rust
+[![Stars](https://img.shields.io/github/stars/JaydenCJ/grok-build-desktop?style=social)](https://github.com/JaydenCJ/grok-build-desktop/stargazers)
+[![Platform](https://img.shields.io/badge/platform-macOS%20·%20Windows-555)](#requirements)
+[![Built with](https://img.shields.io/badge/Tauri%202%20·%20React%2019%20·%20Rust-1c1c1c)](#architecture)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea043)](#contributing)
 
 **English** · [日本語](#日本語) · [中文](#中文)
 
@@ -14,9 +17,13 @@ Tauri 2 · React 19 · TypeScript · Vite 7 · Rust
 
 <img src="docs/screenshots/hero-light.png" alt="Grok Build Desktop — main window" width="900">
 
-<sub>Light and dark, theme-aware throughout.</sub>
+<sub>Theme-aware light and dark.</sub>
 
 <img src="docs/screenshots/hero-dark.png" alt="Grok Build Desktop — dark mode" width="900">
+
+<br/>
+
+⭐ **If this is useful, a star helps other Grok users find it.** Issues and PRs welcome.
 
 </div>
 
@@ -100,9 +107,31 @@ npm run test:unit    # vitest
 npm run doctor       # environment doctor
 ```
 
+### Roadmap
+
+Open to ideas and PRs on any of these:
+
+- [ ] Plan Mode view — separate "plan" from "apply", review the plan before edits run
+- [ ] Sub-agent visualization — see what each agent is doing when a run fans out
+- [ ] File references in the composer (`@path`) and an inline diff viewer
+- [ ] A bigger, community-driven Skills catalog
+- [ ] Linux build target
+
+Have a use case? [Open an issue](https://github.com/JaydenCJ/grok-build-desktop/issues) and say what would make this your daily driver.
+
+### Contributing
+
+Contributions are genuinely welcome — bug fixes, features from the roadmap, or your own idea.
+
+1. Fork and create a branch.
+2. `npm install`, then `npm run check && npm test` before you push (keep them green).
+3. Open a PR describing what changed and how to verify it.
+
+Small, focused PRs get reviewed fastest. Not sure where to start? Issues labeled `good first issue` are a good entry point.
+
 ### License & contact
 
-This repository is **source-available** under the terms in [`LICENSE`](LICENSE) (all rights reserved — see the file for what is and isn't permitted). Third-party attributions are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+This repository is **source-available** under the terms in [`LICENSE`](LICENSE) (all rights reserved; see the file for what is and isn't permitted). Third-party attributions are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 Questions or feedback: **gijirokuman@gmail.com**
 
