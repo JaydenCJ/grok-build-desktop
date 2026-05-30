@@ -135,6 +135,8 @@ Contributions are genuinely welcome — bug fixes, features from the roadmap, or
 
 Small, focused PRs get reviewed fastest. Not sure where to start? Issues labeled `good first issue` are a good entry point.
 
+New to the codebase? The [Engineering Handoff](docs/HANDOFF.md) documents the architecture, the grok-CLI integration, the data model, and every feature with code references.
+
 ### License & contact
 
 This repository is **source-available** under the terms in [`LICENSE`](LICENSE) (all rights reserved; see the file for what is and isn't permitted). Third-party attributions are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
