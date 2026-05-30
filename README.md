@@ -11,6 +11,10 @@ If you live in the `grok` CLI, this gives it a real window: streaming answers, a
 [![Built with](https://img.shields.io/badge/Tauri%202%20·%20React%2019%20·%20Rust-1c1c1c)](#architecture)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea043)](#contributing)
 
+[![Download for macOS](https://img.shields.io/badge/⬇%20Download%20for%20macOS-Apple%20Silicon-2ea043?style=for-the-badge)](https://github.com/JaydenCJ/grok-build-desktop/releases/latest)
+
+<sub>Apple Silicon build · Windows / Intel: [build from source](#quick-start)</sub>
+
 **English** · [日本語](#日本語) · [中文](#中文)
 
 <br/>
@@ -60,6 +64,8 @@ Grok is the only model path exposed in the UI. The model selector reflects exact
 - macOS is the primary target; a Windows build target exists (`npm run tauri build` → MSI on `windows-latest`). Optional tools (browser-use, scrcpy) install separately.
 
 ### Quick Start
+
+> 📦 **macOS (Apple Silicon): grab the prebuilt app from the [latest release](https://github.com/JaydenCJ/grok-build-desktop/releases/latest).** For Windows / Intel, build from source:
 
 ```bash
 git clone https://github.com/JaydenCJ/grok-build-desktop.git
@@ -169,6 +175,8 @@ UI で公開されるモデル経路は Grok のみです。モデルセレク�
 
 ### クイックスタート
 
+> 📦 **macOS（Apple Silicon）はビルド済みアプリを[最新リリース](https://github.com/JaydenCJ/grok-build-desktop/releases/latest)からダウンロードできます。** Windows / Intel はソースからビルド:
+
 ```bash
 git clone https://github.com/JaydenCJ/grok-build-desktop.git
 cd grok-build-desktop
@@ -245,6 +253,8 @@ UI 中只暴露 Grok 这一条模型路径。模型选择器严格反映本机 G
 - 主目标平台为 macOS;同时存在 Windows 构建目标(`npm run tauri build` → 在 `windows-latest` 产出 MSI)。可选工具(browser-use、scrcpy)需另行安装。
 
 ### 快速开始
+
+> 📦 **macOS（Apple Silicon）可直接从[最新 Release](https://github.com/JaydenCJ/grok-build-desktop/releases/latest) 下载安装包。** Windows / Intel 请从源码构建:
 
 ```bash
 git clone https://github.com/JaydenCJ/grok-build-desktop.git
