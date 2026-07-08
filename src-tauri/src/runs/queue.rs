@@ -351,7 +351,19 @@ impl RunQueue {
                         }
                     });
                 }
-                let mut reader = process::read_stdout_lines(&mut spawned.child);
+                let mut reader = match process::read_stdout_lines(&mut spawned.child) {
+                    Ok(reader) => reader,
+                    Err(e) => {
+                        process::kill_group(spawned.pgid).await;
+                        self.finalize(
+                            &rec.id,
+                            RunState::Failed,
+                            Some(format!("stdout unavailable: {e}")),
+                        )
+                        .await;
+                        return;
+                    }
+                };
                 let mut line = String::new();
                 let mut consecutive_fail = 0u32;
 

@@ -96,7 +96,7 @@ pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<Sp
     }
 
     let child = command.spawn()?;
-    let pgid = child.id().expect("child has pid") as i32;
+    let pgid = pid_of(&child)?;
     Ok(SpawnedGrok { child, pgid })
 }
 
@@ -134,8 +134,20 @@ pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<Sp
     // On Windows we'll use child.id() as the "pgid" — it's actually just the
     // PID, but kill_group below uses `taskkill /T` which terminates the whole
     // process tree rooted at that PID.
-    let pgid = child.id().expect("child has pid") as i32;
+    let pgid = pid_of(&child)?;
     Ok(SpawnedGrok { child, pgid })
+}
+
+/// Read the freshly spawned child's PID. `Child::id()` is `None` only once the
+/// child has been reaped; right after `spawn()` that means it already exited
+/// and got polled to completion — vanishingly rare, but not worth a panic.
+/// Surfacing it as io::Error routes through the caller's normal
+/// "spawn failed" handling.
+fn pid_of(child: &Child) -> std::io::Result<i32> {
+    let pid = child
+        .id()
+        .ok_or_else(|| std::io::Error::other("child exited before its pid could be read"))?;
+    Ok(pid as i32)
 }
 
 #[cfg(unix)]
@@ -155,6 +167,15 @@ pub async fn kill_group(pgid: i32) {
         .output();
 }
 
-pub fn read_stdout_lines(child: &mut Child) -> BufReader<tokio::process::ChildStdout> {
-    BufReader::new(child.stdout.take().expect("stdout piped"))
+/// Take the child's piped stdout for line reading. `spawn()` always pipes
+/// stdout, so `None` here means the handle was already taken — a programming
+/// error, but one the caller can report as a failed run instead of a panic.
+pub fn read_stdout_lines(
+    child: &mut Child,
+) -> std::io::Result<BufReader<tokio::process::ChildStdout>> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("child stdout was not piped or already taken"))?;
+    Ok(BufReader::new(stdout))
 }
