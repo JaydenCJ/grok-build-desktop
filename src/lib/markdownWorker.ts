@@ -32,6 +32,17 @@ function ensureWorker(): Worker | null {
           const next = latestByRun.get(runId)!;
           latestByRun.delete(runId);
           postParse(runId, next);
+        } else if (!parseTimers.has(runId)) {
+          // Nothing parked and no flush pending. If the run has also settled
+          // (or was already evicted from the store), this was its final
+          // parse — drop the throttle stamp so lastParseAt doesn't
+          // accumulate an entry per run for the lifetime of the session.
+          // Live runs keep theirs: the stamp is what throttles the next
+          // mid-stream chunk.
+          const state = streamStore.getRunSnapshot(runId)?.state;
+          if (state !== 'running' && state !== 'queued') {
+            lastParseAt.delete(runId);
+          }
         }
       });
       worker.addEventListener('error', (err) => {
@@ -46,6 +57,7 @@ function ensureWorker(): Worker | null {
         latestByRun.clear();
         parseTimers.forEach((t) => clearTimeout(t));
         parseTimers.clear();
+        lastParseAt.clear();
       });
     } catch (err) {
       console.warn('failed to construct markdown worker', err);
