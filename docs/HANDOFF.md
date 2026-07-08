@@ -180,9 +180,10 @@ Operational settings ride as real flags, never echoed as prose.
   (table `runs`: state, error, args_json). Reproduce by running args_json through the
   CLI directly.
 
-The Rust side (`grok_args`/`grok_prompt` in lib.rs) is legacy — used only by the
-`run_grok_task` command (not called by the frontend) and tests. The desktop path is
-100% the frontend builder above.
+The args are built 100% by the frontend builder above (`buildGrokArgs` in App.tsx,
+passed through Composer to `enqueue_run`). The Rust side (`runs/queue.rs`) never
+constructs grok arguments — it only spawns the resolved grok binary with the args
+it was given and forwards the streaming-json output as Tauri events.
 
 ## 6. Data model
 
