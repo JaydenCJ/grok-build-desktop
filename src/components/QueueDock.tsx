@@ -100,7 +100,16 @@ export function QueueDock() {
             <li key={item.id} className="queue-item">
               <span className="queue-item-state">⏸</span>
               <span className="queue-item-prompt">{item.prompt.slice(0, 80)}</span>
-              <button onClick={() => cancelRun(item.id)} aria-label="Cancel this queued run">✕</button>
+              <button
+                onClick={() =>
+                  void cancelRun(item.id).catch((err) =>
+                    console.warn('[grok-desktop] cancel queued run failed', err),
+                  )
+                }
+                aria-label="Cancel this queued run"
+              >
+                ✕
+              </button>
             </li>
           ))}
         </ul>

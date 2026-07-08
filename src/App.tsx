@@ -2287,6 +2287,46 @@ function App() {
     return () => clearTimeout(timer);
   }, [messages]);
 
+  // Write the final streamed text back into the message record once its run
+  // settles. The live UI renders from streamStore, but that store is
+  // in-memory only — without this write-back every assistant reply persisted
+  // as content:"" and restored conversations (restart, or reopening from the
+  // sidebar after the store was reset) showed ONLY the user's prompts.
+  // Subscribing to the store (instead of watching the "active" run) also
+  // catches runs that finish right as the queue advances past them.
+  useEffect(() => {
+    return streamStore.subscribe(() => {
+      setMessages((current) => {
+        let changed = false;
+        const next = current.map((message) => {
+          if (message.role !== "assistant" || !message.runId) return message;
+          if (message.status && message.status !== "streaming") return message;
+          const snap = streamStore.getRunSnapshot(message.runId);
+          if (!snap) return message;
+          const terminal =
+            snap.state === "done" || snap.state === "failed" || snap.state === "cancelled";
+          if (!terminal) return message;
+          const status: ChatMessageStatus =
+            snap.state === "done" ? "done" : snap.state === "failed" ? "error" : "stopped";
+          changed = true;
+          return {
+            ...message,
+            content: snap.text,
+            status,
+            meta: {
+              ...message.meta,
+              durationMs:
+                snap.endedAt && snap.startedAt
+                  ? snap.endedAt - snap.startedAt
+                  : message.meta?.durationMs,
+            },
+          };
+        });
+        return changed ? next : current;
+      });
+    });
+  }, []);
+
   useEffect(() => {
     if (lastRun) {
       window.localStorage.setItem(storageKeys.lastRun, JSON.stringify(lastRun));
