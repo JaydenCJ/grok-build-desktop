@@ -65,6 +65,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { useActiveRun } from "./hooks/useActiveRun";
+import { useGrokRunners } from "./hooks/useGrokRunners";
 
 import {
   isActionPolicy,
@@ -83,7 +84,6 @@ import {
   type ChatMessageStatus,
   type DockPosition,
   type EffortLevel,
-  type GrokAuthStatus,
   type GrokModelId,
   type HistoryPreview,
   type HistoryRow,
@@ -91,18 +91,14 @@ import {
   type Mode,
   type PermissionMode,
   type ReasoningEffort,
-  type Runner,
   type SessionState,
-  type StaticPreview,
   type ThemeMode,
-  type ToolStatus,
 } from "./app/types";
 import {
   actionPolicies,
   codingPresets,
   contextFiles,
   defaultDrafts,
-  defaultStatuses,
   effortLevels,
   grokModelPresets,
   grokOptimizationRules,
@@ -130,8 +126,6 @@ import {
   grokInspectSection,
   grokTrust,
   makeId,
-  nativeUnavailable,
-  parseAvailableModels,
   statusTone,
   terminalClass,
   terminalPrefix,
@@ -162,9 +156,6 @@ function App() {
   const setComposerValue = (value: string) => {
     composerRef.current?.setValue(value);
   };
-  const [browserTask, setBrowserTask] = useState(
-    "Open https://example.com and report the main heading.",
-  );
   const [codingCwd, setCodingCwd] = useState(
     () => window.localStorage.getItem(storageKeys.codingCwd) ?? "",
   );
@@ -187,25 +178,13 @@ function App() {
   const [codingWorkflow, setCodingWorkflow] = useState(
     () => window.localStorage.getItem(storageKeys.codingWorkflow) ?? "analyze",
   );
-  const [repoPath, setRepoPath] = useState("");
-  const [copyText, setCopyText] = useState(true);
-  const [grokStatus, setGrokStatus] = useState<GrokAuthStatus | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = window.localStorage.getItem(storageKeys.themeMode);
     const cleanLayoutMigrated = window.localStorage.getItem(storageKeys.cleanLayoutTheme) === "true";
     if (!cleanLayoutMigrated) return "dark";
     return isThemeMode(stored) ? stored : "dark";
   });
-  const [statuses, setStatuses] = useState<ToolStatus[]>([]);
   const [lastRun, setLastRun] = useState<ToolRun | null>(() => storedLastRun());
-  const [ecosystemRun, setEcosystemRun] = useState<ToolRun | null>(null);
-  const [modelsRun, setModelsRun] = useState<ToolRun | null>(null);
-  const [mcpRun, setMcpRun] = useState<ToolRun | null>(null);
-  const [mcpDoctorRun, setMcpDoctorRun] = useState<ToolRun | null>(null);
-  const [pluginsRun, setPluginsRun] = useState<ToolRun | null>(null);
-  const [sessionsRun, setSessionsRun] = useState<ToolRun | null>(null);
-  const [staticPreview, setStaticPreview] = useState<StaticPreview | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -305,11 +284,6 @@ function App() {
     }
     return "";
   });
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [folderPickerBusy, setFolderPickerBusy] = useState(false);
-  const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const [busyRunner, setBusyRunner] = useState<Runner | "status" | null>(null);
-  const [contextBusy, setContextBusy] = useState<"models" | "inspect" | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(() => {
     const stored = window.localStorage.getItem(storageKeys.inspectorTab);
     return isInspectorTab(stored) ? stored : "skills";
@@ -372,6 +346,59 @@ function App() {
       setSessionNotice(`Stop failed: ${error instanceof Error ? error.message : String(error)}`);
     });
   }
+
+  // External-command runners + inspector data (statuses, preview, models,
+  // MCP/plugins/sessions, shell/browser/absorb/doctor) live in
+  // hooks/useGrokRunners.ts; recordRun below is hoisted, so passing it here
+  // is safe.
+  const {
+    statuses,
+    grokStatus,
+    ecosystemRun,
+    modelsRun,
+    mcpRun,
+    mcpDoctorRun,
+    pluginsRun,
+    sessionsRun,
+    staticPreview,
+    previewBusy,
+    availableModels,
+    busyRunner,
+    contextBusy,
+    terminalLines,
+    setTerminalLines,
+    browserTask,
+    setBrowserTask,
+    repoPath,
+    setRepoPath,
+    copyText,
+    setCopyText,
+    folderPickerBusy,
+    refreshStatuses,
+    refreshGrokAuthStatus,
+    refreshStaticPreview,
+    startGrokLogin,
+    runShell,
+    refreshGrokEcosystem,
+    refreshGrokModels,
+    refreshGrokMcp,
+    doctorGrokMcp,
+    refreshGrokPlugins,
+    refreshGrokSessions,
+    runBrowser,
+    runAbsorbRepo,
+    runDoctor,
+    pickFolder,
+  } = useGrokRunners({
+    codingCwd,
+    shellCommand,
+    lastRun,
+    recordRun,
+    setLastRun,
+    setCodingCwd,
+    setSessionNotice,
+    onPreviewAvailable: () => setPreviewOpen(true),
+  });
 
   const statusMap = useMemo(
     () => Object.fromEntries(statuses.map((status) => [status.id, status])),
@@ -768,145 +795,6 @@ function App() {
     setComposerValue(drafts[nextMode] || defaultDrafts[nextMode]);
   }
 
-  async function refreshStatuses() {
-    setBusyRunner("status");
-    try {
-      if (!hasTauriRuntime()) {
-        setStatuses(defaultStatuses);
-        setLastRun(nativeUnavailable("web preview"));
-        return;
-      }
-      setStatuses(await invoke<ToolStatus[]>("get_tool_statuses"));
-    } catch (error) {
-      setLastRun({
-        ok: false,
-        command: "get_tool_statuses",
-        cwd: "",
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function refreshGrokAuthStatus() {
-    try {
-      if (!hasTauriRuntime()) {
-        setGrokStatus({
-          installed: false,
-          authenticated: false,
-          apiKeyPresent: false,
-          cachedLoginPresent: false,
-          configPresent: false,
-          version: "",
-          detail: "Grok status is available in the Tauri desktop window.",
-          loginCommand: "grok login",
-          deviceLoginCommand: "grok login --device-auth",
-          installCommand: "curl -fsSL https://x.ai/cli/install.sh | bash",
-          npmInstallCommand: "npm install -g @xai-official/grok",
-          authPath: "~/.grok/auth",
-          configPath: "~/.grok/config.toml",
-        });
-        return;
-      }
-      setGrokStatus(await invoke<GrokAuthStatus>("get_grok_auth_status"));
-    } catch (error) {
-      setGrokStatus({
-        installed: false,
-        authenticated: false,
-        apiKeyPresent: false,
-        cachedLoginPresent: false,
-        configPresent: false,
-        version: "",
-        detail: error instanceof Error ? error.message : String(error),
-        loginCommand: "grok login",
-        deviceLoginCommand: "grok login --device-auth",
-        installCommand: "curl -fsSL https://x.ai/cli/install.sh | bash",
-        npmInstallCommand: "npm install -g @xai-official/grok",
-        authPath: "~/.grok/auth",
-        configPath: "~/.grok/config.toml",
-      });
-    }
-  }
-
-  async function refreshStaticPreview(openWhenAvailable = false) {
-    setPreviewBusy(true);
-    try {
-      if (!hasTauriRuntime()) {
-        setStaticPreview({
-          available: false,
-          root: codingCwd,
-          entryPath: "",
-          html: "",
-          files: [],
-          detail: "Preview is available in the installed Grok Desktop app.",
-          updatedAt: Date.now(),
-        });
-        return;
-      }
-      const preview = await invoke<StaticPreview>("get_static_preview", { cwd: codingCwd });
-      setStaticPreview(preview);
-      if (openWhenAvailable && preview.available) {
-        setPreviewOpen(true);
-      }
-    } catch (error) {
-      setStaticPreview({
-        available: false,
-        root: codingCwd,
-        entryPath: "",
-        html: "",
-        files: [],
-        detail: error instanceof Error ? error.message : String(error),
-        updatedAt: Date.now(),
-      });
-    } finally {
-      setPreviewBusy(false);
-    }
-  }
-
-  async function startGrokLogin(deviceAuth = false) {
-    setBusyRunner("grok");
-    setTerminalLines([
-      `[sys] Opening Terminal for ${deviceAuth ? "device login" : "Grok setup"}.`,
-      "[sys] If Grok is missing, Terminal will ask before running the official installer.",
-      "[sys] Complete the official authorization, then return here and refresh status.",
-    ]);
-    try {
-      if (!hasTauriRuntime()) {
-        const unavailable = nativeUnavailable("grok login");
-        setTerminalLines((current) => [...current, `[err] ${unavailable.stderr}`]);
-        recordRun(unavailable);
-        return;
-      }
-      const run = await invoke<ToolRun>("start_grok_login", {
-        deviceAuth,
-        cwd: codingCwd,
-      });
-      recordRun(run);
-      await refreshStaticPreview(true);
-      await refreshGrokAuthStatus();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setTerminalLines((current) => [...current, `[err] ${message}`]);
-      recordRun({
-        ok: false,
-        command: deviceAuth ? "grok login --device-auth" : "grok login",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: message,
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
   // buildGrokArgs/buildGrokRules are pure functions in app/grokArgs.ts; this
   // closure snapshots the current run config for the Composer's submit path.
   function buildRunArgs(): string[] {
@@ -961,114 +849,6 @@ function App() {
     }
   }
 
-  async function runShell() {
-    setBusyRunner("shell");
-    setTerminalLines([]);
-    try {
-      if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("zsh -lc"));
-        return;
-      }
-      recordRun(
-        await invoke<ToolRun>("run_shell_command", {
-          command: shellCommand,
-          cwd: codingCwd,
-        }),
-      );
-    } catch (error) {
-      recordRun({
-        ok: false,
-        command: "zsh -lc",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function refreshGrokEcosystem() {
-    setContextBusy("inspect");
-    try {
-      if (!hasTauriRuntime()) {
-        setEcosystemRun(nativeUnavailable("grok inspect"));
-        return;
-      }
-      setEcosystemRun(
-        await invoke<ToolRun>("inspect_grok_environment", {
-          cwd: codingCwd,
-        }),
-      );
-    } catch (error) {
-      setEcosystemRun({
-        ok: false,
-        command: "grok inspect",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setContextBusy(null);
-    }
-  }
-
-  async function refreshGrokModels() {
-    setContextBusy("models");
-    try {
-      if (!hasTauriRuntime()) {
-        setModelsRun(nativeUnavailable("grok models"));
-        return;
-      }
-      const run = await invoke<ToolRun>("list_grok_models");
-      setModelsRun(run);
-      const parsed = parseAvailableModels(run.output);
-      if (parsed.length > 0) setAvailableModels(parsed);
-    } catch (error) {
-      setModelsRun({
-        ok: false,
-        command: "grok models",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setContextBusy(null);
-    }
-  }
-
-  async function pickFolder() {
-    if (!hasTauriRuntime()) {
-      setSessionNotice("Folder picker is only available in the Tauri desktop window.");
-      return;
-    }
-    setFolderPickerBusy(true);
-    try {
-      const next = await invoke<string | null>("pick_project_folder", {
-        initial: codingCwd || null,
-      });
-      if (next) {
-        setCodingCwd(next);
-        setSessionNotice(`Repo set to ${next}.`);
-      }
-    } catch (error) {
-      setSessionNotice(
-        `Folder picker failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    } finally {
-      setFolderPickerBusy(false);
-    }
-  }
-
   function togglePanel(target: "preview" | "context" | "terminal" | "tools") {
     const next = !(target === "preview"
       ? previewOpen
@@ -1099,203 +879,6 @@ function App() {
         { label: "Terminal", icon: <TerminalSquare size={15} />, shortcut: terminalOpen ? "✓" : undefined, onClick: () => togglePanel("terminal") },
       ],
     });
-  }
-
-  async function refreshGrokMcp() {
-    setBusyRunner("mcp");
-    try {
-      if (!hasTauriRuntime()) {
-        setMcpRun(nativeUnavailable("grok mcp list"));
-        return;
-      }
-      const run = await invoke<ToolRun>("list_grok_mcp", { cwd: codingCwd });
-      setMcpRun(run);
-      recordRun(run);
-    } catch (error) {
-      const run = {
-        ok: false,
-        command: "grok mcp list",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      };
-      setMcpRun(run);
-      recordRun(run);
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function doctorGrokMcp() {
-    setBusyRunner("mcp-doctor");
-    try {
-      if (!hasTauriRuntime()) {
-        setMcpDoctorRun(nativeUnavailable("grok mcp doctor"));
-        return;
-      }
-      const run = await invoke<ToolRun>("doctor_grok_mcp", { cwd: codingCwd });
-      setMcpDoctorRun(run);
-      recordRun(run);
-    } catch (error) {
-      const run = {
-        ok: false,
-        command: "grok mcp doctor",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      };
-      setMcpDoctorRun(run);
-      recordRun(run);
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function refreshGrokPlugins() {
-    setBusyRunner("plugins");
-    try {
-      if (!hasTauriRuntime()) {
-        setPluginsRun(nativeUnavailable("grok plugin list"));
-        return;
-      }
-      const run = await invoke<ToolRun>("list_grok_plugins", { cwd: codingCwd });
-      setPluginsRun(run);
-      recordRun(run);
-    } catch (error) {
-      const run = {
-        ok: false,
-        command: "grok plugin list",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      };
-      setPluginsRun(run);
-      recordRun(run);
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function refreshGrokSessions() {
-    setBusyRunner("sessions");
-    try {
-      if (!hasTauriRuntime()) {
-        setSessionsRun(nativeUnavailable("grok sessions list"));
-        return;
-      }
-      const run = await invoke<ToolRun>("list_grok_sessions", { cwd: codingCwd });
-      setSessionsRun(run);
-      recordRun(run);
-    } catch (error) {
-      const run = {
-        ok: false,
-        command: "grok sessions list",
-        cwd: codingCwd,
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      };
-      setSessionsRun(run);
-      recordRun(run);
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function runBrowser() {
-    setBusyRunner("browser");
-    setTerminalLines([]);
-    try {
-      if (!hasTauriRuntime()) {
-        setLastRun(nativeUnavailable("browser-use"));
-        return;
-      }
-      recordRun(
-        await invoke<ToolRun>("run_browser_task", {
-          task: browserTask,
-          maxSteps: 10,
-        }),
-      );
-    } catch (error) {
-      recordRun({
-        ok: false,
-        command: "browser-use",
-        cwd: "",
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function runAbsorbRepo() {
-    setBusyRunner("absorb");
-    setTerminalLines([]);
-    try {
-      if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("absorb-repo"));
-        return;
-      }
-      recordRun(
-        await invoke<ToolRun>("run_absorb_repo", {
-          repoPath,
-          copyText,
-        }),
-      );
-    } catch (error) {
-      recordRun({
-        ok: false,
-        command: "absorb-repo",
-        cwd: "",
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
-  async function runDoctor() {
-    setBusyRunner("doctor");
-    setTerminalLines([]);
-    try {
-      if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("doctor"));
-        return;
-      }
-      recordRun(await invoke<ToolRun>("run_doctor"));
-    } catch (error) {
-      recordRun({
-        ok: false,
-        command: "doctor",
-        cwd: "",
-        exit_code: null,
-        duration_ms: 0,
-        timed_out: false,
-        output: "",
-        stderr: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusyRunner(null);
-    }
   }
 
   useEffect(() => {
@@ -1394,13 +977,6 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    refreshStatuses();
-    refreshGrokAuthStatus();
-    refreshStaticPreview();
-    refreshGrokModels();
   }, []);
 
   // Subscribe to the run-event / run-state / queue Tauri events. Retries with
@@ -1654,16 +1230,6 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
   }, [codingCwd]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void refreshStaticPreview();
-    }, 250);
-    return () => window.clearTimeout(timer);
-    // Key on the lastRun object, not duration_ms — two runs with equal
-    // durations must still trigger a refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codingCwd, lastRun]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.shellCommand, shellCommand);
