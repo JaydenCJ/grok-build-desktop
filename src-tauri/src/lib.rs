@@ -728,7 +728,10 @@ fn load_session_state() -> Result<Option<SessionState>, String> {
 /// every subsequent launch. The sync_all before the rename matters: without
 /// it a power loss can persist the rename but not the temp file's data,
 /// leaving an empty/torn file under the final name — exactly the corruption
-/// the temp+rename dance is meant to prevent.
+/// the temp+rename dance is meant to prevent. After the rename the parent
+/// directory is fsynced too: the rename itself lives in the directory entry,
+/// and on a power loss an unsynced directory can forget the rename entirely,
+/// resurfacing the previous (or no) file under the final name.
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = path.with_extension("json.tmp");
@@ -736,7 +739,18 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     file.write_all(contents.as_bytes())?;
     file.sync_all()?;
     drop(file);
-    fs::rename(&tmp, path)
+    fs::rename(&tmp, path)?;
+    // Directory fsync is Unix semantics; on Windows directories can't be
+    // opened as plain files for syncing, and NTFS metadata handling differs —
+    // keep the pre-rename data fsync behavior there.
+    #[cfg(unix)]
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        // Propagate errors like every other step — a best-effort sync would
+        // hide real durability failures. The empty-parent filter covers bare
+        // relative filenames, where parent() is Some("") and open would fail.
+        fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
