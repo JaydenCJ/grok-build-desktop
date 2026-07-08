@@ -8,6 +8,15 @@ marked.setOptions({
 
 marked.use({
   renderer: {
+    // Raw HTML embedded in the markdown is rendered as escaped text, never
+    // injected. The parsed output goes straight into dangerouslySetInnerHTML
+    // inside the app WebView, so letting model/tool output smuggle live
+    // <script>/<img onerror>/<iframe> tags through would be an injection
+    // vector. Markdown-generated formatting (headings, lists, code, links)
+    // is unaffected.
+    html({ text }: { text: string }) {
+      return escapeHtml(text);
+    },
     code({ text, lang }: { text: string; lang?: string }) {
       let highlighted = escapeHtml(text);
       if (text.length > 50000) {
