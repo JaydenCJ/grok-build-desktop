@@ -58,7 +58,6 @@ import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
-import { AgentOverlayDriver } from "./components/AgentOverlayDriver";
 import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
@@ -3142,7 +3141,6 @@ function App() {
               <div className="session-toast" role="status">{sessionNotice}</div>
             ) : null}
 
-            <AgentOverlayDriver />
             <QueueDock />
             <StatusBar />
 
