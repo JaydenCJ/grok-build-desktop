@@ -6,23 +6,16 @@ import {
 } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  AlertTriangle,
-  ChevronDown,
-  FolderGit2,
   Globe2,
-  Loader2,
-  Moon,
   PanelRight,
-  Sun,
   TerminalSquare,
-  X,
 } from "lucide-react";
 import "./App.css";
 import { cancelRun, ensureStreamListenersAttached } from "./lib/grok";
 import { hasTauriRuntime } from "./lib/runtime";
 import { streamStore } from "./lib/streamStore";
 import { MessageList, type MessageRef } from "./components/MessageList";
-import { Composer, type ComposerHandle } from "./components/Composer";
+import type { ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
@@ -36,6 +29,8 @@ import { PreviewPanel } from "./components/PreviewPanel";
 import { TerminalDock } from "./components/TerminalDock";
 import { Toolbelt } from "./components/Toolbelt";
 import { WorkspaceStatusBar } from "./components/WorkspaceStatusBar";
+import { TitleBar } from "./components/TitleBar";
+import { ComposerSection } from "./components/ComposerSection";
 import { useActiveRun } from "./hooks/useActiveRun";
 import { useGrokRunners } from "./hooks/useGrokRunners";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
@@ -46,7 +41,6 @@ import { useHistoryOrganization } from "./hooks/useHistoryOrganization";
 
 import {
   isDockPosition,
-  isGrokModelId,
   isInspectorTab,
   type ActionPolicy,
   type ChatMessageStatus,
@@ -64,7 +58,6 @@ import {
   defaultDrafts,
   effortLevels,
   grokModelPresets,
-  modeCopy,
   permissionModes,
   reasoningEfforts,
   storageKeys,
@@ -241,7 +234,6 @@ function App() {
   const modelConfig = useModelConfig({ mode, availableModels });
   const {
     modelPreset,
-    setModelPreset,
     customModel,
     setCustomModel,
     effortLevel,
@@ -709,69 +701,21 @@ function App() {
             bottom status bar, and Settings now. What stays here is just the
             project chip (click → folder picker), a draggable spacer, a tiny
             connection dot, and the contextual Stop button while running. */}
-        <header className="window-titlebar minimal" data-tauri-drag-region>
-          <button
-            className="repo-chip"
-            onClick={pickFolder}
-            type="button"
-            disabled={folderPickerBusy}
-            title={codingCwd ? codingCwd : "Pick a project folder"}
-          >
-            {folderPickerBusy ? <Loader2 className="spin" size={14} /> : <FolderGit2 size={14} />}
-            <span>{repoName}</span>
-          </button>
-          <div className="titlebar-spacer" data-tauri-drag-region />
-          <div className="titlebar-right">
-            {grokIsRunning && activeRunId ? (
-              <button
-                className="primary-run"
-                onClick={() => stopRun(activeRunId)}
-                type="button"
-                title="Stop the current run"
-              >
-                <X size={15} />
-                <span>Stop</span>
-              </button>
-            ) : (
-              <span
-                className={`conn-pill ${isGrokReady ? "ready" : "blocked"}`}
-                title={isGrokReady ? "Connected to grok.com" : `Grok ${statusLabel.toLowerCase()}`}
-                aria-label={isGrokReady ? "Grok connected" : "Grok not connected"}
-              >
-                <span className="conn-dot-mini" aria-hidden />
-                {isGrokReady ? "Grok" : "Offline"}
-              </span>
-            )}
-            {/* Day / night theme toggle (also ⌘⇧L). Bordered + full-contrast
-                sun/moon so it reads as a control, not a stray dot. */}
-            <button
-              className="titlebar-icon-btn theme-toggle"
-              type="button"
-              aria-label={themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={themeMode === "dark" ? "Switch to light mode (⌘⇧L)" : "Switch to dark mode (⌘⇧L)"}
-              onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
-            >
-              {themeMode === "dark" ? (
-                <Sun size={17} strokeWidth={2.25} />
-              ) : (
-                <Moon size={17} strokeWidth={2.25} />
-              )}
-            </button>
-            {/* Panels menu — Preview / Context / Terminal / Tools, each opens
-                its panel (Claude-Desktop-style). */}
-            <button
-              className={`detail-toggle${contextOpen || previewOpen || terminalOpen || toolsOpen ? " active" : ""}`}
-              type="button"
-              aria-label="Open panels menu"
-              title="Panels — Preview, Context, Terminal"
-              onClick={openPanelMenu}
-            >
-              <PanelRight size={16} />
-              <ChevronDown size={11} className="detail-caret" />
-            </button>
-          </div>
-        </header>
-
+        <TitleBar
+          codingCwd={codingCwd}
+          repoName={repoName}
+          folderPickerBusy={folderPickerBusy}
+          pickFolder={pickFolder}
+          grokIsRunning={grokIsRunning}
+          activeRunId={activeRunId}
+          stopRun={stopRun}
+          isGrokReady={isGrokReady}
+          statusLabel={statusLabel}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          anyPanelOpen={contextOpen || previewOpen || terminalOpen || toolsOpen}
+          openPanelMenu={openPanelMenu}
+        />
         <section className="workbench">
           <div className="conversation-panel" onContextMenu={openConversationMenu}>
             {/* Session tabs removed per request — Claude-Desktop-style single
@@ -799,161 +743,27 @@ function App() {
             <QueueDock />
             <StatusBar />
 
-            <div className="composer-row">
-              {actionPolicy === "autopilot" ? (
-                <div className="autopilot-warning" role="alert">
-                  <AlertTriangle size={15} />
-                  <div>
-                    <strong>Autopilot is on — Grok auto-approves every action.</strong>
-                    <span>
-                      It can edit files and run shell commands with{" "}
-                      <code>--always-approve</code>, no confirmation. Only use this in a
-                      sandbox or a disposable git checkout.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="autopilot-warning-dismiss"
-                    onClick={() => setActionPolicy("patch")}
-                    title="Switch back to Patch ready"
-                  >
-                    Switch to Patch
-                  </button>
-                </div>
-              ) : null}
-              <Composer
-                ref={composerRef}
-                cwd={codingCwd}
-                argsBuilder={buildRunArgs}
-                initialValue={drafts[mode] || defaultDrafts[mode]}
-                placeholder={modeCopy[mode].placeholder}
-                onTextChange={(text) => {
-                  setDrafts((current) => ({ ...current, [mode]: text }));
-                }}
-                onEnqueued={handleEnqueued}
-                onError={(message) => setSessionNotice(`Send failed: ${message}`)}
-              />
-              <div className="composer-footer">
-                <select
-                  aria-label="Interaction mode"
-                  className="mode-select"
-                  onChange={(event) => switchMode(event.currentTarget.value as Mode)}
-                  value={mode}
-                >
-                  {(Object.keys(modeCopy) as Mode[]).map((item) => (
-                    <option key={item} value={item}>
-                      {modeCopy[item].title}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Grok model"
-                  className="model-select-footer"
-                  title={modelIsVerified ? `Model: ${activeModel}` : `${activeModel} — not in grok CLI list, may fall back`}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    if (isGrokModelId(value)) {
-                      changeModelPreset(value);
-                    } else {
-                      setModelPreset("custom");
-                      setCustomModel(value);
-                    }
-                  }}
-                  value={modelPreset === "custom" ? "custom" : modelPreset}
-                >
-                  {modelOptions.map((id) => {
-                    const verified = availableModels.length === 0 || availableModels.includes(id);
-                    return (
-                      <option key={id} value={id}>
-                        {verified ? id : `${id} · not in CLI`}
-                      </option>
-                    );
-                  })}
-                  <option value="custom">Custom…</option>
-                </select>
-                <select
-                  aria-label="Coding workflow"
-                  className="workflow-select"
-                  onChange={(event) => {
-                    const preset = codingPresets.find((item) => item.id === event.currentTarget.value);
-                    if (preset) applyCodingPreset(preset);
-                  }}
-                  value={codingWorkflow}
-                >
-                  {codingPresets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Action policy"
-                  onChange={(event) => setActionPolicy(event.currentTarget.value as ActionPolicy)}
-                  value={actionPolicy}
-                >
-                  {(Object.keys(actionPolicies) as ActionPolicy[]).map((policy) => (
-                    <option key={policy} value={policy}>
-                      {actionPolicies[policy].label}
-                    </option>
-                  ))}
-                </select>
-                {/* Run config — moved here from the inspector so it's one
-                    glance below the chat box (Claude-style). Labels are
-                    self-describing since the footer has no separate captions. */}
-                <select
-                  aria-label="Agent effort"
-                  className="run-select"
-                  title="Agent effort — how hard Grok works per turn"
-                  value={effortLevel}
-                  onChange={(event) => setEffortLevel(event.currentTarget.value as EffortLevel)}
-                >
-                  {(Object.keys(effortLevels) as EffortLevel[]).map((k) => (
-                    <option key={k} value={k}>{`Effort: ${effortLevels[k].label}`}</option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Reasoning effort"
-                  className="run-select"
-                  title="Reasoning effort — extra thinking budget on hard paths"
-                  value={reasoningEffort}
-                  onChange={(event) => setReasoningEffort(event.currentTarget.value as ReasoningEffort)}
-                >
-                  {(Object.keys(reasoningEfforts) as ReasoningEffort[]).map((k) => (
-                    <option key={k} value={k}>{`Reasoning: ${reasoningEfforts[k].label}`}</option>
-                  ))}
-                </select>
-                {/* Raw grok --permission-mode lives in Settings → Permissions
-                    (advanced). The composer footer uses the friendlier "Action
-                    policy" (Review/Plan/Patch/Autopilot) as the single
-                    permission control, so the two no longer overlap. */}
-                <select
-                  aria-label="Best-of-N"
-                  className="run-select"
-                  title="Best-of-N — run N ways in parallel, keep the best"
-                  value={bestOfN}
-                  onChange={(event) => setBestOfN(Number(event.currentTarget.value))}
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>{`Best-of-${n}`}</option>
-                  ))}
-                </select>
-                <span className="composer-hint" aria-hidden="true">
-                  ↵ Send · ⇧↵ Newline
-                </span>
-                {grokIsRunning && activeRunId ? (
-                  <button
-                    className="mini-run"
-                    onClick={() => stopRun(activeRunId)}
-                    type="button"
-                    title="Stop run"
-                  >
-                    <X size={16} />
-                  </button>
-                ) : null}
-              </div>
-            </div>
+            <ComposerSection
+              composerRef={composerRef}
+              codingCwd={codingCwd}
+              buildRunArgs={buildRunArgs}
+              drafts={drafts}
+              mode={mode}
+              setDrafts={setDrafts}
+              switchMode={switchMode}
+              handleEnqueued={handleEnqueued}
+              setSessionNotice={setSessionNotice}
+              modelConfig={modelConfig}
+              availableModels={availableModels}
+              actionPolicy={actionPolicy}
+              setActionPolicy={setActionPolicy}
+              codingWorkflow={codingWorkflow}
+              applyCodingPreset={applyCodingPreset}
+              grokIsRunning={grokIsRunning}
+              activeRunId={activeRunId}
+              stopRun={stopRun}
+            />
           </div>
-
           <PreviewPanel
             open={previewOpen}
             onClose={() => setPreviewOpen(false)}
