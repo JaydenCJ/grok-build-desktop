@@ -16,7 +16,9 @@ for (const scriptName of ["build", "check", "test", "doctor", "mac:build", "mac:
 // intent (feature X exists and is wired) survives mechanical extraction.
 const appModules = [
   "src/App.tsx",
-  ...readdirSync(join(root, "src/app")).map((f) => `src/app/${f}`),
+  ...readdirSync(join(root, "src/app"))
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => `src/app/${f}`),
   ...readdirSync(join(root, "src/hooks"))
     .filter((f) => f.endsWith(".ts"))
     .map((f) => `src/hooks/${f}`),
@@ -77,17 +79,10 @@ assert.ok(libRs.includes("is_noisy_grok_line"), "Tracing-noise filter missing");
 assert.ok(libRs.includes("GROK_DESKTOP_VERBOSE_GROK_STDERR"), "Verbose stderr escape hatch missing");
 assert.ok(libRs.includes("theme_mode: Option<String>"), "SessionState must round-trip themeMode");
 assert.ok(libRs.includes("messages: serde_json::Value"), "SessionState must round-trip messages");
-// The debounced session_state.json restore must never override state that
-// already hydrated from the synchronously-written localStorage stores —
-// otherwise quitting inside the debounce window clobbers the active tab's
-// conversation on next launch.
-assert.ok(app.includes("setMessages((current) => (current.length === 0 ? cleaned : current))"),
-  "session_state.json restore must not overwrite locally hydrated messages");
-assert.ok(app.includes("setCodingCwd((current) => current || restoredCwd)"),
-  "session_state.json restore must not overwrite a locally hydrated codingCwd");
-// F: Rust queue + streaming-json
-assert.ok(app.includes("streaming-json"),
-  "App.tsx must pass --output-format streaming-json in buildGrokArgs");
+// NOTE: the restore-must-not-clobber guards and the buildGrokArgs flag
+// mapping used to be source-string asserts here; they are now REAL behavior
+// tests in src/hooks/__tests__/useSessionPersistence.test.tsx and
+// src/app/__tests__/grokArgs.test.ts (run via `npm run test:unit`).
 assert.ok(libRs.includes("pub mod runs"), "runs module must be exported for tests + commands");
 assert.ok(libRs.includes("RunQueue"), "lib.rs must wire RunQueue into managed state");
 assert.ok(libRs.includes("forward_queue_message"), "lib.rs must forward queue messages to Tauri events");
@@ -228,11 +223,8 @@ assert.ok(tauriConf.productName === "Grok Build Desktop",
 assert.ok(app.includes("Grok Build Desktop"),
   "Sidebar brand must read 'Grok Build Desktop'");
 
-// v0.4.0: real action policies (Plan + Autopilot) + risk warning
-assert.ok(app.includes('"plan"') && app.includes("--permission-mode") || app.includes('actionPolicy === "plan"'),
-  "Plan action policy must map to --permission-mode plan");
-assert.ok(app.includes("--always-approve"),
-  "Autopilot must pass --always-approve to grok");
+// v0.4.0: action-policy risk warning stays visible in the UI. (The policy →
+// CLI-flag mapping itself is behavior-tested in src/app/__tests__/grokArgs.test.ts.)
 assert.ok(app.includes("autopilot-warning"),
   "Autopilot risk warning banner missing");
 
@@ -349,15 +341,12 @@ assert.ok(app.includes('item.active ? " active"') || app.includes("active ? \" a
 assert.ok(read("src/components/StatusBar.tsx").includes("writing…") &&
   read("src/components/StatusBar.tsx").includes("working…"),
   "StatusBar must surface the live phase (writing…/working…)");
-// 13) Best-of-N defaults to 1 (real token streaming; best-of-n>1 dumps at once).
-assert.ok(app.includes('storageKeys.bestOfN) ?? "1"'),
-  "Best-of-N must default to 1 for natural streaming");
+// 13) Best-of-N defaulting to 1 is behavior-tested in useModelConfig.test.tsx.
 // 14) grok-build adaptation: durable guidance goes through --rules (system
-//     prompt), NOT a preamble in the user turn. The old 25-line preamble — and
-//     especially its FALSE "0 skills … discovered by grok inspect" line — must
-//     be gone (grok discovers its own ecosystem; we never echo it back wrong).
-assert.ok(app.includes("buildGrokRules") && app.includes('args.push("--rules"'),
-  "coding guidance must be passed via --rules (grok-native), not a user-turn preamble");
+//     prompt), NOT a preamble in the user turn (behavior-tested in
+//     grokArgs.test.ts). The old 25-line preamble — and especially its FALSE
+//     "0 skills … discovered by grok inspect" line — must stay gone (grok
+//     discovers its own ecosystem; we never echo it back wrong).
 assert.ok(!app.includes("Grok Desktop Professional Coding Session"),
   "the heavy user-turn preamble must be removed");
 assert.ok(!app.includes("discovered by grok inspect."),
@@ -423,5 +412,31 @@ assert.ok(rustLib.includes("register_uri_scheme_protocol"),
 // never silently expose $HOME.
 assert.ok(read("src/components/ToolsPage.tsx").includes("pickExposedFolder"),
   "ToolsPage must make the user pick the folder exposed to filesystem/git MCP servers");
+
+// ── Production build artifacts ─────────────────────────────────────────────
+// The shipped bundle must exist and honour the same security invariants as
+// the source: no inline scripts (script-src 'self' would silently block
+// them) and no remote script/style/font references (the strict CSP allows
+// only local origins, and fonts are bundled).
+assert.ok(
+  existsSync(join(root, "dist/index.html")),
+  "dist/index.html missing — run `npm run build` before `npm test`",
+);
+const distIndex = read("dist/index.html");
+assert.ok(!/<script(?![^>]*\bsrc=)/i.test(distIndex),
+  "dist/index.html must not contain inline <script> blocks (blocked by script-src 'self')");
+assert.ok(!/<script[^>]*\bsrc=["']https?:/i.test(distIndex),
+  "dist/index.html must not load scripts from remote origins");
+assert.ok(!/<link[^>]*\bhref=["']https?:/i.test(distIndex),
+  "dist/index.html must not reference remote stylesheets/fonts");
+assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(distIndex),
+  "dist/index.html must not reference Google Fonts (fonts are bundled)");
+// Every local asset index.html references must actually be in dist/.
+for (const [, assetPath] of distIndex.matchAll(/(?:src|href)=["']\/([^"']+)["']/g)) {
+  assert.ok(existsSync(join(root, "dist", assetPath)),
+    `dist/index.html references missing asset: ${assetPath}`);
+}
+assert.ok(readdirSync(join(root, "dist/assets")).some((f) => f.endsWith(".js")),
+  "dist/assets must contain the built JS bundle");
 
 console.log("smoke: ok");
