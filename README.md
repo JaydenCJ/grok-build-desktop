@@ -107,8 +107,12 @@ More in [`docs/architecture.md`](docs/architecture.md), [`docs/setup.md`](docs/s
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build (production)
-npm test             # smoke test (scripts/smoke_test.mjs)
-npm run test:unit    # vitest
+npm test             # smoke test (scripts/smoke_test.mjs; needs a prior build)
+npm run test:unit    # vitest (unit + component tests)
+npm run test:e2e     # headless-Chromium end-to-end test (needs a prior build)
+npm run coverage     # vitest with V8 coverage report
+npm run lint         # eslint (CI gate; warnings fail)
+npm run format:check # prettier check (CI gate; `npm run format` fixes)
 cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit + integration tests
 npm run doctor       # environment doctor
 ```
@@ -219,8 +223,12 @@ Tauri dev は `.env` を自動読み込み**しません** — 起動前にシ�
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build(本番)
-npm test             # スモークテスト
-npm run test:unit    # vitest
+npm test             # スモークテスト(事前に build が必要)
+npm run test:unit    # vitest(ユニット + コンポーネントテスト)
+npm run test:e2e     # ヘッドレス Chromium E2E テスト(事前に build が必要)
+npm run coverage     # vitest + V8 カバレッジレポート
+npm run lint         # eslint(CI ゲート。警告も失敗扱い)
+npm run format:check # prettier チェック(CI ゲート。`npm run format` で修正)
 cargo test --manifest-path src-tauri/Cargo.toml   # Rust テスト
 npm run doctor       # 環境ドクター
 ```
@@ -299,8 +307,12 @@ Tauri dev **不会**自动加载 `.env` — 启动前请在 shell 里 export。�
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build(生产)
-npm test             # 冒烟测试
-npm run test:unit    # vitest
+npm test             # 冒烟测试(需要先执行 build)
+npm run test:unit    # vitest(单元 + 组件测试)
+npm run test:e2e     # 无头 Chromium 端到端测试(需要先执行 build)
+npm run coverage     # vitest + V8 覆盖率报告
+npm run lint         # eslint(CI 门禁,警告也视为失败)
+npm run format:check # prettier 检查(CI 门禁,用 `npm run format` 修复)
 cargo test --manifest-path src-tauri/Cargo.toml   # Rust 测试
 npm run doctor       # 环境体检
 ```

@@ -44,9 +44,13 @@ pip install -e .
 ## Checks and tests
 
 ```bash
-npm run check       # tsc --noEmit && cargo check
-npm test            # smoke test (scripts/smoke_test.mjs)
-npm run test:unit   # vitest
+npm run check        # tsc --noEmit && cargo check
+npm test             # smoke test (scripts/smoke_test.mjs; needs a prior `npm run build`)
+npm run test:unit    # vitest (unit + component tests)
+npm run test:e2e     # headless-Chromium end-to-end test (needs a prior `npm run build`)
+npm run coverage     # vitest with V8 coverage report
+npm run lint         # eslint (CI gate; warnings fail)
+npm run format:check # prettier check (`npm run format` rewrites)
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run doctor      # JSON health report for grok, auth, and optional tools
 ```
