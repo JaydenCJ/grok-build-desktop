@@ -38,11 +38,19 @@ export function QueueDock() {
   }, []);
 
   const handleResume = async () => {
-    await resumePendingRuns();
+    try {
+      await resumePendingRuns();
+    } catch (err) {
+      console.warn('[grok-desktop] resume pending runs failed', err);
+    }
     setResumeBannerVisible(false);
   };
   const handleCancelAll = async () => {
-    await cancelPendingRuns();
+    try {
+      await cancelPendingRuns();
+    } catch (err) {
+      console.warn('[grok-desktop] cancel pending runs failed', err);
+    }
     setResumeBannerVisible(false);
   };
 
@@ -62,7 +70,19 @@ export function QueueDock() {
         </div>
       ) : null}
 
-      <div className="queue-summary" onClick={() => setExpanded((v) => !v)}>
+      <div
+        className="queue-summary"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
+      >
         {active ? (
           <span className="queue-active">▶ Running {elapsed != null ? formatElapsed(elapsed) : '0s'}</span>
         ) : (
