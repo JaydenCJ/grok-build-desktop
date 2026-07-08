@@ -6,7 +6,13 @@ use std::sync::Arc;
 fn fake_grok_path() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.pop();
-    p.push("scripts/fake-grok.sh");
+    // Windows cannot exec a shell script; use the batch twin (which also
+    // matches production, where the grok CLI is an npm .cmd shim).
+    if cfg!(windows) {
+        p.push("scripts/fake-grok.cmd");
+    } else {
+        p.push("scripts/fake-grok.sh");
+    }
     p
 }
 
