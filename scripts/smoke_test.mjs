@@ -64,6 +64,14 @@ assert.ok(libRs.includes("is_noisy_grok_line"), "Tracing-noise filter missing");
 assert.ok(libRs.includes("GROK_DESKTOP_VERBOSE_GROK_STDERR"), "Verbose stderr escape hatch missing");
 assert.ok(libRs.includes("theme_mode: Option<String>"), "SessionState must round-trip themeMode");
 assert.ok(libRs.includes("messages: serde_json::Value"), "SessionState must round-trip messages");
+// The debounced session_state.json restore must never override state that
+// already hydrated from the synchronously-written localStorage stores —
+// otherwise quitting inside the debounce window clobbers the active tab's
+// conversation on next launch.
+assert.ok(app.includes("setMessages((current) => (current.length === 0 ? cleaned : current))"),
+  "session_state.json restore must not overwrite locally hydrated messages");
+assert.ok(app.includes("setCodingCwd((current) => current || restoredCwd)"),
+  "session_state.json restore must not overwrite a locally hydrated codingCwd");
 // F: Rust queue + streaming-json
 assert.ok(app.includes("streaming-json"),
   "App.tsx must pass --output-format streaming-json in buildGrokArgs");
