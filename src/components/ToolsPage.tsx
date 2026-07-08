@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  FOLDER_PLACEHOLDER,
   MCP_CATALOG,
   addMcpServer,
   listMcpServers,
+  pickExposedFolder,
   removeMcpServer,
   previewAddCommand,
   type McpCatalogEntry,
@@ -19,6 +21,8 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Currently selected project folder — starting point for the folder picker. */
+  cwd?: string;
 }
 
 /**
@@ -27,7 +31,7 @@ interface Props {
  * search, etc. — so Grok can call them. Each catalog entry maps to a
  * `grok mcp add` invocation; "Connected" reflects `grok mcp list`.
  */
-export function ToolsPage({ open, onClose }: Props) {
+export function ToolsPage({ open, onClose, cwd }: Props) {
   const [tab, setTab] = useState<'mcp' | 'skills'>('mcp');
   const [listOutput, setListOutput] = useState<string>('');
   const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set());
@@ -119,10 +123,32 @@ export function ToolsPage({ open, onClose }: Props) {
     setBusy(entry.id);
     setNotice(null);
     try {
+      // Never install a directory-scoped server (filesystem, git) pointed at
+      // the placeholder — that would silently expose the whole home folder.
+      // Make the user pick the directory explicitly, defaulting to the
+      // currently selected project.
+      let args = entry.args;
+      if (args.includes(FOLDER_PLACEHOLDER)) {
+        let folder: string | null = null;
+        try {
+          folder = await pickExposedFolder(cwd);
+        } catch (e) {
+          setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+          return;
+        }
+        if (!folder) {
+          setNotice({
+            kind: 'err',
+            text: `"${entry.name}" needs a folder to expose — pick one to finish adding it.`,
+          });
+          return;
+        }
+        args = args.map((a) => (a === FOLDER_PLACEHOLDER ? folder : a));
+      }
       const run: ToolRun | null = await addMcpServer({
         name: entry.id,
         command: entry.command,
-        args: entry.args,
+        args,
         envPairs: entry.requiredEnv?.map((e) => `${e.key}=`),
       });
       if (run?.ok) {

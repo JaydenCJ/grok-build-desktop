@@ -2664,7 +2664,7 @@ function App() {
         appVersion="0.4.0"
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
-      <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
+      <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} cwd={codingCwd} />
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="brand">
