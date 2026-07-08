@@ -21,7 +21,7 @@ async fn spawns_and_reads_lines() {
     let path = fake_grok_path();
     let cwd = std::env::temp_dir();
     let mut spawned = process::spawn(&path, &["--ok".into()], &cwd).expect("spawn");
-    let mut reader = process::read_stdout_lines(&mut spawned.child);
+    let mut reader = process::read_stdout_lines(&mut spawned.child).expect("stdout piped");
 
     let mut lines = Vec::new();
     let mut buf = String::new();
