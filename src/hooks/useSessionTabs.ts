@@ -75,6 +75,16 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     }
     return "";
   });
+  // Very first run: neither tabs key exists yet when the initializers above
+  // run (the synthesized first tab is only persisted by the effect below), so
+  // activeTabId comes up "". Without an owner, the active-tab mirror effect
+  // never writes the conversation into its tab — the first session shows as
+  // "empty" in HISTORY and is silently lost on the first New Session. Adopt
+  // the synthesized tab as active immediately.
+  useEffect(() => {
+    if (!activeTabId && tabs.length > 0) setActiveTabId(tabs[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Multi-session tabs ───────────────────────────────────────────────────
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
