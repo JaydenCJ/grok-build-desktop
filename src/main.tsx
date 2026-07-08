@@ -24,41 +24,48 @@ function openExternally(url: string): void {
   }
 }
 
-window.addEventListener(
-  "click",
-  (e) => {
-    const target = e.target instanceof Element ? e.target : null;
-    const anchor = target?.closest("a[href]");
-    if (!anchor) return;
-    const href = anchor.getAttribute("href") ?? "";
-    // Protocol-relative URLs (//host/path) are external too — left alone
-    // they navigate the WebView exactly like an absolute http(s) URL would.
-    const external = /^https?:\/\//i.test(href)
-      ? href
-      : /^\/\//.test(href)
-        ? `https:${href}`
-        : null;
-    if (!external) {
-      // mailto: routes to the system default mail client via the opener —
-      // the WebView itself has no mail handler.
-      if (/^\s*mailto:/i.test(href)) {
-        e.preventDefault();
-        openExternally(href.trim());
-        return;
-      }
-      // Everything else that isn't a pure in-page anchor (#…) must not
-      // navigate. Rendered markdown is untrusted output: javascript:/data:
-      // anchors must never execute in the WebView, and a relative path
-      // ("./docs/x.md") resolves to a nonexistent tauri://localhost resource
-      // — the whole app gets replaced by a blank page.
-      if (!href.startsWith("#")) e.preventDefault();
+function interceptLinkClick(e: MouseEvent): void {
+  // auxclick covers non-primary buttons; only the middle button (1)
+  // navigates ("open in new window" semantics — in this WebView it replaces
+  // the app just like a left click). Right click (2) only opens the context
+  // menu and must stay untouched.
+  if (e.type === "auxclick" && e.button !== 1) return;
+  const target = e.target instanceof Element ? e.target : null;
+  const anchor = target?.closest("a[href]");
+  if (!anchor) return;
+  const href = anchor.getAttribute("href") ?? "";
+  // Protocol-relative URLs (//host/path) are external too — left alone
+  // they navigate the WebView exactly like an absolute http(s) URL would.
+  const external = /^https?:\/\//i.test(href)
+    ? href
+    : /^\/\//.test(href)
+      ? `https:${href}`
+      : null;
+  if (!external) {
+    // mailto: routes to the system default mail client via the opener —
+    // the WebView itself has no mail handler.
+    if (/^\s*mailto:/i.test(href)) {
+      e.preventDefault();
+      openExternally(href.trim());
       return;
     }
-    e.preventDefault();
-    openExternally(external);
-  },
-  { capture: true },
-);
+    // Everything else that isn't a pure in-page anchor (#…) must not
+    // navigate. Rendered markdown is untrusted output: javascript:/data:
+    // anchors must never execute in the WebView, and a relative path
+    // ("./docs/x.md") resolves to a nonexistent tauri://localhost resource
+    // — the whole app gets replaced by a blank page.
+    if (!href.startsWith("#")) e.preventDefault();
+    return;
+  }
+  e.preventDefault();
+  openExternally(external);
+}
+
+window.addEventListener("click", interceptLinkClick, { capture: true });
+// Middle clicks arrive as auxclick, not click — without this, middle-clicking
+// a link in a rendered answer navigates the WebView exactly like the left
+// click the handler above intercepts.
+window.addEventListener("auxclick", interceptLinkClick, { capture: true });
 
 // Suppress the WebView's native context menu (Reload / Inspect Element /
 // Services) — it looks unfinished in a shipped desktop app. Keep it on real
