@@ -1982,7 +1982,19 @@ function App() {
           setDrafts(nextDrafts);
           setMode(restoredMode);
           setComposerValue(nextDrafts[restoredMode] ?? defaultDrafts[restoredMode]);
-          if (typeof restored.codingCwd === "string") setCodingCwd(restored.codingCwd);
+          // session_state.json is written on a 300ms debounce (see the save
+          // effect below), while localStorage mirrors codingCwd/tabs
+          // synchronously — so the file can only ever be *staler* than the
+          // boot-hydrated state. Treat it as a fill-in for empty local state
+          // (legacy migration / cleared localStorage), never an override:
+          // unconditionally applying it here used to clobber the correct
+          // tab-hydrated conversation when the app quit inside the debounce
+          // window, and the tab-mirror effect then persisted the wrong
+          // messages into the active tab.
+          if (typeof restored.codingCwd === "string") {
+            const restoredCwd = restored.codingCwd;
+            setCodingCwd((current) => current || restoredCwd);
+          }
           if (typeof restored.shellCommand === "string") setShellCommand(restored.shellCommand);
           if (isActionPolicy(restored.actionPolicy)) setActionPolicy(restored.actionPolicy);
           if (typeof restored.codingWorkflow === "string") {
@@ -2003,7 +2015,9 @@ function App() {
                 ? { ...message, status: "stopped" as ChatMessageStatus }
                 : message,
             );
-            setMessages(cleaned);
+            // Same staleness rule as codingCwd above: only adopt the file's
+            // conversation when nothing hydrated locally.
+            setMessages((current) => (current.length === 0 ? cleaned : current));
           }
 
           const effectiveMessageCount = Math.max(restoredMessages.length, storedMessages().length);
