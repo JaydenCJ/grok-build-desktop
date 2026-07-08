@@ -55,6 +55,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npm run doctor      # JSON health report for grok, auth, and optional tools
 ```
 
+Every check above is headless and platform-independent — CI runs the full
+set on Linux (frontend tests against a mocked Tauri IPC layer, e2e in
+headless Chromium, Rust tests against the library crate). Integration
+testing of the actual Tauri binary — the real app window and webview — is
+only possible at runtime on macOS or Windows, the two supported targets.
+
 ## Repository Absorption
 
 Local:
