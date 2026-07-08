@@ -63,6 +63,7 @@ import { CommandPalette, type PaletteAction } from "./components/CommandPalette"
 import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
+import { PromptLibrary } from "./components/PromptLibrary";
 import { useActiveRun } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -796,6 +797,9 @@ function App() {
     useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
   // Dedicated Tools / MCP hub (community-tool integration).
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
+  // Prompt Library modal. Prompts are saved from the history right-click menu
+  // ("Save to Prompt Library"), and this is where they're browsed / inserted.
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   // App-owned right-click menu (replaces the suppressed WebView menu).
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   // History organization — pin / rename / group / archive / delete, persisted
@@ -2080,6 +2084,13 @@ function App() {
         run: () => setToolsPageOpen(true),
       },
       {
+        id: "open-prompt-library",
+        label: "Open Prompt Library",
+        hint: "Browse and insert saved prompts",
+        group: "View",
+        run: () => setPromptLibraryOpen(true),
+      },
+      {
         id: "toggle-inspector",
         label: toolsOpen ? "Close Context inspector" : "Open Context inspector (advanced)",
         group: "View",
@@ -2176,6 +2187,9 @@ function App() {
         // toggling them off again.
         if (paletteOpen) {
           setPaletteOpen(false);
+        } else if (promptLibraryOpen) {
+          e.preventDefault();
+          setPromptLibraryOpen(false);
         } else if (previewOpen || contextOpen || terminalOpen || toolsOpen) {
           e.preventDefault();
           setPreviewOpen(false);
@@ -2188,7 +2202,7 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paletteOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
+  }, [paletteOpen, promptLibraryOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
@@ -2739,6 +2753,36 @@ function App() {
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
+      {promptLibraryOpen ? (
+        <div
+          className="settings-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Prompt library"
+          onClick={() => setPromptLibraryOpen(false)}
+        >
+          <div className="prompt-library-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="prompt-library-shell-head">
+              <h2>Prompt Library</h2>
+              <button
+                type="button"
+                className="settings-close"
+                aria-label="Close prompt library"
+                onClick={() => setPromptLibraryOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <PromptLibrary
+              onInsert={(body) => {
+                updatePrompt(body);
+                setPromptLibraryOpen(false);
+                composerRef.current?.focus();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="brand">

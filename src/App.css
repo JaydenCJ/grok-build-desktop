@@ -5146,3 +5146,42 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   outline: 2px solid var(--accent) !important;
   outline-offset: 2px;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Prompt Library modal shell. The .prompt-library component itself is a
+ * fill-height flex column; this frames it like the other centered modals
+ * (Settings / Tools) so saved prompts are browsable and insertable again.
+ * ────────────────────────────────────────────────────────────────────────── */
+.prompt-library-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 48px));
+  height: min(72vh, 640px);
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.prompt-library-shell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.prompt-library-shell-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.prompt-library-shell .prompt-library {
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+}
+.prompt-library-shell .settings-close {
+  position: static;
+}
