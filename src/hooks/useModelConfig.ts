@@ -147,7 +147,6 @@ export function useModelConfig({ mode, availableModels }: ModelConfigDeps) {
       setModelPreset("custom");
       setCustomModel(fallback);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, availableModels, modelOptions, modelPreset]);
 
   return {

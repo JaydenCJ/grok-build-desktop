@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -63,9 +64,9 @@ function App() {
   // The textarea lives inside Composer (uncontrolled ref). We hold a
   // ComposerHandle so starter cards / history clicks / drafts can seed it.
   const composerRef = useRef<ComposerHandle | null>(null);
-  const setComposerValue = (value: string) => {
+  const setComposerValue = useCallback((value: string) => {
     composerRef.current?.setValue(value);
-  };
+  }, []);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   // Session state (mode/drafts/cwd/theme/history/messages) + localStorage and
   // session_state.json persistence live in hooks/useSessionPersistence.ts.
@@ -271,7 +272,7 @@ function App() {
     };
     finalizeEndedRuns();
     return streamStore.subscribe(finalizeEndedRuns);
-  }, []);
+  }, [setMessages]);
 
   function updatePrompt(value: string) {
     setComposerValue(value);
@@ -512,7 +513,7 @@ function App() {
         group: "History",
         run: () => switchToSession(p.id),
       })),
-    [recentPrompts],
+    [recentPrompts, switchToSession],
   );
   const allPaletteActions = useMemo(
     () => [...paletteActions, ...historyPaletteActions],
