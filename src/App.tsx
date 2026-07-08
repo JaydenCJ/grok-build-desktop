@@ -237,6 +237,20 @@ const storageKeys = {
   historyDeleted: "grok-desktop-history-deleted-v1",
 };
 
+/**
+ * Quota-safe localStorage write. setItem throws QuotaExceededError once the
+ * ~5MB budget is hit; thrown from a synchronous effect that propagates to the
+ * error boundary and hard-crashes the app on the interaction that tipped the
+ * quota. Persistence loss is non-fatal — in-memory state survives.
+ */
+function safeSetItem(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // quota or serialization error — non-fatal.
+  }
+}
+
 // Small localStorage helpers for the history-organization maps/sets.
 function loadIdSet(key: string): Set<string> {
   try {
@@ -820,16 +834,16 @@ function App() {
     return () => window.clearTimeout(t);
   }, [historyNote]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
+    safeSetItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
   }, [pinnedPromptIds]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
+    safeSetItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
   }, [promptLabels]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
+    safeSetItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
   }, [promptGroups]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
+    safeSetItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
   }, [archivedPromptIds]);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -857,7 +871,33 @@ function App() {
       const raw = window.localStorage.getItem(tabsStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Tab[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Validate each entry — tabs were the one persisted structure with
+          // no shape check (messages/history go through isChatMessage/
+          // isToolRun). A malformed entry (schema drift, hand-edited
+          // storage) reached recentPrompts and crashed every launch with
+          // "msgs.find is not a function" until storage was reset.
+          const valid = (parsed as unknown[])
+            .filter(
+              (t): t is Tab =>
+                !!t &&
+                typeof t === "object" &&
+                typeof (t as Tab).id === "string" &&
+                typeof (t as Tab).cwd === "string" &&
+                Array.isArray((t as Tab).messages),
+            )
+            .map((t) => ({
+              ...t,
+              messages: t.messages.filter(isChatMessage) as unknown as TabMessage[],
+              name:
+                typeof t.name === "string" && t.name
+                  ? t.name
+                  : defaultTabName(t.cwd),
+              createdAt:
+                typeof t.createdAt === "number" ? t.createdAt : Date.now(),
+            }));
+          if (valid.length > 0) return valid;
+        }
       }
     } catch {
       // fall through
@@ -941,19 +981,43 @@ function App() {
   );
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  // Auto-dismiss the session toast (mirrors the historyNote toast above, but
+  // with a longer window since these can be error messages worth reading).
+  useEffect(() => {
+    if (!sessionNotice) return;
+    const t = window.setTimeout(() => setSessionNotice(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [sessionNotice]);
 
   const statusMap = useMemo(
     () => Object.fromEntries(statuses.map((status) => [status.id, status])),
     [statuses],
   );
   const activeModel = modelPreset === "custom" ? customModel.trim() || "grok-build" : modelPreset;
-  const activeModelMeta = grokModelPresets[modelPreset];
+  // Defensive lookup: modelPreset can transiently hold a CLI-reported id that
+  // isn't one of the hardcoded presets (see selectModel below) — falling back
+  // to the custom meta keeps the inspector render from dereferencing
+  // undefined.
+  const activeModelMeta = grokModelPresets[modelPreset] ?? grokModelPresets.custom;
   const activeReasoningLabel =
     reasoningEffort === "off" ? "auto" : reasoningEfforts[reasoningEffort].label;
 
   function changeModelPreset(nextModel: GrokModelId) {
     setModelPreset(nextModel);
-    setReasoningEffort(grokModelPresets[nextModel].defaultReasoning);
+    setReasoningEffort(grokModelPresets[nextModel]?.defaultReasoning ?? "off");
+  }
+
+  // Route any model id — preset or CLI-reported — to the right state. The
+  // composer footer already guarded non-preset ids (falling back to Custom);
+  // the Settings picker passed them straight to changeModelPreset, which
+  // dereferenced a missing preset entry and crashed the inspector render.
+  function selectModel(id: string) {
+    if (isGrokModelId(id)) {
+      changeModelPreset(id);
+    } else {
+      setModelPreset("custom");
+      setCustomModel(id);
+    }
   }
 
   function recordRun(run: ToolRun) {
@@ -961,7 +1025,7 @@ function App() {
     setHistory((current) => [run, ...current].slice(0, 6));
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      safeSetItem("grok-desktop-run-count-total", String(next));
       return next;
     });
   }
@@ -976,7 +1040,7 @@ function App() {
     setMessages([]);
     setTerminalLines([]);
     setTotalRuns(0);
-    window.localStorage.setItem("grok-desktop-run-count-total", "0");
+    safeSetItem("grok-desktop-run-count-total", "0");
     setSessionNotice("Cleared conversation, run history, and terminal.");
   }
 
@@ -1030,7 +1094,7 @@ function App() {
     // synchronously on each send.
     const timer = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
+        safeSetItem(tabsStorageKey, JSON.stringify(tabs));
       } catch {
         // quota or serialization error — non-fatal; in-memory state survives.
       }
@@ -1038,7 +1102,7 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [tabs]);
   useEffect(() => {
-    if (activeTabId) window.localStorage.setItem(tabsActiveKey, activeTabId);
+    if (activeTabId) safeSetItem(tabsActiveKey, activeTabId);
   }, [activeTabId]);
 
   // Whenever the global codingCwd or messages change, write them back into
@@ -1264,7 +1328,20 @@ function App() {
         shortcut: "A",
         onClick: () => toggleArchivePrompt(id),
       },
-      { label: "Delete conversation", icon: <Trash2 size={15} />, shortcut: "⌫", danger: true, separator: true, onClick: () => deleteSession(id) },
+      {
+        label: "Delete conversation",
+        icon: <Trash2 size={15} />,
+        shortcut: "⌫",
+        danger: true,
+        separator: true,
+        onClick: () => {
+          // Deleting is irreversible (messages + metadata + persistence), so
+          // confirm first — same guard the Prompt Library uses for deletes.
+          if (window.confirm(`Delete "${item.title}"? This can't be undone.`)) {
+            deleteSession(id);
+          }
+        },
+      },
     ];
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -1571,7 +1648,7 @@ function App() {
     });
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      safeSetItem("grok-desktop-run-count-total", String(next));
       return next;
     });
     if (info.position > 0) {
@@ -2008,19 +2085,19 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.mode, mode);
+    safeSetItem(storageKeys.mode, mode);
   }, [mode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(drafts));
+      safeSetItem(storageKeys.drafts, JSON.stringify(drafts));
     }, 250);
     return () => clearTimeout(timer);
   }, [drafts]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.themeMode, themeMode);
-    window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
+    safeSetItem(storageKeys.themeMode, themeMode);
+    safeSetItem(storageKeys.cleanLayoutTheme, "true");
     // CRITICAL: drive the `data-theme` attribute, not just the `theme-*`
     // className. The legacy palette (--app-bg, --panel, …) flips via the
     // `.app-shell.theme-light` class, but the v0.4.0 mono tokens
@@ -2033,7 +2110,7 @@ function App() {
 
   // Persist sidebar-collapsed state so ⌘B is sticky across reloads.
   useEffect(() => {
-    window.localStorage.setItem(
+    safeSetItem(
       "grok-desktop-sidebar-collapsed",
       sidebarCollapsed ? "1" : "0",
     );
@@ -2098,12 +2175,6 @@ function App() {
         run: () => setPromptLibraryOpen(true),
       },
       {
-        id: "toggle-inspector",
-        label: toolsOpen ? "Close Context inspector" : "Open Context inspector (advanced)",
-        group: "View",
-        run: () => togglePanel("tools"),
-      },
-      {
         id: "toggle-preview",
         label: previewOpen ? "Close Preview" : "Open Preview",
         group: "View",
@@ -2134,7 +2205,13 @@ function App() {
         hint: "Mac app context queries",
         group: "View",
         run: () => {
-          setToolsOpen(true);
+          // The Desktop tab lives inside the Context inspector drawer, which
+          // renders from contextOpen — the old setToolsOpen(true) targeted an
+          // orphaned flag and opened nothing.
+          setPreviewOpen(false);
+          setTerminalOpen(false);
+          setToolsOpen(false);
+          setContextOpen(true);
           setInspectorTab("desktop");
         },
       },
@@ -2187,6 +2264,26 @@ function App() {
           e.preventDefault();
           handleTabCreate();
         }
+      } else if (meta && !e.shiftKey && e.key.toLowerCase() === "f") {
+        // ⌘F — advertised by the palette's "Search recent prompts" action but
+        // previously bound nowhere. Expand the sidebar if needed so the
+        // search box is actually focusable.
+        e.preventDefault();
+        setSidebarCollapsed(false);
+        requestAnimationFrame(() => {
+          historySearchInputRef.current?.focus();
+          historySearchInputRef.current?.select();
+        });
+      } else if (!meta && !e.altKey && e.key === "/") {
+        // "/" focuses the composer (also advertised in the palette). Only
+        // when focus isn't already in an editable field, so typing a slash
+        // in the composer or an input stays a slash.
+        const el = document.activeElement as HTMLElement | null;
+        const tag = (el?.tagName ?? "").toLowerCase();
+        if (tag !== "textarea" && tag !== "input" && !el?.isContentEditable) {
+          e.preventDefault();
+          composerRef.current?.focus();
+        }
       } else if (e.key === "Escape") {
         // Esc closes whatever transient surface is open: palette first, then
         // any open dock panel (Preview / Context / Terminal / Tools). Without
@@ -2212,7 +2309,7 @@ function App() {
   }, [paletteOpen, promptLibraryOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
+    safeSetItem(storageKeys.codingCwd, codingCwd);
   }, [codingCwd]);
 
   useEffect(() => {
@@ -2223,63 +2320,63 @@ function App() {
   }, [codingCwd, lastRun?.duration_ms]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.shellCommand, shellCommand);
+    safeSetItem(storageKeys.shellCommand, shellCommand);
   }, [shellCommand]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.actionPolicy, actionPolicy);
+    safeSetItem(storageKeys.actionPolicy, actionPolicy);
   }, [actionPolicy]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.codingWorkflow, codingWorkflow);
+    safeSetItem(storageKeys.codingWorkflow, codingWorkflow);
   }, [codingWorkflow]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.dockPosition, dockPosition);
+    safeSetItem(storageKeys.dockPosition, dockPosition);
   }, [dockPosition]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.inspectorTab, inspectorTab);
+    safeSetItem(storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.modelPreset, modelPreset);
+    safeSetItem(storageKeys.modelPreset, modelPreset);
   }, [modelPreset]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.customModel, customModel);
+    safeSetItem(storageKeys.customModel, customModel);
   }, [customModel]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.effortLevel, effortLevel);
+    safeSetItem(storageKeys.effortLevel, effortLevel);
   }, [effortLevel]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.reasoningEffort, reasoningEffort);
+    safeSetItem(storageKeys.reasoningEffort, reasoningEffort);
   }, [reasoningEffort]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.permissionMode, permissionMode);
+    safeSetItem(storageKeys.permissionMode, permissionMode);
   }, [permissionMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.bestOfN, String(bestOfN));
+    safeSetItem(storageKeys.bestOfN, String(bestOfN));
   }, [bestOfN]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.experimentalMemory, String(experimentalMemory));
+    safeSetItem(storageKeys.experimentalMemory, String(experimentalMemory));
   }, [experimentalMemory]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.webSearchEnabled, String(webSearchEnabled));
+    safeSetItem(storageKeys.webSearchEnabled, String(webSearchEnabled));
   }, [webSearchEnabled]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.subagentsEnabled, String(subagentsEnabled));
+    safeSetItem(storageKeys.subagentsEnabled, String(subagentsEnabled));
   }, [subagentsEnabled]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.selfCheck, String(selfCheck));
+    safeSetItem(storageKeys.selfCheck, String(selfCheck));
   }, [selfCheck]);
 
   useEffect(() => {
@@ -2288,22 +2385,22 @@ function App() {
       const clearedDrafts = { ...drafts, [mode]: "" };
       setDrafts(clearedDrafts);
       setComposerValue("");
-      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
+      safeSetItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
     }
-    window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
-    window.localStorage.setItem(storageKeys.cleanComposer, "true");
+    safeSetItem(storageKeys.safeRuntimeDefaults, "true");
+    safeSetItem(storageKeys.cleanComposer, "true");
   }, [drafts, lastRun, mode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
+      safeSetItem(storageKeys.runHistory, JSON.stringify(history));
     }, 300);
     return () => clearTimeout(timer);
   }, [history]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.messages, JSON.stringify(messages));
+      safeSetItem(storageKeys.messages, JSON.stringify(messages));
     }, 300);
     return () => clearTimeout(timer);
   }, [messages]);
@@ -2350,7 +2447,7 @@ function App() {
 
   useEffect(() => {
     if (lastRun) {
-      window.localStorage.setItem(storageKeys.lastRun, JSON.stringify(lastRun));
+      safeSetItem(storageKeys.lastRun, JSON.stringify(lastRun));
     } else {
       window.localStorage.removeItem(storageKeys.lastRun);
     }
@@ -2709,16 +2806,21 @@ function App() {
         dockPosition={dockPosition}
         setDockPosition={(d) => {
           setDockPosition(d);
-          window.localStorage.setItem(storageKeys.dockPosition, d);
+          safeSetItem(storageKeys.dockPosition, d);
         }}
         sidebarCollapsed={sidebarCollapsed}
         setSidebarCollapsed={setSidebarCollapsed}
-        modelOptions={modelOptions.map((id) => ({
-          value: id,
-          label: grokModelPresets[id as GrokModelId]?.label ?? id,
-        }))}
+        modelOptions={[
+          ...modelOptions.map((id) => ({
+            value: id,
+            label: grokModelPresets[id as GrokModelId]?.label ?? id,
+          })),
+          // Keep Custom reachable from Settings (the composer footer already
+          // offers it), and keep the select's value valid when it's active.
+          { value: "custom", label: "Custom…" },
+        ]}
         modelPreset={modelPreset}
-        onModelPreset={(id) => changeModelPreset(id as GrokModelId)}
+        onModelPreset={selectModel}
         customModel={customModel}
         setCustomModel={setCustomModel}
         activeModel={activeModel}
@@ -3141,6 +3243,23 @@ function App() {
             <QueueDock />
             <StatusBar />
 
+            {/* Session feedback toast. This used to render only inside the
+                collapsed Terminal <details>, so errors like "Folder picker
+                failed" or "Session restore failed" were invisible unless the
+                terminal happened to be open. */}
+            {sessionNotice ? (
+              <div className="session-toast" role="status">
+                <span>{sessionNotice}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss notice"
+                  onClick={() => setSessionNotice(null)}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+
             <div className="composer-row">
               {actionPolicy === "autopilot" ? (
                 <div className="autopilot-warning" role="alert">
@@ -3395,26 +3514,11 @@ function App() {
                   {tab.label}
                 </button>
               ))}
-              <button
-                aria-label="Toggle dock position"
-                onClick={() => {
-                  const next: DockPosition = dockPosition === "right" ? "bottom" : "right";
-                  setDockPosition(next);
-                  window.localStorage.setItem(storageKeys.dockPosition, next);
-                }}
-                title={`Move dock to ${dockPosition === "right" ? "bottom" : "right"}`}
-                type="button"
-              >
-                <PanelRight size={16} />
-              </button>
-              <button
-                aria-label="Close inspector"
-                onClick={() => setToolsOpen(false)}
-                title="Close (⌘B clears panels)"
-                type="button"
-              >
-                <X size={16} />
-              </button>
+              {/* The dock-toggle and close buttons that used to sit here were
+                  permanently hidden by a `button[aria-label]` display:none
+                  rule (and the close handler targeted an orphaned state
+                  flag). Removed: dock position lives in Settings and the
+                  terminal summary; the drawer closes via its own summary. */}
             </div>
 
             <div className="inspector-body">
@@ -3910,7 +4014,6 @@ function App() {
               </button>
             </div>
           </div>
-          {sessionNotice ? <p className="session-note">{sessionNotice}</p> : null}
           <div className="terminal-view" role="log" aria-live="polite">
             {terminalDisplay.map((line, index) => (
               <div className={terminalClass(line)} key={`${line}-${index}`}>

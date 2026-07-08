@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 type ThemeMode = 'dark' | 'light';
 type DockPosition = 'right' | 'bottom';
@@ -110,6 +110,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
  */
 export function SettingsPage(props: SettingsPageProps) {
   const { open, section, onSection, onClose } = props;
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -123,11 +124,24 @@ export function SettingsPage(props: SettingsPageProps) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
 
+  // Basic dialog focus management: move focus into the modal on open (the
+  // overlay claims aria-modal, but focus used to stay on the launcher behind
+  // it, so Tab cycled the background UI) and restore it on close.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const first = modalRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea',
+    );
+    first?.focus();
+    return () => previous?.focus?.();
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
         <aside className="settings-nav">
           <div className="settings-nav-head">Settings</div>
           {NAV.map((n) => (

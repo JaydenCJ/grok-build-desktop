@@ -31,6 +31,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   // Reset query + focus when palette opens.
   useEffect(() => {
@@ -57,6 +58,18 @@ export function CommandPalette({ open, actions, onClose }: Props) {
   useEffect(() => {
     if (highlight >= filtered.length) setHighlight(Math.max(0, filtered.length - 1));
   }, [filtered, highlight]);
+
+  // Keep the highlighted row visible during arrow-key navigation — the list
+  // scrolls (max-height 60vh) and routinely overflows once history entries
+  // are appended, so without this keyboard users navigate blind past the
+  // fold. Same pattern as FilePicker. block:'nearest' is a no-op for rows
+  // already in view, so hover-driven highlight changes never cause jumps.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.children[highlight] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [highlight]);
 
   if (!open) return null;
 
@@ -113,7 +126,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
           />
           <span className="palette-search-kbd">esc</span>
         </div>
-        <div className="palette-list" role="listbox">
+        <div className="palette-list" role="listbox" ref={listRef}>
           {filtered.length === 0 ? (
             <div className="palette-empty">No commands match.</div>
           ) : (

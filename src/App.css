@@ -1085,7 +1085,8 @@ pre {
   border-bottom: 1px solid #192635;
   display: grid;
   gap: 0;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* 8 tabs (Context…Desktop) — a 7-column grid wrapped the last one. */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   min-width: 0;
   overflow: hidden;
   padding: 0 8px;
@@ -1110,9 +1111,8 @@ pre {
   color: #f6fbfd;
 }
 
-.inspector-tabs button[aria-label] {
-  display: none;
-}
+/* (Removed the `button[aria-label] { display: none }` hack — it hid live
+ * buttons and would silently vanish any tab that gained an aria-label.) */
 
 .inspector-body {
   min-height: 0;
@@ -5184,4 +5184,32 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 }
 .prompt-library-shell .settings-close {
   position: static;
+}
+
+/* Session feedback toast — surfaced at the conversation level so errors are
+ * actually visible (previously only rendered inside the collapsed Terminal). */
+.session-toast {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 18px 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-2);
+  color: var(--text-1);
+  font-size: 12px;
+  animation: palette-fade 120ms ease-out;
+}
+.session-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.session-toast button:hover {
+  color: var(--text-1);
 }
