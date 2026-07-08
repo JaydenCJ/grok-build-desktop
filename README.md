@@ -117,6 +117,13 @@ cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit + integration test
 npm run doctor       # environment doctor
 ```
 
+All of the above run headlessly on any platform (CI runs them on Linux): the
+vitest suite exercises components against a mocked Tauri IPC layer, and the
+e2e test drives the built frontend in headless Chromium. Integration testing
+of the **actual Tauri binary** — launching the real app and its webview — is
+only possible at runtime on macOS or Windows, the two supported targets;
+there is no Linux binary to run.
+
 ### Troubleshooting
 
 - **macOS blocks the downloaded app ("damaged" / unidentified developer).** The release build is ad-hoc signed, not notarized. Right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Grok Build Desktop.app"` once.

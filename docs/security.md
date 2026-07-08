@@ -66,7 +66,8 @@ not prevention — is the goal.
   is absent and `ipc:` is unreachable from that origin).
 - Requests are **token-gated and root-confined**: `get_static_preview`
   registers exactly one canonicalized preview root plus a fresh random token
-  per refresh; the handler 404s on a wrong/missing token and validates every
+  per refresh; the handler 404s on a wrong/missing token (compared in
+  constant time) and validates every
   subresource path with canonicalize + `starts_with(root)` (rejecting
   absolute paths, `..`, percent-encoded traversal, and backslashes). Files
   over 2 MiB are refused (`413`). A compromised renderer cannot use the
@@ -75,6 +76,11 @@ not prevention — is the goal.
   WebKitGTK (Linux) directly as `grokpreview://localhost/...`; Windows/Android
   map them to `http://grokpreview.localhost/...`. The backend builds the URL
   per-platform, and the app CSP `frame-src` allows both forms.
+- Verification note: the scheme handler's token, traversal, and size checks
+  are covered by Rust unit tests that run on any platform, but verifying the
+  protocol **inside a real webview** (i.e. integration testing the actual
+  Tauri binary) is only possible at runtime on macOS or Windows — the two
+  targets the app ships for.
 
 ## Markdown sanitization
 
