@@ -44,7 +44,6 @@ Hardware target: macOS first (Apple Silicon + Intel). Windows / Linux are stretc
 | **Workspace toolbar** (top) | Repo picker, Grok model selector, panels (Preview/Context/Terminal/Tools), dock position, Dark/Light theme, Connected badge. |
 | **Workspace statusbar** (bottom-bottom) | `/path · grok-build · Patch ready · Last run ok · N runs · Clear`. |
 | **Empty state** | Starter card grid: "Review this repo / Explain this codebase / Add a failing test / Suggest the next change". |
-| **Chrome extension overlay** | When extension is in "controlling" mode, browser tabs show a Grok badge + orange viewport frame. |
 | **(Future) Plan Mode** | When run has `--permission-mode plan`, show plan steps + Accept/Reject buttons (not yet built). |
 | **(Future) Sub-agent visualization** | DAG / timeline of sub-agents (not yet built — most "soul"-defining feature in the roadmap). |
 | **(Future) File / editor integration** | @file mentions, Monaco editor, diff viewer (not yet built). |
@@ -155,7 +154,7 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 - Where Grok options live: model / effort / reasoning / permission-mode / Best-of-N / memory / web search / subagents / self-check
 - Should be a proper drawer or modal, not a buried form
 
-#### 8. **Prompt Library** (`src/components/PromptLibrary.tsx`)
+#### 8. **Prompt Library** (wired inline in the app shell; SQLite store in `src-tauri/src/prompts/mod.rs`)
 - SQLite-backed CRUD: list with search, edit modal with name/category/body
 - Currently functional, basic styling. Designer to propose richer affordances — maybe a categorical color stripe per prompt.
 
@@ -178,8 +177,6 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 - Maybe a Monaco editor for quick edits without leaving the app
 
 #### 12. **Light theme** — exists as a toggle but never properly designed. Needs its own pass with the same tokens but light-friendly values.
-
-#### 13. **Chrome extension overlay** — currently a small G badge + animated agent cursor + orange viewport frame when controlling. Designer can propose a more refined "AI is here" indicator.
 
 ---
 
@@ -247,7 +244,7 @@ If Grok Build Desktop ends up halfway between **Cursor's density** and **Linear'
 | `main` | Stable. F + E + G1 already merged (PR #1, #2, #3 squashed). |
 | `feature/v0.3.0-polish-and-features` ✱ | All the latest polish: theme tokens, prompt library, StatusBar rewrite, IME / jam / stale-lock fixes. **Designer should look here.** |
 | `src/App.tsx` | Main React tree. 3300+ lines, but the layout structure (sidebar / workspace / composer / status) is clear. |
-| `src/components/*` | Composer, MessageList, MessageItem, StatusBar, QueueDock, PromptLibrary, AgentOverlay. |
+| `src/components/*` | Composer, MessageList, MessageItem, StatusBar, QueueDock, Sidebar, InspectorDrawer, PreviewPanel, TerminalDock, SettingsPage, ToolsPage. |
 | `src/App.css` | All styling — single file. New v0.3.0 section near the bottom (search `===== F: Non-blocking UI`). |
 | `docs/architecture.md` | Architecture overview — useful background on how the pieces fit together. |
 

@@ -5,10 +5,6 @@ not a stealth or bypass system.
 
 ## What Ships Today
 
-- Visible Agent presence: the agent overlay (`overlay.tsx`,
-  `set_agent_overlay`/`set_agent_cursor`) draws a click-through screen border
-  and an animated cursor sprite while Grok is acting. It is strictly visual —
-  no OS mouse or keyboard synthesis.
 - Browser automation runs a real, visible browser through the `browser-use`
   package (`scripts/browser_automation.py`). No fingerprint masking or
   automation-flag hiding is configured.
@@ -19,9 +15,10 @@ not a stealth or bypass system.
   with permission behavior surfaced in the UI (action policy and permission
   mode map to real CLI flags).
 
-A previous iteration shipped a Chrome companion extension with a Native
-Messaging bridge; it has been removed from this codebase. The rules below
-still bind any future reintroduction.
+There is no browser extension, Native Messaging bridge, or screen-overlay
+window in this codebase (an earlier click-through agent-overlay experiment
+was removed). The rules below bind any future reintroduction of such
+surfaces.
 
 ## What We Do Not Implement
 
