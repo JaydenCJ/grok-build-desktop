@@ -498,7 +498,8 @@ function isInspectorTab(value: unknown): value is InspectorTab {
     value === "agents" ||
     value === "plugins" ||
     value === "hooks" ||
-    value === "permissions"
+    value === "permissions" ||
+    value === "desktop"
   );
 }
 
@@ -876,6 +877,18 @@ function App() {
     }
     return "";
   });
+  // Always-fresh mirrors of the tab-critical state. Several callers of
+  // handleTabCreate/switchToSession live inside memoized closures (the ⌘K
+  // palette catalogue, the global keyboard router) whose dependency lists
+  // don't include messages/codingCwd — snapshotting through a stale closure
+  // there would overwrite the active tab with an OLD copy of the conversation
+  // and silently drop the newest messages. Reading through refs is immune.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const codingCwdRef = useRef(codingCwd);
+  codingCwdRef.current = codingCwd;
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
@@ -967,11 +980,17 @@ function App() {
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
   // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
   function handleTabCreate() {
-    // Persist current tab first.
+    // Persist current tab first. Read through the refs — this function is
+    // invoked from stale-closure sites (⌘K palette, ⌘N keyboard router).
+    const currentTabId = activeTabIdRef.current;
     setTabs((current) => {
       const snapshotted = current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+        t.id === currentTabId
+          ? {
+              ...t,
+              cwd: codingCwdRef.current,
+              messages: messagesRef.current as unknown as TabMessage[],
+            }
           : t,
       );
       const next = makeTab("", [], defaultTabName("", snapshotted.length));
@@ -1049,14 +1068,22 @@ function App() {
   // way Claude / ChatGPT switch chats. `id` is a tab id.
   function switchToSession(id: string) {
     setPaletteOpen(false);
-    if (id === activeTabId) return;
+    // Read through the refs — palette/keyboard closures can hold stale state
+    // (see the ref block above); snapshotting with a stale copy would drop
+    // the newest messages of the conversation being left.
+    const currentTabId = activeTabIdRef.current;
+    if (id === currentTabId) return;
     const target = tabs.find((t) => t.id === id);
     if (!target) return;
     // Persist the current conversation back into its tab, then load the target.
     setTabs((current) =>
       current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+        t.id === currentTabId
+          ? {
+              ...t,
+              cwd: codingCwdRef.current,
+              messages: messagesRef.current as unknown as TabMessage[],
+            }
           : t,
       ),
     );
@@ -1272,6 +1299,13 @@ function App() {
 
   function switchMode(nextMode: Mode) {
     if (nextMode === mode || busyRunner !== null) return;
+    // Capture the live composer text before replacing it. Drafts normally
+    // persist on textarea blur, but a ⌘1/⌘2 switch never blurs — without this
+    // the in-flight draft of the mode being left was silently lost.
+    const liveDraft = composerRef.current?.getValue();
+    if (liveDraft !== undefined) {
+      setDrafts((current) => ({ ...current, [mode]: liveDraft }));
+    }
     setMode(nextMode);
     setComposerValue(drafts[nextMode] || defaultDrafts[nextMode]);
   }
