@@ -13,6 +13,7 @@
     "test": "node scripts/smoke_test.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "bench:markdown": "vitest run --config vitest.bench.config.ts --reporter=verbose",
     "mac:build": "tauri build --bundles app",
     "mac:build:dmg": "tauri build --bundles dmg",
     "mac:dev": "tauri dev",
@@ -29,14 +30,13 @@
     "marked": "^18.0.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-markdown": "^10.1.0",
-    "react-virtuoso": "^4.18.7",
-    "remark-gfm": "^4.0.1"
+    "react-virtuoso": "^4.18.7"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

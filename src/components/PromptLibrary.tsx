@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { requestConfirm } from '../lib/confirm';
 import { deletePrompt, listPrompts, upsertPrompt, type Prompt } from '../lib/prompts';
 
 interface Props {
@@ -69,7 +70,15 @@ export function PromptLibrary({ onInsert, filter }: Props) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this prompt?')) return;
+    // In-app confirm — window.confirm is a silent "false" inside WKWebView,
+    // which made prompt deletion impossible on macOS.
+    const confirmed = await requestConfirm({
+      title: 'Delete prompt?',
+      message: "Delete this prompt? This can't be undone.",
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
     const ok = await deletePrompt(id);
     if (ok) setPrompts((prev) => prev.filter((p) => p.id !== id));
   };
@@ -79,6 +88,7 @@ export function PromptLibrary({ onInsert, filter }: Props) {
       <header className="prompt-library-header">
         <input
           type="search"
+          autoFocus
           placeholder="Search prompts…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}

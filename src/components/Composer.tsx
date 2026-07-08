@@ -38,6 +38,9 @@ interface Props {
     prompt: string;
     rawText: string;
   }) => void;
+  /** Called when enqueueing fails (backend missing, grok error). The typed
+   *  text stays in the textarea so nothing is lost. */
+  onSubmitError?: (message: string) => void;
   /**
    * Optional draft-persistence callback. **Called only on blur and on unmount**,
    * not on every keystroke — passing it as a per-keystroke listener would force
@@ -82,6 +85,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     initialValue,
     placeholder,
     onEnqueued,
+    onSubmitError,
     onTextChange,
   }: Props,
   outerRef,
@@ -211,6 +215,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
     } catch (err) {
       console.error('[grok-desktop] enqueue failed', err);
+      // Surface the failure — a silent console.error left the user staring
+      // at a composer that "ate" Enter with no visible reaction.
+      onSubmitError?.(err instanceof Error ? err.message : String(err));
     } finally {
       notePendingSubmitEnd();
       setSubmitting(false);
@@ -229,7 +236,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       ) : null}
       <textarea
         ref={ref}
-        disabled={submitting}
+        // readOnly, not disabled — disabling a focused textarea blurs it, so
+        // every send dumped keyboard focus and the user had to click back in
+        // before typing the next prompt. readOnly blocks input just the same
+        // but keeps focus; Enter is already guarded by `submitting`.
+        readOnly={submitting}
         placeholder={
           submitting
             ? 'Queuing your prompt…'

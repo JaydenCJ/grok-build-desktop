@@ -59,7 +59,9 @@ for (const command of [
 }
 
 const libRs = read("src-tauri/src/lib.rs");
-assert.ok(libRs.includes("--max-turns"), "Grok max-turn guard missing");
+// The max-turns guard lives in the frontend arg builder (buildGrokArgs);
+// the legacy Rust grok_args builder was removed as dead code.
+assert.ok(app.includes("--max-turns"), "Grok max-turn guard missing (App.tsx buildGrokArgs)");
 assert.ok(libRs.includes("is_noisy_grok_line"), "Tracing-noise filter missing");
 assert.ok(libRs.includes("GROK_DESKTOP_VERBOSE_GROK_STDERR"), "Verbose stderr escape hatch missing");
 assert.ok(libRs.includes("theme_mode: Option<String>"), "SessionState must round-trip themeMode");

@@ -7,9 +7,9 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 - React renders the mode switch, task runner, Grok command bar, capability inspector, tool health, and script entry points.
 - The React shell is organized as a Grok/xAI-style developer workbench: dark left workspace navigation, top model/effort/permission controls, center Grok task conversation, right capability inspector, terminal dock, and toolbelt.
 - Tauri commands in `src-tauri/src/lib.rs` call local subprocesses.
-- Grok Build runs through `grok -p`, or through `GROK_DESKTOP_GROK_CMD` and `GROK_DESKTOP_GROK_ARGS`.
+- Grok Build runs through `grok -p` (`GROK_DESKTOP_GROK_CMD` overrides the executable).
 - Coding Mode calls Grok through `src/lib/grok.ts::callGrokCLI(prompt, options)`, which listens to Tauri `grok-desktop://grok-stream` events while the Rust bridge owns the subprocess.
-- The Grok runner forwards selected model, effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and self-check settings unless `GROK_DESKTOP_GROK_ARGS` is used as a full argument-template override.
+- The Grok runner forwards selected model, effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and self-check settings.
 - Grok auth status is detected without reading secrets: Grok Desktop checks installation, `XAI_API_KEY`, and whether `~/.grok/auth` contains cached login data.
 - Grok login starts in Terminal through `start_grok_login`, keeping the official CLI authorization flow outside the app.
 - Grok ecosystem discovery runs through `grok inspect`, while managed capability commands use `grok mcp list`, `grok mcp doctor`, `grok plugin list`, and `grok sessions list`.
@@ -31,10 +31,8 @@ Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command 
 
 - `GROK_DESKTOP_PYTHON`: Python executable for scripts and package checks.
 - `GROK_DESKTOP_GROK_CMD`: Grok CLI executable.
-- `GROK_DESKTOP_GROK_ARGS`: whitespace-split Grok arguments. Use `{prompt}` and `{mode}` placeholders.
 - `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS`: startup watchdog for streaming Grok runs with no stdout/stderr activity. Defaults to 240 seconds.
 - `GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS`: watchdog for Grok runs that keep logging internally but produce no user-visible answer. Defaults to 180 seconds.
-- `GROK_DESKTOP_GROK_MAX_TURNS`: default headless turn cap. Defaults to 12.
 - `XAI_API_KEY`: optional Grok API key auth visible to the spawned CLI process.
 
 ## Next Integration Targets

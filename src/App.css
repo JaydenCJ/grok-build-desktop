@@ -36,6 +36,20 @@
   --accent-glow:  rgba(236,233,226,0.10);
   --accent-ink:   #131313;
 
+  /* Typography tokens — one sans + one mono stack for the whole app. Three
+   * different literal mono stacks (and var(--font-mono) fallbacks with no
+   * definition) used to render code/kbd/paths in visibly different faces
+   * depending on platform and installed fonts. */
+  --font-sans: "Geist", "Inter", "SF Pro Text", ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "SFMono-Regular",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Native form controls / UA chrome (select popups, autofill, scrollbars)
+   * follow color-scheme, not our custom properties — without it they stayed
+   * OS-light inside the dark theme. */
+  color-scheme: dark;
+
   /* Motion — strong custom curves (built-in CSS easings are too weak for UI).
    * ease-out for enter/feedback (instant-feeling), in-out for on-screen moves. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -105,6 +119,7 @@
 /* Light theme — warm parchment, Claude-Desktop vibe. */
 :root[data-theme="light"],
 body[data-theme="light"] {
+  color-scheme: light;
   --bg-0: #E8E4D9;
   --bg-1: #F6F3EC;
   --bg-2: #F0EDE5;
@@ -209,7 +224,7 @@ select:focus {
 
 code,
 pre {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .app-shell {
@@ -1085,7 +1100,8 @@ pre {
   border-bottom: 1px solid #192635;
   display: grid;
   gap: 0;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* 8 tabs (Context…Desktop) — a 7-column grid wrapped the last one. */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   min-width: 0;
   overflow: hidden;
   padding: 0 8px;
@@ -1110,9 +1126,8 @@ pre {
   color: #f6fbfd;
 }
 
-.inspector-tabs button[aria-label] {
-  display: none;
-}
+/* (Removed the `button[aria-label] { display: none }` hack — it hid live
+ * buttons and would silently vanish any tab that gained an aria-label.) */
 
 .inspector-body {
   min-height: 0;
@@ -1507,7 +1522,7 @@ pre {
   background: #071018;
   color: #e6edf7;
   display: grid;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   grid-row: 2 / -1;
   height: 100%;
@@ -1652,54 +1667,67 @@ pre {
 }
 
 .app-shell.theme-dark {
-  --app-bg: #050607;
-  --sidebar-bg: #070809;
-  --topbar-bg: #050607;
-  --panel: #0d0f11;
-  --panel-raised: #111317;
-  --panel-muted: #15181c;
-  --field: #0a0c0e;
-  --field-strong: #111418;
-  --line: #24282e;
-  --line-soft: #191d22;
-  --text: #f4f4f5;
-  --text-muted: #a1a1aa;
-  --text-soft: #747983;
-  --button: #171a1f;
-  --button-hover: #20242a;
-  --button-primary: #f5f5f5;
-  --button-primary-text: #050607;
-  --selected: #171a1f;
-  --selected-strong: #20242a;
-  --accent: #5aa89d;
-  --accent-soft: rgba(90, 168, 157, 0.12);
-  --terminal-bg: #050607;
-  --terminal-text: #e5e7eb;
+  /* Legacy surface variables, aliased to the canonical v0.4.0 tokens so the
+   * shell and the token-based components resolve to ONE palette per theme.
+   * (Previously these hardcoded a second set of neutral hexes — pure-white
+   * panels inside a warm-parchment UI in light mode, and three subtly
+   * different near-blacks tiling the dark screen — plus a leftover teal
+   * --accent that overrode the mono accent for everything in the shell.)
+   * data-theme and .theme-* always flip together (see App.tsx), so the
+   * canonical tokens carry the actual light/dark values. */
+  --app-bg: var(--bg-0);
+  --sidebar-bg: var(--bg-1);
+  --topbar-bg: var(--bg-0);
+  --panel: var(--bg-1);
+  --panel-raised: var(--bg-2);
+  --panel-muted: var(--bg-2);
+  --field: var(--bg-2);
+  --field-strong: var(--bg-3);
+  --line: var(--border);
+  --line-soft: var(--border);
+  --text: var(--text-1);
+  --text-muted: var(--text-2);
+  --text-soft: var(--text-3);
+  --button: var(--bg-3);
+  --button-hover: var(--bg-4);
+  --button-primary: var(--accent);
+  --button-primary-text: var(--accent-ink);
+  --selected: var(--bg-3);
+  --selected-strong: var(--bg-4);
+  --terminal-bg: var(--bg-0);
+  --terminal-text: var(--text-1);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
 }
 
 .app-shell.theme-light {
-  --app-bg: #f6f6f4;
-  --sidebar-bg: #fbfbfa;
-  --topbar-bg: #fbfbfa;
-  --panel: #ffffff;
-  --panel-raised: #ffffff;
-  --panel-muted: #f3f3f1;
-  --field: #ffffff;
-  --field-strong: #f7f7f5;
-  --line: #deded9;
-  --line-soft: #ecece8;
-  --text: #151515;
-  --text-muted: #696963;
-  --text-soft: #8a8a84;
-  --button: #f4f4f1;
-  --button-hover: #e9e9e4;
-  --button-primary: #151515;
-  --button-primary-text: #ffffff;
-  --selected: #ededeb;
-  --selected-strong: #e5e5e0;
-  --accent: #4d8f83;
-  --accent-soft: rgba(77, 143, 131, 0.08);
+  /* Legacy surface variables, aliased to the canonical v0.4.0 tokens so the
+   * shell and the token-based components resolve to ONE palette per theme.
+   * (Previously these hardcoded a second set of neutral hexes — pure-white
+   * panels inside a warm-parchment UI in light mode, and three subtly
+   * different near-blacks tiling the dark screen — plus a leftover teal
+   * --accent that overrode the mono accent for everything in the shell.)
+   * data-theme and .theme-* always flip together (see App.tsx), so the
+   * canonical tokens carry the actual light/dark values. */
+  --app-bg: var(--bg-0);
+  --sidebar-bg: var(--bg-1);
+  --topbar-bg: var(--bg-0);
+  --panel: var(--bg-1);
+  --panel-raised: var(--bg-2);
+  --panel-muted: var(--bg-2);
+  --field: var(--bg-2);
+  --field-strong: var(--bg-3);
+  --line: var(--border);
+  --line-soft: var(--border);
+  --text: var(--text-1);
+  --text-muted: var(--text-2);
+  --text-soft: var(--text-3);
+  --button: var(--bg-3);
+  --button-hover: var(--bg-4);
+  --button-primary: var(--accent);
+  --button-primary-text: var(--accent-ink);
+  --selected: var(--bg-3);
+  --selected-strong: var(--bg-4);
+  /* The terminal stays dark in light mode on purpose. */
   --terminal-bg: #111111;
   --terminal-text: #f4f4f4;
   --shadow: 0 1px 2px rgba(15, 15, 15, 0.06);
@@ -2235,9 +2263,9 @@ button.status-cluster.status-action:disabled {
 }
 
 .status-warn {
-  background: rgba(255, 170, 95, 0.18);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
   border-radius: 4px;
-  color: #ffcb9a;
+  color: var(--warn);
   font-size: 0.66rem;
   font-weight: 800;
   padding: 1px 6px;
@@ -2614,7 +2642,7 @@ button.status-cluster.status-action:disabled {
   background: var(--field-strong);
   border-radius: 4px;
   color: var(--text);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.86em;
   padding: 1px 6px;
 }
@@ -2664,7 +2692,7 @@ button.status-cluster.status-action:disabled {
 
 .code-block-lang {
   color: var(--text-muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -2841,7 +2869,7 @@ button.status-cluster.status-action:disabled {
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--text-muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   margin: 0 1px;
   padding: 1px 5px;
@@ -2867,7 +2895,7 @@ button.status-cluster.status-action:disabled {
 
 .activity-tail {
   color: var(--text-muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.74rem;
   overflow: hidden;
   padding-left: 14px;
@@ -3416,7 +3444,7 @@ button.status-cluster.status-action:disabled {
   gap: 8px;
   padding: 6px 14px;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(180deg, transparent 0%, rgba(255, 122, 69, 0.04) 100%);
+  background: linear-gradient(180deg, transparent 0%, var(--accent-glow) 100%);
   border-top: 1px solid var(--grok-border-1);
 }
 .status-bar-idle { color: var(--grok-text-3); }
@@ -3434,7 +3462,7 @@ button.status-cluster.status-action:disabled {
 }
 .queue-banner {
   align-items: center;
-  background: linear-gradient(135deg, rgba(255, 122, 69, 0.12), rgba(96, 165, 250, 0.08));
+  background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--info) 10%, transparent));
   border-bottom: 1px solid var(--grok-border-1);
   color: var(--grok-text-1);
   display: flex;
@@ -3480,7 +3508,7 @@ button.status-cluster.status-action:disabled {
 .queue-count {
   color: var(--grok-accent);
   font-weight: 700;
-  background: rgba(255, 122, 69, 0.10);
+  background: var(--accent-soft);
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 11px;
@@ -3549,7 +3577,7 @@ button.status-cluster.status-action:disabled {
   100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
 }
 .message.message-user {
-  background: linear-gradient(180deg, transparent, rgba(255, 122, 69, 0.04));
+  background: linear-gradient(180deg, transparent, var(--accent-glow));
 }
 .message.message-user::before {
   content: 'You';
@@ -3584,7 +3612,7 @@ button.status-cluster.status-action:disabled {
 }
 
 .streaming-raw {
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--grok-text-2);
 }
@@ -3606,7 +3634,7 @@ button.status-cluster.status-action:disabled {
   border-radius: 10px;
   background: var(--grok-bg-1);
   border: 1px solid var(--grok-border-1);
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.55;
   margin: 8px 0;
@@ -3642,7 +3670,7 @@ button.status-cluster.status-action:disabled {
 .composer textarea:focus {
   outline: none;
   border-color: var(--grok-accent);
-  box-shadow: 0 0 0 3px rgba(255, 122, 69, 0.16);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .composer textarea::placeholder { color: var(--grok-text-4); }
 .composer-send {
@@ -3664,22 +3692,18 @@ button.status-cluster.status-action:disabled {
 .composer-send:hover { filter: brightness(1.08); }
 .composer-send:active { transform: translateY(1px); }
 
-/* hljs token palette tuned for Grok theme */
-.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #ff9466; }
-.hljs-string, .hljs-attr { color: #a6e3a1; }
-.hljs-number, .hljs-literal { color: #f9e2af; }
-.hljs-comment { color: var(--grok-text-4); font-style: italic; }
-.hljs-function, .hljs-title { color: #89b4fa; }
-.hljs-variable, .hljs-name { color: #cba6f7; }
-.hljs-tag, .hljs-meta { color: #f38ba8; }
-:root[data-theme="light"] .hljs-keyword,
-body[data-theme="light"] .hljs-keyword,
-:root[data-theme="light"] .hljs-selector-tag,
-body[data-theme="light"] .hljs-selector-tag { color: #d65a2a; }
-:root[data-theme="light"] .hljs-string,
-body[data-theme="light"] .hljs-string { color: #287550; }
-:root[data-theme="light"] .hljs-comment,
-body[data-theme="light"] .hljs-comment { color: #6b7388; }
+/* hljs token palette — mapped to the theme-aware --syn-* tokens (defined for
+ * both themes at :root / [data-theme="light"]). The old hardcoded dark
+ * pastels stayed put in light mode: pale-yellow numbers and powder-blue
+ * functions on parchment were near-invisible (~1.2-1.5:1 contrast), and the
+ * partial light overrides only re-colored keyword/string/comment. */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: var(--syn-keyword); }
+.hljs-string, .hljs-attr { color: var(--syn-string); }
+.hljs-number, .hljs-literal { color: var(--syn-num); }
+.hljs-comment { color: var(--syn-comment); font-style: italic; }
+.hljs-function, .hljs-title { color: var(--syn-fn); }
+.hljs-variable, .hljs-name { color: var(--syn-keyword); }
+.hljs-tag, .hljs-meta { color: var(--syn-type); }
 
 /* ===== v0.3.0-2: Prompt Library ===== */
 
@@ -3711,7 +3735,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 .prompt-library-search:focus {
   outline: none;
   border-color: var(--grok-accent);
-  box-shadow: 0 0 0 2px rgba(255, 122, 69, 0.18);
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }
 .prompt-library-add {
   background: var(--grok-accent);
@@ -3859,7 +3883,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .prompt-library-modal textarea {
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.55;
   resize: vertical;
@@ -3867,7 +3891,7 @@ body[data-theme="light"] .hljs-comment { color: #6b7388; }
 .prompt-library-modal input:focus,
 .prompt-library-modal textarea:focus {
   border-color: var(--grok-accent);
-  box-shadow: 0 0 0 2px rgba(255, 122, 69, 0.18);
+  box-shadow: 0 0 0 2px var(--accent-glow);
   outline: none;
 }
 .prompt-library-hint {
@@ -4294,6 +4318,70 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .set-row-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
 .set-row-hint { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
 .set-row-control { flex-shrink: 0; }
+
+/* Confirmation dialog (ConfirmDialog.tsx) — replaces window.confirm, which
+   WKWebView answers with a silent false. Reuses the settings-overlay backdrop;
+   sits above it (z-index) so a confirm can stack on Settings/Prompt Library. */
+.confirm-overlay { z-index: 320; }
+.confirm-dialog {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop, 0 24px 60px -12px rgba(0,0,0,0.6));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+  min-width: 340px;
+  padding: 18px;
+}
+.confirm-dialog h3 {
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.confirm-dialog p {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.confirm-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.confirm-cancel,
+.confirm-accept {
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  transition: filter 120ms ease;
+}
+.confirm-cancel {
+  background: transparent;
+  color: var(--text-2);
+}
+.confirm-cancel:hover { background: var(--bg-3); color: var(--text-1); }
+.confirm-accept {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.confirm-accept.is-danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+.confirm-accept:hover { filter: brightness(1.08); }
+
 .set-row-control select,
 .set-row-control input {
   background: var(--bg-3);
@@ -4376,7 +4464,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   font-size: 24px; font-weight: 800;
 }
 .set-about-name { font-size: 16px; font-weight: 700; color: var(--text-1); }
-.set-about-ver { font-size: 12px; color: var(--text-2); font-family: var(--font-mono, monospace); }
+.set-about-ver { font-size: 12px; color: var(--text-2); font-family: var(--font-mono); }
 .set-about-grok { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 .set-about-blurb { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
 
@@ -4402,7 +4490,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .tools-head h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: var(--text-1); letter-spacing: -0.01em; }
 .tools-head p { margin: 0; font-size: 12.5px; color: var(--text-3); line-height: 1.55; max-width: 760px; }
 .tools-head code, .tools-foot code {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 11px; background: var(--bg-3); border-radius: 4px; padding: 1px 5px; color: var(--text-2);
 }
 .tools-notice {
@@ -4478,7 +4566,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .tool-mcp-env { margin: 0; font-size: 11px; color: var(--warn); }
 .tool-mcp-hint { margin: 0; font-size: 11px; color: var(--text-3); font-style: italic; }
 .tool-mcp-cmd {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-3);
   background: var(--bg-3);
@@ -4543,7 +4631,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   color: var(--text-2);
 }
 .autopilot-warning code {
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-family: var(--font-mono);
   font-size: 10.5px;
   background: var(--bg-3);
   border-radius: 4px;
@@ -4575,7 +4663,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   background: var(--grok-bg-2);
   border: 1px solid var(--grok-border-2);
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,122,69,0.04);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.32), 0 0 0 1px var(--accent-line);
   display: flex;
   flex-direction: column;
   max-height: 320px;
@@ -4618,7 +4706,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .file-picker-path {
   color: var(--grok-text-4);
   font-size: 11px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4654,7 +4742,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   border: 1px solid var(--border);
   padding: 1px 6px;
   border-radius: 4px;
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-2);
   align-self: center;
@@ -4695,11 +4783,24 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 }
 
 /* ===== Sidebar collapse (⌘B) ===== */
+/* Shrink the grid TRACK too — the item alone left a ~204px dead strip of
+ * background between the 56px mini-sidebar and the workspace, so collapsing
+ * reclaimed no space. Guarded ≥901px so the single-column phone layout wins. */
+@media (min-width: 901px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+}
 .app-shell.sidebar-collapsed .app-sidebar {
   width: 56px;
   min-width: 56px;
   max-width: 56px;
   overflow: hidden;
+}
+/* Transition on the base rule so expanding animates too — declared only
+ * inside the collapsed selector, the property vanished with the class and
+ * expansion snapped. */
+.app-sidebar {
   transition: width 180ms ease, min-width 180ms ease, max-width 180ms ease;
 }
 .app-shell.sidebar-collapsed .app-sidebar > *:not(.brand) {
@@ -4756,13 +4857,13 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   border: none;
   outline: none;
   color: var(--text-1);
-  font-family: var(--font-sans, inherit);
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 450;
 }
 .palette-search-input::placeholder { color: var(--text-3); }
 .palette-search-kbd {
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-3);
   border: 1px solid var(--border-2);
@@ -4796,7 +4897,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   letter-spacing: 0.5px;
 }
 .palette-row-shortcut {
-  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-3);
   border: 1px solid var(--border-2);
@@ -4920,12 +5021,12 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 11px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .desktop-error {
-  background: rgba(243, 139, 168, 0.12);
-  border: 1px solid #f38ba8;
-  color: #f38ba8;
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border: 1px solid var(--error);
+  color: var(--error);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 12px;
@@ -5067,12 +5168,12 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   font-size: 11px;
   flex-shrink: 0;
 }
-.trace-tool .trace-icon { background: rgba(255,122,69,0.16); color: var(--grok-accent); }
-.trace-subagent .trace-icon { background: rgba(137,180,250,0.18); color: #89b4fa; }
-.trace-task .trace-icon { background: rgba(166,227,161,0.18); color: #a6e3a1; }
+.trace-tool .trace-icon { background: var(--accent-soft); color: var(--grok-accent); }
+.trace-subagent .trace-icon { background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info); }
+.trace-task .trace-icon { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
 .trace-other .trace-icon { background: var(--grok-bg-3); color: var(--grok-text-3); }
-.trace-status-done .trace-icon { background: rgba(166,227,161,0.18); color: #a6e3a1; }
-.trace-status-error .trace-icon { background: rgba(243,139,168,0.20); color: #f38ba8; }
+.trace-status-done .trace-icon { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
+.trace-status-error .trace-icon { background: color-mix(in srgb, var(--error) 20%, transparent); color: var(--error); }
 
 .trace-label {
   flex: 1;
@@ -5087,7 +5188,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.trace-status-error .trace-meta { color: #f38ba8; }
+.trace-status-error .trace-meta { color: var(--error); }
 .trace-pulse {
   display: inline-block;
   animation: trace-pulse 1.0s ease-in-out infinite;
@@ -5099,7 +5200,7 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .trace-detail {
   padding: 0 10px 8px 36px;
   color: var(--grok-text-3);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.45;
   word-break: break-word;
@@ -5133,4 +5234,107 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Keyboard focus (accessibility). The stylesheet strips native outlines in
+ * many places for mouse aesthetics, which left Tab-navigation with no focus
+ * indicator at all. :focus-visible only engages for keyboard-driven focus,
+ * so pointer interactions stay clean while keyboard users always see where
+ * they are. !important intentionally beats the scattered `outline: none`.
+ * ────────────────────────────────────────────────────────────────────────── */
+:is(button, a, input, textarea, select, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Prompt Library modal shell. The .prompt-library component itself is a
+ * fill-height flex column; this frames it like the other centered modals
+ * (Settings / Tools) so saved prompts are browsable and insertable again.
+ * ────────────────────────────────────────────────────────────────────────── */
+.prompt-library-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 48px));
+  height: min(72vh, 640px);
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.prompt-library-shell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.prompt-library-shell-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.prompt-library-shell .prompt-library {
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+}
+.prompt-library-shell .settings-close {
+  position: static;
+}
+
+/* Session feedback toast — surfaced at the conversation level so errors are
+ * actually visible (previously only rendered inside the collapsed Terminal). */
+.session-toast {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 18px 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-2);
+  color: var(--text-1);
+  font-size: 12px;
+  animation: palette-fade 120ms ease-out;
+}
+.session-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.session-toast button:hover {
+  color: var(--text-1);
+}
+
+/* Parsed-markdown container: pre-wrap is for the raw streaming <pre>, but it
+ * also inherited into the injected HTML, rendering marked's inter-block
+ * newlines as spurious blank lines and hard-wrapping paragraphs. Equal
+ * specificity, later in source → wins over the pre-wrap rules above. */
+.message.message-assistant .message-body.markdown-body,
+.message-body.markdown-body {
+  white-space: normal;
+}
+
+/* Animate the shell track alongside the sidebar width (Safari 16+/WebKit
+ * animates grid-template-columns; harmless where unsupported). */
+.app-shell {
+  transition: grid-template-columns 180ms ease;
+}
+
+/* Hover feedback for the two most-used click targets — every other
+ * interactive element already has one, and the global button transition
+ * (background 140ms) was written for exactly this. */
+.nav-list button:hover:not(.active),
+.history-list button:hover:not(.active) {
+  background: var(--bg-3);
+  color: var(--text-1);
 }

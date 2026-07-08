@@ -27,7 +27,15 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
 
   if (!snap) {
     if (html) {
-      return <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+      // markdown-body scopes the chat markdown ruleset (headings, lists,
+      // links, tables, inline code). Without it the injected HTML rendered
+      // with UA defaults — blue links on the dark panel, unstyled tables.
+      return (
+        <div
+          className="message-body markdown-body"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
     }
     if (fallbackText) return <pre className="message-body">{fallbackText}</pre>;
     return null;
@@ -35,6 +43,16 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
 
   const ended =
     snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
+
+  // Failed / stopped runs get an inline note under the body — the status bar
+  // already says "failed", but the bubble itself must explain why it looks
+  // truncated (or empty) once the status bar has moved on to the next run.
+  const endNote =
+    snap.state === 'failed'
+      ? `Run failed${snap.error ? ` — ${snap.error}` : ''}`
+      : snap.state === 'cancelled'
+        ? 'Run stopped before completion'
+        : null;
 
   // While the run is streaming, render the typewriter-paced raw text (smooth,
   // Claude-like cadence). Once it settles, swap to the fully-parsed markdown
@@ -44,13 +62,21 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
     <>
       <TraceTimeline runId={runId} />
       {ended && html ? (
-        <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />
+        <div
+          className="message-body markdown-body"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       ) : (
         <pre className="message-body streaming-raw">
           {smooth.text || fallbackText || ''}
           {smooth.caretVisible ? <span className="stream-caret">▋</span> : null}
         </pre>
       )}
+      {endNote ? (
+        <div className="message-error" role="alert">
+          {endNote}
+        </div>
+      ) : null}
     </>
   );
 }

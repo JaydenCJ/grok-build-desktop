@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MCP_CATALOG,
   addMcpServer,
@@ -34,10 +34,15 @@ export function ToolsPage({ open, onClose }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = async () => {
-    const run = await listMcpServers();
-    if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    try {
+      const run = await listMcpServers();
+      if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    } catch {
+      // Backend unavailable (web preview / grok missing) — keep the last list.
+    }
   };
   const refreshSkills = async () => {
     setInstalledSkills(new Set(await listInstalledSkills()));
@@ -56,6 +61,16 @@ export function ToolsPage({ open, onClose }: Props) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
+
+  // Basic dialog focus management: focus the search field on open so
+  // keyboard users land inside the modal (not on the launcher behind it),
+  // and restore focus on close.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    searchRef.current?.focus();
+    return () => previous?.focus?.();
+  }, [open]);
 
   // Which catalog ids already appear in `grok mcp list` output.
   const connectedIds = useMemo(() => {
@@ -131,6 +146,8 @@ export function ToolsPage({ open, onClose }: Props) {
         setNotice({ kind: 'err', text: run?.stderr || run?.output || 'grok mcp add failed' });
       }
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -144,6 +161,8 @@ export function ToolsPage({ open, onClose }: Props) {
       if (run?.ok) setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
       else setNotice({ kind: 'err', text: run?.stderr || 'grok mcp remove failed' });
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -200,6 +219,7 @@ export function ToolsPage({ open, onClose }: Props) {
         {notice ? <div className={`tools-notice ${notice.kind}`}>{notice.text}</div> : null}
 
         <input
+          ref={searchRef}
           className="tools-search"
           placeholder={tab === 'mcp' ? 'Search tools (github, postgres, search…)' : 'Search skills (review, tests, debug…)'}
           value={query}

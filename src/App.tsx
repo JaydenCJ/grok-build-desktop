@@ -4,7 +4,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   Archive,
@@ -63,7 +63,11 @@ import { CommandPalette, type PaletteAction } from "./components/CommandPalette"
 import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
-import { useActiveRun } from "./hooks/useActiveRun";
+import { PromptLibrary } from "./components/PromptLibrary";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { isConfirmOpen, requestConfirm } from "./lib/confirm";
+import { finalizeMessages } from "./lib/finalizeMessages";
+import { useActiveRunKey } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
 type Runner =
@@ -235,6 +239,20 @@ const storageKeys = {
   historyArchived: "grok-desktop-history-archived-v1",
   historyDeleted: "grok-desktop-history-deleted-v1",
 };
+
+/**
+ * Quota-safe localStorage write. setItem throws QuotaExceededError once the
+ * ~5MB budget is hit; thrown from a synchronous effect that propagates to the
+ * error boundary and hard-crashes the app on the interaction that tipped the
+ * quota. Persistence loss is non-fatal — in-memory state survives.
+ */
+function safeSetItem(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // quota or serialization error — non-fatal.
+  }
+}
 
 // Small localStorage helpers for the history-organization maps/sets.
 function loadIdSet(key: string): Set<string> {
@@ -498,7 +516,8 @@ function isInspectorTab(value: unknown): value is InspectorTab {
     value === "agents" ||
     value === "plugins" ||
     value === "hooks" ||
-    value === "permissions"
+    value === "permissions" ||
+    value === "desktop"
   );
 }
 
@@ -795,6 +814,9 @@ function App() {
     useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
   // Dedicated Tools / MCP hub (community-tool integration).
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
+  // Prompt Library modal. Prompts are saved from the history right-click menu
+  // ("Save to Prompt Library"), and this is where they're browsed / inserted.
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   // App-owned right-click menu (replaces the suppressed WebView menu).
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   // History organization — pin / rename / group / archive / delete, persisted
@@ -815,16 +837,16 @@ function App() {
     return () => window.clearTimeout(t);
   }, [historyNote]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
+    safeSetItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
   }, [pinnedPromptIds]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
+    safeSetItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
   }, [promptLabels]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
+    safeSetItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
   }, [promptGroups]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
+    safeSetItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
   }, [archivedPromptIds]);
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -852,7 +874,33 @@ function App() {
       const raw = window.localStorage.getItem(tabsStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Tab[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Validate each entry — tabs were the one persisted structure with
+          // no shape check (messages/history go through isChatMessage/
+          // isToolRun). A malformed entry (schema drift, hand-edited
+          // storage) reached recentPrompts and crashed every launch with
+          // "msgs.find is not a function" until storage was reset.
+          const valid = (parsed as unknown[])
+            .filter(
+              (t): t is Tab =>
+                !!t &&
+                typeof t === "object" &&
+                typeof (t as Tab).id === "string" &&
+                typeof (t as Tab).cwd === "string" &&
+                Array.isArray((t as Tab).messages),
+            )
+            .map((t) => ({
+              ...t,
+              messages: t.messages.filter(isChatMessage) as unknown as TabMessage[],
+              name:
+                typeof t.name === "string" && t.name
+                  ? t.name
+                  : defaultTabName(t.cwd),
+              createdAt:
+                typeof t.createdAt === "number" ? t.createdAt : Date.now(),
+            }));
+          if (valid.length > 0) return valid;
+        }
       }
     } catch {
       // fall through
@@ -876,6 +924,18 @@ function App() {
     }
     return "";
   });
+  // Always-fresh mirrors of the tab-critical state. Several callers of
+  // handleTabCreate/switchToSession live inside memoized closures (the ⌘K
+  // palette catalogue, the global keyboard router) whose dependency lists
+  // don't include messages/codingCwd — snapshotting through a stale closure
+  // there would overwrite the active tab with an OLD copy of the conversation
+  // and silently drop the newest messages. Reading through refs is immune.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const codingCwdRef = useRef(codingCwd);
+  codingCwdRef.current = codingCwd;
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
@@ -924,19 +984,43 @@ function App() {
   );
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  // Auto-dismiss the session toast (mirrors the historyNote toast above, but
+  // with a longer window since these can be error messages worth reading).
+  useEffect(() => {
+    if (!sessionNotice) return;
+    const t = window.setTimeout(() => setSessionNotice(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [sessionNotice]);
 
   const statusMap = useMemo(
     () => Object.fromEntries(statuses.map((status) => [status.id, status])),
     [statuses],
   );
   const activeModel = modelPreset === "custom" ? customModel.trim() || "grok-build" : modelPreset;
-  const activeModelMeta = grokModelPresets[modelPreset];
+  // Defensive lookup: modelPreset can transiently hold a CLI-reported id that
+  // isn't one of the hardcoded presets (see selectModel below) — falling back
+  // to the custom meta keeps the inspector render from dereferencing
+  // undefined.
+  const activeModelMeta = grokModelPresets[modelPreset] ?? grokModelPresets.custom;
   const activeReasoningLabel =
     reasoningEffort === "off" ? "auto" : reasoningEfforts[reasoningEffort].label;
 
   function changeModelPreset(nextModel: GrokModelId) {
     setModelPreset(nextModel);
-    setReasoningEffort(grokModelPresets[nextModel].defaultReasoning);
+    setReasoningEffort(grokModelPresets[nextModel]?.defaultReasoning ?? "off");
+  }
+
+  // Route any model id — preset or CLI-reported — to the right state. The
+  // composer footer already guarded non-preset ids (falling back to Custom);
+  // the Settings picker passed them straight to changeModelPreset, which
+  // dereferenced a missing preset entry and crashed the inspector render.
+  function selectModel(id: string) {
+    if (isGrokModelId(id)) {
+      changeModelPreset(id);
+    } else {
+      setModelPreset("custom");
+      setCustomModel(id);
+    }
   }
 
   function recordRun(run: ToolRun) {
@@ -944,7 +1028,7 @@ function App() {
     setHistory((current) => [run, ...current].slice(0, 6));
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      safeSetItem("grok-desktop-run-count-total", String(next));
       return next;
     });
   }
@@ -959,19 +1043,40 @@ function App() {
     setMessages([]);
     setTerminalLines([]);
     setTotalRuns(0);
-    window.localStorage.setItem("grok-desktop-run-count-total", "0");
+    safeSetItem("grok-desktop-run-count-total", "0");
     setSessionNotice("Cleared conversation, run history, and terminal.");
+  }
+
+  // Both "Clear conversation" entry points (conversation context menu and the
+  // status-bar Clear button) route through here: the wipe is irreversible, so
+  // it gets the same in-app confirmation as deleting a conversation.
+  function requestClearRunHistory() {
+    void requestConfirm({
+      title: "Clear conversation?",
+      message:
+        "This clears the conversation, run history, and terminal for this session. It can't be undone.",
+      confirmLabel: "Clear",
+      danger: true,
+    }).then((ok) => {
+      if (ok) clearRunHistory();
+    });
   }
 
   // ── Multi-session tabs ───────────────────────────────────────────────────
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
   // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
   function handleTabCreate() {
-    // Persist current tab first.
+    // Persist current tab first. Read through the refs — this function is
+    // invoked from stale-closure sites (⌘K palette, ⌘N keyboard router).
+    const currentTabId = activeTabIdRef.current;
     setTabs((current) => {
       const snapshotted = current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+        t.id === currentTabId
+          ? {
+              ...t,
+              cwd: codingCwdRef.current,
+              messages: messagesRef.current as unknown as TabMessage[],
+            }
           : t,
       );
       const next = makeTab("", [], defaultTabName("", snapshotted.length));
@@ -1001,14 +1106,33 @@ function App() {
   // Persist tabs (and the active id) whenever the array changes. This is the
   // single source of truth across reloads; localStorage hydrates on next boot.
   useEffect(() => {
-    try {
-      window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
-    } catch {
-      // quota or serialization error — non-fatal; in-memory state survives.
-    }
+    // Debounced like the messages/history persistence effects below — the
+    // tab mirror rewrites this array on every message append, and an
+    // un-debounced JSON.stringify of every conversation's full contents ran
+    // synchronously on each send.
+    const timer = window.setTimeout(() => {
+      safeSetItem(tabsStorageKey, JSON.stringify(tabs));
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [tabs]);
+  // Always-fresh mirror so the pagehide flush below writes the newest tabs
+  // without re-registering per change.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  // Flush the debounced persistence synchronously when the window goes away —
+  // otherwise quitting inside the 300ms window after a send would lose the
+  // newest message from tab/message storage.
   useEffect(() => {
-    if (activeTabId) window.localStorage.setItem(tabsActiveKey, activeTabId);
+    const flush = () => {
+      safeSetItem(tabsStorageKey, JSON.stringify(tabsRef.current));
+      safeSetItem(storageKeys.messages, JSON.stringify(messagesRef.current));
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (activeTabId) safeSetItem(tabsActiveKey, activeTabId);
   }, [activeTabId]);
 
   // Whenever the global codingCwd or messages change, write them back into
@@ -1049,14 +1173,22 @@ function App() {
   // way Claude / ChatGPT switch chats. `id` is a tab id.
   function switchToSession(id: string) {
     setPaletteOpen(false);
-    if (id === activeTabId) return;
+    // Read through the refs — palette/keyboard closures can hold stale state
+    // (see the ref block above); snapshotting with a stale copy would drop
+    // the newest messages of the conversation being left.
+    const currentTabId = activeTabIdRef.current;
+    if (id === currentTabId) return;
     const target = tabs.find((t) => t.id === id);
     if (!target) return;
     // Persist the current conversation back into its tab, then load the target.
     setTabs((current) =>
       current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
+        t.id === currentTabId
+          ? {
+              ...t,
+              cwd: codingCwdRef.current,
+              messages: messagesRef.current as unknown as TabMessage[],
+            }
           : t,
       ),
     );
@@ -1226,7 +1358,26 @@ function App() {
         shortcut: "A",
         onClick: () => toggleArchivePrompt(id),
       },
-      { label: "Delete conversation", icon: <Trash2 size={15} />, shortcut: "⌫", danger: true, separator: true, onClick: () => deleteSession(id) },
+      {
+        label: "Delete conversation",
+        icon: <Trash2 size={15} />,
+        shortcut: "⌫",
+        danger: true,
+        separator: true,
+        onClick: () => {
+          // Deleting is irreversible (messages + metadata + persistence), so
+          // confirm first — via the in-app dialog, since window.confirm is a
+          // silent no-op in WKWebView (always returns false).
+          void requestConfirm({
+            title: "Delete conversation?",
+            message: `Delete "${item.title}"? This can't be undone.`,
+            confirmLabel: "Delete",
+            danger: true,
+          }).then((ok) => {
+            if (ok) deleteSession(id);
+          });
+        },
+      },
     ];
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -1255,7 +1406,7 @@ function App() {
       {
         label: "Clear conversation",
         disabled: messages.length === 0,
-        onClick: () => clearRunHistory(),
+        onClick: () => requestClearRunHistory(),
       },
       ...(grokIsRunning && activeRunId
         ? [{ label: "Stop current run", danger: true, onClick: () => void cancelRun(activeRunId) }]
@@ -1272,6 +1423,13 @@ function App() {
 
   function switchMode(nextMode: Mode) {
     if (nextMode === mode || busyRunner !== null) return;
+    // Capture the live composer text before replacing it. Drafts normally
+    // persist on textarea blur, but a ⌘1/⌘2 switch never blurs — without this
+    // the in-flight draft of the mode being left was silently lost.
+    const liveDraft = composerRef.current?.getValue();
+    if (liveDraft !== undefined) {
+      setDrafts((current) => ({ ...current, [mode]: liveDraft }));
+    }
     setMode(nextMode);
     setComposerValue(drafts[nextMode] || defaultDrafts[nextMode]);
   }
@@ -1526,7 +1684,7 @@ function App() {
     });
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      safeSetItem("grok-desktop-run-count-total", String(next));
       return next;
     });
     if (info.position > 0) {
@@ -1963,19 +2121,19 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.mode, mode);
+    safeSetItem(storageKeys.mode, mode);
   }, [mode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(drafts));
+      safeSetItem(storageKeys.drafts, JSON.stringify(drafts));
     }, 250);
     return () => clearTimeout(timer);
   }, [drafts]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.themeMode, themeMode);
-    window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
+    safeSetItem(storageKeys.themeMode, themeMode);
+    safeSetItem(storageKeys.cleanLayoutTheme, "true");
     // CRITICAL: drive the `data-theme` attribute, not just the `theme-*`
     // className. The legacy palette (--app-bg, --panel, …) flips via the
     // `.app-shell.theme-light` class, but the v0.4.0 mono tokens
@@ -1988,7 +2146,7 @@ function App() {
 
   // Persist sidebar-collapsed state so ⌘B is sticky across reloads.
   useEffect(() => {
-    window.localStorage.setItem(
+    safeSetItem(
       "grok-desktop-sidebar-collapsed",
       sidebarCollapsed ? "1" : "0",
     );
@@ -2013,7 +2171,7 @@ function App() {
         label: "Clear current conversation",
         hint: "Wipes messages + run history",
         group: "Session",
-        run: () => clearRunHistory(),
+        run: () => requestClearRunHistory(),
       },
       {
         id: "focus-composer",
@@ -2028,8 +2186,12 @@ function App() {
         shortcut: "⌘F",
         group: "Navigation",
         run: () => {
-          historySearchInputRef.current?.focus();
-          historySearchInputRef.current?.select();
+          // Expand a collapsed sidebar first, or the input isn't focusable.
+          setSidebarCollapsed(false);
+          requestAnimationFrame(() => {
+            historySearchInputRef.current?.focus();
+            historySearchInputRef.current?.select();
+          });
         },
       },
       {
@@ -2046,10 +2208,11 @@ function App() {
         run: () => setToolsPageOpen(true),
       },
       {
-        id: "toggle-inspector",
-        label: toolsOpen ? "Close Context inspector" : "Open Context inspector (advanced)",
+        id: "open-prompt-library",
+        label: "Open Prompt Library",
+        hint: "Browse and insert saved prompts",
         group: "View",
-        run: () => togglePanel("tools"),
+        run: () => setPromptLibraryOpen(true),
       },
       {
         id: "toggle-preview",
@@ -2082,7 +2245,13 @@ function App() {
         hint: "Mac app context queries",
         group: "View",
         run: () => {
-          setToolsOpen(true);
+          // The Desktop tab lives inside the Context inspector drawer, which
+          // renders from contextOpen — the old setToolsOpen(true) targeted an
+          // orphaned flag and opened nothing.
+          setPreviewOpen(false);
+          setTerminalOpen(false);
+          setToolsOpen(false);
+          setContextOpen(true);
           setInspectorTab("desktop");
         },
       },
@@ -2116,12 +2285,17 @@ function App() {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key.toLowerCase() === "k") {
+        // Same confirm guard as ⌘F / "/" below: while a confirmation dialog
+        // is pending, opening the palette would put a focused action list
+        // UNDER the dialog's backdrop with Enter still wired to it.
+        if (isConfirmOpen()) return;
         e.preventDefault();
         setPaletteOpen((v) => !v);
       } else if (meta && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setSidebarCollapsed((v) => !v);
       } else if (meta && e.key === ",") {
+        if (isConfirmOpen()) return;
         e.preventDefault();
         setSettingsOpen(true);
       } else if (meta && e.shiftKey && e.key.toLowerCase() === "l") {
@@ -2129,11 +2303,49 @@ function App() {
         setThemeMode((t) => (t === "dark" ? "light" : "dark"));
       } else if (meta && e.key.toLowerCase() === "n" && !e.shiftKey) {
         // Don't steal the system "New Window" shortcut if the user is in a
-        // textarea (composer). Only act when focus is elsewhere.
+        // textarea (composer). Only act when focus is elsewhere — and never
+        // while a confirm is pending (a new tab would swap the session the
+        // pending confirmation is about to act on).
         const tag = (document.activeElement?.tagName ?? "").toLowerCase();
-        if (tag !== "textarea" && tag !== "input") {
+        if (tag !== "textarea" && tag !== "input" && !isConfirmOpen()) {
           e.preventDefault();
           handleTabCreate();
+        }
+      } else if (meta && !e.shiftKey && e.key.toLowerCase() === "f") {
+        // ⌘F — advertised by the palette's "Search recent prompts" action but
+        // previously bound nowhere. Guarded like the ⌘N and "/" branches:
+        // never hijack Find / the Ctrl-F caret binding inside an editable
+        // field, and never steal focus out from under an open modal surface
+        // (palette, Settings, Tools, Prompt Library).
+        const el = document.activeElement as HTMLElement | null;
+        const tag = (el?.tagName ?? "").toLowerCase();
+        const editable =
+          tag === "textarea" || tag === "input" || Boolean(el?.isContentEditable);
+        const modalOpen =
+          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen || isConfirmOpen();
+        if (!editable && !modalOpen) {
+          e.preventDefault();
+          setSidebarCollapsed(false);
+          requestAnimationFrame(() => {
+            historySearchInputRef.current?.focus();
+            historySearchInputRef.current?.select();
+          });
+        }
+      } else if (!meta && !e.altKey && e.key === "/") {
+        // "/" focuses the composer (also advertised in the palette). Only
+        // when focus isn't already in an editable field, so typing a slash
+        // in the composer or an input stays a slash — and never while a
+        // modal surface is open (same guard as ⌘F above), so a slash can't
+        // yank focus out from under the palette/Settings/confirm dialog.
+        const el = document.activeElement as HTMLElement | null;
+        const tag = (el?.tagName ?? "").toLowerCase();
+        const editable =
+          tag === "textarea" || tag === "input" || Boolean(el?.isContentEditable);
+        const modalOpen =
+          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen || isConfirmOpen();
+        if (!editable && !modalOpen) {
+          e.preventDefault();
+          composerRef.current?.focus();
         }
       } else if (e.key === "Escape") {
         // Esc closes whatever transient surface is open: palette first, then
@@ -2142,6 +2354,9 @@ function App() {
         // toggling them off again.
         if (paletteOpen) {
           setPaletteOpen(false);
+        } else if (promptLibraryOpen) {
+          e.preventDefault();
+          setPromptLibraryOpen(false);
         } else if (previewOpen || contextOpen || terminalOpen || toolsOpen) {
           e.preventDefault();
           setPreviewOpen(false);
@@ -2154,10 +2369,10 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paletteOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
+  }, [paletteOpen, promptLibraryOpen, settingsOpen, toolsPageOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.codingCwd, codingCwd);
+    safeSetItem(storageKeys.codingCwd, codingCwd);
   }, [codingCwd]);
 
   useEffect(() => {
@@ -2168,63 +2383,63 @@ function App() {
   }, [codingCwd, lastRun?.duration_ms]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.shellCommand, shellCommand);
+    safeSetItem(storageKeys.shellCommand, shellCommand);
   }, [shellCommand]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.actionPolicy, actionPolicy);
+    safeSetItem(storageKeys.actionPolicy, actionPolicy);
   }, [actionPolicy]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.codingWorkflow, codingWorkflow);
+    safeSetItem(storageKeys.codingWorkflow, codingWorkflow);
   }, [codingWorkflow]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.dockPosition, dockPosition);
+    safeSetItem(storageKeys.dockPosition, dockPosition);
   }, [dockPosition]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.inspectorTab, inspectorTab);
+    safeSetItem(storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.modelPreset, modelPreset);
+    safeSetItem(storageKeys.modelPreset, modelPreset);
   }, [modelPreset]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.customModel, customModel);
+    safeSetItem(storageKeys.customModel, customModel);
   }, [customModel]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.effortLevel, effortLevel);
+    safeSetItem(storageKeys.effortLevel, effortLevel);
   }, [effortLevel]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.reasoningEffort, reasoningEffort);
+    safeSetItem(storageKeys.reasoningEffort, reasoningEffort);
   }, [reasoningEffort]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.permissionMode, permissionMode);
+    safeSetItem(storageKeys.permissionMode, permissionMode);
   }, [permissionMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.bestOfN, String(bestOfN));
+    safeSetItem(storageKeys.bestOfN, String(bestOfN));
   }, [bestOfN]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.experimentalMemory, String(experimentalMemory));
+    safeSetItem(storageKeys.experimentalMemory, String(experimentalMemory));
   }, [experimentalMemory]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.webSearchEnabled, String(webSearchEnabled));
+    safeSetItem(storageKeys.webSearchEnabled, String(webSearchEnabled));
   }, [webSearchEnabled]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.subagentsEnabled, String(subagentsEnabled));
+    safeSetItem(storageKeys.subagentsEnabled, String(subagentsEnabled));
   }, [subagentsEnabled]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.selfCheck, String(selfCheck));
+    safeSetItem(storageKeys.selfCheck, String(selfCheck));
   }, [selfCheck]);
 
   useEffect(() => {
@@ -2233,29 +2448,43 @@ function App() {
       const clearedDrafts = { ...drafts, [mode]: "" };
       setDrafts(clearedDrafts);
       setComposerValue("");
-      window.localStorage.setItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
+      safeSetItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
     }
-    window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
-    window.localStorage.setItem(storageKeys.cleanComposer, "true");
+    safeSetItem(storageKeys.safeRuntimeDefaults, "true");
+    safeSetItem(storageKeys.cleanComposer, "true");
   }, [drafts, lastRun, mode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.runHistory, JSON.stringify(history));
+      safeSetItem(storageKeys.runHistory, JSON.stringify(history));
     }, 300);
     return () => clearTimeout(timer);
   }, [history]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      window.localStorage.setItem(storageKeys.messages, JSON.stringify(messages));
+      safeSetItem(storageKeys.messages, JSON.stringify(messages));
     }, 300);
     return () => clearTimeout(timer);
   }, [messages]);
 
+  // Write the final streamed text back into the message record once its run
+  // settles. The live UI renders from streamStore, but that store is
+  // in-memory only — without this write-back every assistant reply persisted
+  // as content:"" and restored conversations (restart, or reopening from the
+  // sidebar after the store was reset) showed ONLY the user's prompts.
+  // Subscribing to the store (instead of watching the "active" run) also
+  // catches runs that finish right as the queue advances past them.
+  // The mapping itself lives in lib/finalizeMessages.ts (pure, unit-tested).
+  useEffect(() => {
+    return streamStore.subscribe(() => {
+      setMessages((current) => finalizeMessages(current, streamStore.getRunSnapshot));
+    });
+  }, []);
+
   useEffect(() => {
     if (lastRun) {
-      window.localStorage.setItem(storageKeys.lastRun, JSON.stringify(lastRun));
+      safeSetItem(storageKeys.lastRun, JSON.stringify(lastRun));
     } else {
       window.localStorage.removeItem(storageKeys.lastRun);
     }
@@ -2539,6 +2768,16 @@ function App() {
   const visibleRuns = history.length > 0 ? history : lastRun ? [lastRun] : [];
   const previewFiles = staticPreview?.files ?? [];
   const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
+  // Load the preview from the preview:// protocol (its response carries its
+  // own permissive CSP) instead of srcdoc — about:srcdoc inherits the app
+  // document's strict CSP and can't carry nonces, so generated-site scripts
+  // would all be refused. convertFileSrc yields the platform-correct URL
+  // (preview://localhost/… on macOS/Linux, http://preview.localhost/… on
+  // Windows); updatedAt busts the iframe cache on each refresh.
+  const previewSrc =
+    previewReady && hasTauriRuntime()
+      ? `${convertFileSrc("index.html", "preview")}?v=${staticPreview?.updatedAt ?? 0}`
+      : null;
   const previewEntry = staticPreview?.entryPath
     ? staticPreview.entryPath.split("/").pop() || "index.html"
     : "index.html";
@@ -2567,9 +2806,14 @@ function App() {
     [inspectOutput],
   );
   const { skillItems, agentItems, pluginItems, mcpItems, hookItems, permissionsSource } = inspectSummary;
-  const activeRun = useActiveRun();
-  const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
-  const activeRunId = activeRun?.id ?? null;
+  // Narrow subscription: App only needs the active run's id + state, not the
+  // full snapshot (which is replaced on every streamed token and would
+  // re-render this entire ~4k-line component many times per second).
+  const activeRunKey = useActiveRunKey();
+  const runKeySplit = activeRunKey.lastIndexOf(":");
+  const activeRunId = runKeySplit > 0 ? activeRunKey.slice(0, runKeySplit) : null;
+  const grokIsRunning =
+    runKeySplit > 0 && activeRunKey.slice(runKeySplit + 1) === "running";
 
   const messageRefs: MessageRef[] = useMemo(
     () =>
@@ -2609,16 +2853,21 @@ function App() {
         dockPosition={dockPosition}
         setDockPosition={(d) => {
           setDockPosition(d);
-          window.localStorage.setItem(storageKeys.dockPosition, d);
+          safeSetItem(storageKeys.dockPosition, d);
         }}
         sidebarCollapsed={sidebarCollapsed}
         setSidebarCollapsed={setSidebarCollapsed}
-        modelOptions={modelOptions.map((id) => ({
-          value: id,
-          label: grokModelPresets[id as GrokModelId]?.label ?? id,
-        }))}
+        modelOptions={[
+          ...modelOptions.map((id) => ({
+            value: id,
+            label: grokModelPresets[id as GrokModelId]?.label ?? id,
+          })),
+          // Keep Custom reachable from Settings (the composer footer already
+          // offers it), and keep the select's value valid when it's active.
+          { value: "custom", label: "Custom…" },
+        ]}
         modelPreset={modelPreset}
-        onModelPreset={(id) => changeModelPreset(id as GrokModelId)}
+        onModelPreset={selectModel}
         customModel={customModel}
         setCustomModel={setCustomModel}
         activeModel={activeModel}
@@ -2661,10 +2910,41 @@ function App() {
         codingCwd={codingCwd}
         setCodingCwd={setCodingCwd}
         onPickFolder={() => void pickFolder()}
-        appVersion="0.4.0"
+        appVersion={typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
+      {promptLibraryOpen ? (
+        <div
+          className="settings-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Prompt library"
+          onClick={() => setPromptLibraryOpen(false)}
+        >
+          <div className="prompt-library-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="prompt-library-shell-head">
+              <h2>Prompt Library</h2>
+              <button
+                type="button"
+                className="settings-close"
+                aria-label="Close prompt library"
+                onClick={() => setPromptLibraryOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <PromptLibrary
+              onInsert={(body) => {
+                updatePrompt(body);
+                setPromptLibraryOpen(false);
+                composerRef.current?.focus();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+      <ConfirmDialog />
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="brand">
@@ -3011,6 +3291,23 @@ function App() {
             <QueueDock />
             <StatusBar />
 
+            {/* Session feedback toast. This used to render only inside the
+                collapsed Terminal <details>, so errors like "Folder picker
+                failed" or "Session restore failed" were invisible unless the
+                terminal happened to be open. */}
+            {sessionNotice ? (
+              <div className="session-toast" role="status">
+                <span>{sessionNotice}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss notice"
+                  onClick={() => setSessionNotice(null)}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+
             <div className="composer-row">
               {actionPolicy === "autopilot" ? (
                 <div className="autopilot-warning" role="alert">
@@ -3044,6 +3341,20 @@ function App() {
                   setDrafts((current) => ({ ...current, [mode]: text }));
                 }}
                 onEnqueued={handleEnqueued}
+                onSubmitError={(text) => {
+                  // Show the failure in the conversation itself — the typed
+                  // prompt stays in the composer, so this reads as "your send
+                  // didn't go through, here's why".
+                  appendMessage({
+                    id: makeId("a"),
+                    role: "assistant",
+                    content: hasTauriRuntime()
+                      ? `Couldn't start the run — ${text}`
+                      : "Couldn't start the run — native commands need the desktop app (npm run tauri:dev).",
+                    ts: Date.now(),
+                    status: "error",
+                  });
+                }}
               />
               <div className="composer-footer">
                 <select
@@ -3192,7 +3503,17 @@ function App() {
               </div>
             </div>
             <div className="preview-frame-wrap">
-              {previewReady ? (
+              {previewReady && previewSrc ? (
+                // sandbox (no allow-same-origin) stays the isolation boundary:
+                // opaque origin, no IPC, no access to the app document.
+                <iframe
+                  sandbox="allow-forms allow-popups allow-scripts"
+                  src={previewSrc}
+                  title="Generated static site preview"
+                />
+              ) : previewReady ? (
+                // Vite browser preview (no Tauri protocol registry): srcdoc
+                // fallback — the dev server ships no CSP, so scripts still run.
                 <iframe
                   sandbox="allow-forms allow-popups allow-scripts"
                   srcDoc={staticPreview?.html}
@@ -3251,26 +3572,11 @@ function App() {
                   {tab.label}
                 </button>
               ))}
-              <button
-                aria-label="Toggle dock position"
-                onClick={() => {
-                  const next: DockPosition = dockPosition === "right" ? "bottom" : "right";
-                  setDockPosition(next);
-                  window.localStorage.setItem(storageKeys.dockPosition, next);
-                }}
-                title={`Move dock to ${dockPosition === "right" ? "bottom" : "right"}`}
-                type="button"
-              >
-                <PanelRight size={16} />
-              </button>
-              <button
-                aria-label="Close inspector"
-                onClick={() => setToolsOpen(false)}
-                title="Close (⌘B clears panels)"
-                type="button"
-              >
-                <X size={16} />
-              </button>
+              {/* The dock-toggle and close buttons that used to sit here were
+                  permanently hidden by a `button[aria-label]` display:none
+                  rule (and the close handler targeted an orphaned state
+                  flag). Removed: dock position lives in Settings and the
+                  terminal summary; the drawer closes via its own summary. */}
             </div>
 
             <div className="inspector-body">
@@ -3659,9 +3965,9 @@ function App() {
                     <div className="card-head">
                       <span>Command History</span>
                       <button
-                        aria-label="Clear run history"
+                        aria-label="Clear conversation and run history"
                         disabled={history.length === 0 && !lastRun}
-                        onClick={clearRunHistory}
+                        onClick={requestClearRunHistory}
                         type="button"
                       >
                         <Trash2 size={14} />
@@ -3766,7 +4072,6 @@ function App() {
               </button>
             </div>
           </div>
-          {sessionNotice ? <p className="session-note">{sessionNotice}</p> : null}
           <div className="terminal-view" role="log" aria-live="polite">
             {terminalDisplay.map((line, index) => (
               <div className={terminalClass(line)} key={`${line}-${index}`}>
@@ -3897,7 +4202,7 @@ function App() {
             <button
               className="status-clear"
               disabled={messages.length === 0 && history.length === 0}
-              onClick={clearRunHistory}
+              onClick={requestClearRunHistory}
               type="button"
               title="Clear conversation, run history, and terminal"
             >
