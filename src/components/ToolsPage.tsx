@@ -40,8 +40,11 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [query, setQuery] = useState('');
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
-  useModalFocus(open, closeRef);
+  // Focus trap: Tab/Shift+Tab cycle inside the card, Escape closes, focus
+  // returns to the opener on close.
+  useModalFocus(open, modalRef, { initialFocus: closeRef, onEscape: onClose });
 
   const refresh = async () => {
     const run = await listMcpServers();
@@ -57,15 +60,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
     if (!open) return;
     void refresh();
     void refreshSkills();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  }, [open]);
 
   // Which catalog ids already appear in `grok mcp list` output. Match ids as
   // whole tokens, not substrings — the catalog has both 'git' and 'github',
@@ -191,7 +186,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
 
   return (
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Tools" onClick={onClose}>
-      <div className="tools-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="tools-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="tools-head">
           <div>
             <h2>Tools &amp; Skills</h2>

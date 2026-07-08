@@ -82,6 +82,23 @@ describe('SettingsPage', () => {
     expect(props.onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('traps focus inside the modal: Tab wraps last→first, Shift+Tab wraps first→last', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage {...makeProps()} />);
+    // Initial focus lands on the close button.
+    expect(screen.getByRole('button', { name: 'Close settings' })).toHaveFocus();
+
+    // First focusable is the "General" nav item; last is the sidebar toggle.
+    const first = screen.getByRole('button', { name: 'General' });
+    const last = screen.getByRole('switch', { name: 'Collapse sidebar' });
+
+    first.focus();
+    await user.tab({ shift: true }); // wrap: first → last
+    expect(last).toHaveFocus();
+    await user.tab(); // wrap: last → first
+    expect(first).toHaveFocus();
+  });
+
   it('general: theme buttons and dock select drive their setters', async () => {
     const user = userEvent.setup();
     const props = makeProps();

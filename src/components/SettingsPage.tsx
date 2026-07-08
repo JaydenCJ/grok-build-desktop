@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useModalFocus } from '../hooks/useModalFocus';
 
 type ThemeMode = 'dark' | 'light';
@@ -112,26 +112,17 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 export function SettingsPage(props: SettingsPageProps) {
   const { open, section, onSection, onClose } = props;
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
-
-  useModalFocus(open, closeRef);
+  // Focus trap: Tab/Shift+Tab cycle inside the card, Escape closes, focus
+  // returns to the opener on close.
+  useModalFocus(open, modalRef, { initialFocus: closeRef, onEscape: onClose });
 
   if (!open) return null;
 
   return (
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <aside className="settings-nav">
           <div className="settings-nav-head">Settings</div>
           {NAV.map((n) => (
