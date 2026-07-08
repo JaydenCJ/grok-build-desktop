@@ -17,6 +17,19 @@ marked.use({
     html({ text }: { text: string }) {
       return escapeHtml(text);
     },
+    // Remote images are never fetched inside the WebView: the CSP's img-src
+    // ('self' data:) blocks them, and fetching attacker-chosen URLs on render
+    // would be a zero-click tracking/exfiltration channel (markdown is
+    // untrusted model/tool output). Render a link instead — the click
+    // interceptor in main.tsx routes it to the system browser. Local and
+    // data: images fall through to the default renderer.
+    image({ href, text }: { href: string; text: string }) {
+      if (/^(https?:)?\/\//i.test(href)) {
+        const label = text.trim() || href;
+        return `<a href="${escapeAttr(href)}" title="Image — opens in your browser">${escapeHtml(label)}</a>`;
+      }
+      return false;
+    },
     code({ text, lang }: { text: string; lang?: string }) {
       let highlighted = escapeHtml(text);
       if (text.length > 50000) {
@@ -42,6 +55,12 @@ marked.use({
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Attribute-position escaping also needs quotes covered, or an image URL
+// containing `"` could break out of the href attribute.
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 interface ParseRequest {
