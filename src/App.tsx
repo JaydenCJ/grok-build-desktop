@@ -2171,7 +2171,7 @@ function App() {
         label: "Clear current conversation",
         hint: "Wipes messages + run history",
         group: "Session",
-        run: () => clearRunHistory(),
+        run: () => requestClearRunHistory(),
       },
       {
         id: "focus-composer",
@@ -2285,12 +2285,17 @@ function App() {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key.toLowerCase() === "k") {
+        // Same confirm guard as ⌘F / "/" below: while a confirmation dialog
+        // is pending, opening the palette would put a focused action list
+        // UNDER the dialog's backdrop with Enter still wired to it.
+        if (isConfirmOpen()) return;
         e.preventDefault();
         setPaletteOpen((v) => !v);
       } else if (meta && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setSidebarCollapsed((v) => !v);
       } else if (meta && e.key === ",") {
+        if (isConfirmOpen()) return;
         e.preventDefault();
         setSettingsOpen(true);
       } else if (meta && e.shiftKey && e.key.toLowerCase() === "l") {
@@ -2298,9 +2303,11 @@ function App() {
         setThemeMode((t) => (t === "dark" ? "light" : "dark"));
       } else if (meta && e.key.toLowerCase() === "n" && !e.shiftKey) {
         // Don't steal the system "New Window" shortcut if the user is in a
-        // textarea (composer). Only act when focus is elsewhere.
+        // textarea (composer). Only act when focus is elsewhere — and never
+        // while a confirm is pending (a new tab would swap the session the
+        // pending confirmation is about to act on).
         const tag = (document.activeElement?.tagName ?? "").toLowerCase();
-        if (tag !== "textarea" && tag !== "input") {
+        if (tag !== "textarea" && tag !== "input" && !isConfirmOpen()) {
           e.preventDefault();
           handleTabCreate();
         }
@@ -3958,9 +3965,9 @@ function App() {
                     <div className="card-head">
                       <span>Command History</span>
                       <button
-                        aria-label="Clear run history"
+                        aria-label="Clear conversation and run history"
                         disabled={history.length === 0 && !lastRun}
-                        onClick={clearRunHistory}
+                        onClick={requestClearRunHistory}
                         type="button"
                       >
                         <Trash2 size={14} />
