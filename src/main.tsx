@@ -14,6 +14,16 @@ void ensureStreamListenersAttached().catch((e) => {
 // External links (markdown answers routinely contain them) must open in the
 // system browser. Left alone, a click navigates the WebView itself away from
 // the app — the whole UI is replaced by the target page with no way back.
+function openExternally(url: string): void {
+  if ("__TAURI_INTERNALS__" in window) {
+    void import("@tauri-apps/plugin-opener")
+      .then(({ openUrl }) => openUrl(url))
+      .catch(() => window.open(url, "_blank", "noopener,noreferrer"));
+  } else {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 window.addEventListener(
   "click",
   (e) => {
@@ -29,20 +39,23 @@ window.addEventListener(
         ? `https:${href}`
         : null;
     if (!external) {
-      // Block script-ish URL schemes outright — rendered markdown is
-      // untrusted output, and a javascript:/data: anchor must never execute
-      // in or navigate the WebView.
-      if (/^\s*(javascript|data|vbscript|file):/i.test(href)) e.preventDefault();
+      // mailto: routes to the system default mail client via the opener —
+      // the WebView itself has no mail handler.
+      if (/^\s*mailto:/i.test(href)) {
+        e.preventDefault();
+        openExternally(href.trim());
+        return;
+      }
+      // Everything else that isn't a pure in-page anchor (#…) must not
+      // navigate. Rendered markdown is untrusted output: javascript:/data:
+      // anchors must never execute in the WebView, and a relative path
+      // ("./docs/x.md") resolves to a nonexistent tauri://localhost resource
+      // — the whole app gets replaced by a blank page.
+      if (!href.startsWith("#")) e.preventDefault();
       return;
     }
     e.preventDefault();
-    if ("__TAURI_INTERNALS__" in window) {
-      void import("@tauri-apps/plugin-opener")
-        .then(({ openUrl }) => openUrl(external))
-        .catch(() => window.open(external, "_blank", "noopener,noreferrer"));
-    } else {
-      window.open(external, "_blank", "noopener,noreferrer");
-    }
+    openExternally(external);
   },
   { capture: true },
 );
