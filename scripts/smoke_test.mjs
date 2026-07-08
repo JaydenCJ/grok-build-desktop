@@ -389,10 +389,36 @@ assert.ok(app.includes('sandbox="allow-forms allow-popups allow-scripts"'),
   "preview iframe must keep its sandbox attribute");
 assert.ok(!app.includes("allow-same-origin"),
   "preview iframe sandbox must not include allow-same-origin");
-// A real CSP must be configured (it also governs the srcdoc preview iframe).
-assert.ok(typeof tauriConf.app?.security?.csp === "string" &&
-  tauriConf.app.security.csp.includes("default-src 'self'"),
+// A real CSP must be configured, and script-src must stay clean: no inline
+// scripts and no remote script origins in the shipped app. The preview iframe
+// no longer depends on the app CSP — it loads from the grokpreview:// custom
+// protocol, whose responses carry their own Content-Security-Policy header.
+const csp = tauriConf.app?.security?.csp;
+assert.ok(typeof csp === "string" && csp.includes("default-src 'self'"),
   "tauri.conf.json must set a real Content-Security-Policy (not null)");
+const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+assert.ok(scriptSrc, "CSP must declare an explicit script-src directive");
+assert.ok(!scriptSrc.includes("'unsafe-inline'"),
+  "script-src must not allow 'unsafe-inline'");
+assert.ok(!scriptSrc.includes("https:") && !scriptSrc.includes("http:"),
+  "script-src must not allow remote script origins");
+assert.ok(!/'unsafe-eval'/.test(scriptSrc), "script-src must not allow 'unsafe-eval'");
+// The preview scheme must stay frameable and nothing else remote must be.
+assert.ok(csp.includes("frame-src grokpreview:"),
+  "CSP must allow framing the grokpreview custom protocol");
+// index.html must not carry inline scripts or remote stylesheet/script tags,
+// or the strict script-src/style-src above would silently break the app.
+const indexHtml = read("index.html");
+assert.ok(!/<script(?![^>]*\bsrc=)/i.test(indexHtml),
+  "index.html must not contain inline <script> blocks");
+assert.ok(!/https:\/\/fonts\.googleapis\.com|https:\/\/fonts\.gstatic\.com/.test(indexHtml),
+  "fonts must be bundled locally, not loaded from Google Fonts");
+// The Rust preview protocol handler must attach its own CSP to responses.
+const rustLib = read("src-tauri/src/lib.rs");
+assert.ok(rustLib.includes("PREVIEW_DOCUMENT_CSP"),
+  "preview scheme responses must carry their own Content-Security-Policy");
+assert.ok(rustLib.includes("register_uri_scheme_protocol"),
+  "the grokpreview custom protocol must be registered");
 // Directory-scoped MCP catalog installs must go through the folder picker —
 // never silently expose $HOME.
 assert.ok(read("src/components/ToolsPage.tsx").includes("pickExposedFolder"),

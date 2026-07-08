@@ -21,8 +21,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'",
-      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' data: blob:; font-src 'self' data: https:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 ws:; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; frame-src grokpreview: http://grokpreview.localhost; object-src 'none'; base-uri 'self'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 ws:; frame-src grokpreview: http://grokpreview.localhost; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {
