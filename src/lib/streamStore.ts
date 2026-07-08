@@ -217,34 +217,45 @@ export async function attachTauriListeners(): Promise<void> {
   if (unlistenFns.length > 0 || attachUnavailable) return;
   if (!hasTauriRuntime()) {
     // Running in vite browser preview without the Tauri shell: skip silently.
+    // This is the only permanent latch — a failed listen() below must NOT
+    // latch, otherwise one transient IPC hiccup at startup leaves the app
+    // permanently deaf to run events with no way to retry.
     attachUnavailable = true;
     return;
   }
   // De-dupe parallel callers and StrictMode double-mounts.
   if (attachInflight) return attachInflight;
   attachInflight = (async () => {
+    // Collect as we go so a mid-sequence failure can detach the listeners
+    // that DID attach — a later retry must not stack duplicate handlers.
+    const attached: UnlistenFn[] = [];
     try {
-      const u1 = await listen<{ runId: string; event: GrokEvent; raw?: unknown }>(
-        'grok-desktop://run-event',
-        (e) => applyRunEvent(e.payload.runId, e.payload.event, e.payload.raw),
+      attached.push(
+        await listen<{ runId: string; event: GrokEvent; raw?: unknown }>(
+          'grok-desktop://run-event',
+          (e) => applyRunEvent(e.payload.runId, e.payload.event, e.payload.raw),
+        ),
       );
-      const u2 = await listen<{
-        runId: string;
-        state: string;
-        startedAt?: number;
-        endedAt?: number;
-        error?: string;
-      }>('grok-desktop://run-state-changed', (e) =>
-        applyStateChange(e.payload.runId, e.payload as any),
+      attached.push(
+        await listen<{
+          runId: string;
+          state: string;
+          startedAt?: number;
+          endedAt?: number;
+          error?: string;
+        }>('grok-desktop://run-state-changed', (e) =>
+          applyStateChange(e.payload.runId, e.payload as any),
+        ),
       );
-      const u3 = await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
-        'grok-desktop://queue-changed',
-        (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
+      attached.push(
+        await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
+          'grok-desktop://queue-changed',
+          (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
+        ),
       );
-      unlistenFns = [u1, u2, u3];
+      unlistenFns = attached;
     } catch (err) {
-      // First failure latches "unavailable" so we don't keep spamming the console.
-      attachUnavailable = true;
+      attached.forEach((fn) => fn());
       throw err;
     } finally {
       attachInflight = null;

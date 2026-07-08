@@ -1,5 +1,6 @@
 // src/lib/grok.ts — wrappers around the enqueue/cancel run-queue commands
 import { invoke } from '@tauri-apps/api/core';
+import { retryWithBackoff } from './retry';
 import { attachTauriListeners } from './streamStore';
 
 /** Result shape of the ToolRun-producing Tauri commands (shell, inspect, mcp, …). */
@@ -14,8 +15,24 @@ export type ToolRun = {
   stderr: string;
 };
 
+/**
+ * Attach the run-event / run-state / queue Tauri listeners, retrying with
+ * exponential backoff (500ms → 8s, 5 attempts). Without a working
+ * subscription every streamed reply renders as dead silence, so a transient
+ * startup failure must not be terminal. Rejects only once all attempts are
+ * exhausted — callers surface that to the user.
+ */
 export async function ensureStreamListenersAttached(): Promise<void> {
-  await attachTauriListeners();
+  await retryWithBackoff(() => attachTauriListeners(), {
+    attempts: 5,
+    baseDelayMs: 500,
+    onRetry: (error, attempt, delayMs) => {
+      console.warn(
+        `[grok-desktop] stream listener attach failed (attempt ${attempt}, retrying in ${delayMs}ms)`,
+        error,
+      );
+    },
+  });
 }
 
 export async function enqueueRun(opts: {
