@@ -52,6 +52,19 @@ describe('useSessionTabs boot', () => {
     expect(result.current.activeTabId).toBe('t1');
   });
 
+  it('adopts the synthesized first tab as active on a truly fresh install', () => {
+    // Regression (found by the E2E run): with EMPTY localStorage the
+    // activeTabId initializer ran before the first tab was persisted and came
+    // up "" — no tab owned the conversation, so the mirror effect dropped the
+    // first session's messages and New Session lost them for good.
+    const { result } = renderHook(() => useHarness([]));
+    expect(result.current.activeTabId).toBe(result.current.tabs[0].id);
+
+    act(() => result.current.setMessages([message('first')]));
+    // The conversation now lands in its owning tab (and thus in HISTORY).
+    expect(result.current.tabs[0].messages.map((m) => m.id)).toEqual(['first']);
+  });
+
   it('synthesizes a first tab from legacy single-session state', () => {
     window.localStorage.setItem(storageKeys.codingCwd, '/legacy/project');
     window.localStorage.setItem(storageKeys.messages, JSON.stringify([message('legacy')]));
