@@ -48,7 +48,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { upsertPrompt } from "./lib/prompts";
 import "./App.css";
 import { cancelRun, ensureStreamListenersAttached } from "./lib/grok";
 import { hasTauriRuntime } from "./lib/runtime";
@@ -57,7 +56,7 @@ import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
-import { defaultTabName, makeTab, type Tab, type TabMessage } from "./lib/tabs";
+import type { TabMessage } from "./lib/tabs";
 import { DesktopPanel } from "./components/DesktopPanel";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { SettingsPage } from "./components/SettingsPage";
@@ -67,13 +66,14 @@ import { useActiveRun } from "./hooks/useActiveRun";
 import { useGrokRunners } from "./hooks/useGrokRunners";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
 import { useModelConfig } from "./hooks/useModelConfig";
+import { useSessionTabs } from "./hooks/useSessionTabs";
+import { useHistoryOrganization } from "./hooks/useHistoryOrganization";
 
 import {
   isDockPosition,
   isGrokModelId,
   isInspectorTab,
   type ActionPolicy,
-  type ChatMessage,
   type ChatMessageStatus,
   type DockPosition,
   type EffortLevel,
@@ -99,14 +99,7 @@ import {
   primaryNavItems,
   reasoningEfforts,
   storageKeys,
-  tabsActiveKey,
-  tabsStorageKey,
 } from "./app/constants";
-import {
-  loadIdMap,
-  loadIdSet,
-  storedMessages,
-} from "./app/storage";
 import {
   formatOutput,
   grokInspectCount,
@@ -118,7 +111,6 @@ import {
   terminalClass,
   terminalPrefix,
   terminalText,
-  timeLabel,
 } from "./app/format";
 import { buildGrokArgs } from "./app/grokArgs";
 import { BrandGlyph } from "./components/BrandGlyph";
@@ -159,6 +151,33 @@ function App() {
     recordRun,
     appendMessage,
   } = useSessionPersistence({ setComposerValue, setSessionNotice });
+  // Multi-session tabs (persistence, create/switch/delete, active-tab mirror)
+  // live in hooks/useSessionTabs.ts. removeConversationMeta and setContextMenu
+  // are declared later; the callback only runs from event handlers, after
+  // every hook has initialized.
+  const {
+    tabs,
+    activeTabId,
+    handleTabCreate,
+    switchToSession,
+    deleteSession,
+    sessionFirstPrompt,
+  } = useSessionTabs({
+    messages,
+    setMessages,
+    codingCwd,
+    setCodingCwd,
+    setDrafts,
+    setLastRun,
+    setSessionNotice,
+    setComposerValue,
+    focusComposer: () => composerRef.current?.focus(),
+    closePalette: () => setPaletteOpen(false),
+    onConversationDeleted: (id) => {
+      removeConversationMeta(id);
+      setContextMenu(null);
+    },
+  });
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -178,35 +197,38 @@ function App() {
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
   // App-owned right-click menu (replaces the suppressed WebView menu).
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  // History organization — pin / rename / group / archive / delete, persisted
-  // by prompt id so the right-click actions survive restarts and have a
-  // visible effect in the list (no decorative no-ops).
-  const [pinnedPromptIds, setPinnedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyPinned));
-  const [promptLabels, setPromptLabels] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyLabels));
-  const [promptGroups, setPromptGroups] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyGroups));
-  const [archivedPromptIds, setArchivedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyArchived));
-  const [showArchived, setShowArchived] = useState(false);
-  // Inline editing for a history row: rename (custom label) or new-group entry.
-  const [rowEdit, setRowEdit] = useState<{ id: string; mode: "rename" | "newgroup" } | null>(null);
-  // Transient toast for actions without an obvious list change (copy/save).
-  const [historyNote, setHistoryNote] = useState<string | null>(null);
-  useEffect(() => {
-    if (!historyNote) return;
-    const t = window.setTimeout(() => setHistoryNote(null), 1700);
-    return () => window.clearTimeout(t);
-  }, [historyNote]);
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyPinned, JSON.stringify([...pinnedPromptIds]));
-  }, [pinnedPromptIds]);
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyLabels, JSON.stringify(promptLabels));
-  }, [promptLabels]);
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
-  }, [promptGroups]);
-  useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
-  }, [archivedPromptIds]);
+  // History organization (pin/rename/group/archive metadata, filter, derived
+  // row views) lives in hooks/useHistoryOrganization.ts.
+  const {
+    pinnedPromptIds,
+    promptGroups,
+    archivedPromptIds,
+    showArchived,
+    setShowArchived,
+    rowEdit,
+    setRowEdit,
+    historyNote,
+    setHistoryNote,
+    historyFilter,
+    setHistoryFilter,
+    historySearchInputRef,
+    recentPrompts,
+    historyView,
+    togglePinPrompt,
+    toggleArchivePrompt,
+    setPromptGroupId,
+    startRename,
+    startNewGroup,
+    commitRowEdit,
+    savePromptToLibrary,
+    removeConversationMeta,
+  } = useHistoryOrganization({
+    tabs,
+    activeTabId,
+    messages,
+    sessionFirstPrompt,
+    closeContextMenu: () => setContextMenu(null),
+  });
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
@@ -214,40 +236,6 @@ function App() {
   const [dockPosition, setDockPosition] = useState<DockPosition>(() => {
     const stored = window.localStorage.getItem(storageKeys.dockPosition);
     return isDockPosition(stored) ? stored : "right";
-  });
-  // Multi-session tabs. The "active" tab's cwd and messages are mirrored back
-  // into the existing flat state above so the rest of App.tsx (model picker,
-  // mode dock, status bar, etc.) keeps working unchanged. Tabs are a thin
-  // facade — see comment in lib/tabs.ts for the design rationale. Storage keys
-  // live at module scope (near storedActiveTabMessages).
-  const [tabs, setTabs] = useState<Tab[]>(() => {
-    try {
-      const raw = window.localStorage.getItem(tabsStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Tab[];
-      }
-    } catch {
-      // fall through
-    }
-    // First-run: synthesize one tab from the legacy single-session state.
-    const initialCwd = window.localStorage.getItem(storageKeys.codingCwd) ?? "";
-    return [makeTab(initialCwd, storedMessages() as unknown as TabMessage[], defaultTabName(initialCwd, 0))];
-  });
-  const [activeTabId, setActiveTabId] = useState<string>(() => {
-    const stored = window.localStorage.getItem(tabsActiveKey);
-    if (stored) return stored;
-    // Use the first tab's id from initial setup above.
-    try {
-      const raw = window.localStorage.getItem(tabsStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed[0]?.id) return parsed[0].id;
-      }
-    } catch {
-      // fall through
-    }
-    return "";
   });
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(() => {
     const stored = window.localStorage.getItem(storageKeys.inspectorTab);
@@ -371,85 +359,6 @@ function App() {
     setSessionNotice("Cleared conversation, run history, and terminal.");
   }
 
-  // ── Multi-session tabs ───────────────────────────────────────────────────
-  // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
-  // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
-  // Always-fresh mirror of the session state handleTabCreate needs. It is
-  // invoked from stale closures (the ⌘N keydown listener and the ⌘K palette
-  // memo, whose dep arrays don't include messages/tabs), so reading the
-  // render-scope variables there could act on state that is many turns old.
-  const sessionStateRef = useRef({ activeTabId, messages, tabs });
-  sessionStateRef.current = { activeTabId, messages, tabs };
-  function handleTabCreate() {
-    const current = sessionStateRef.current;
-    // Already on a clean slate? Reuse it instead of stacking another empty
-    // "New conversation" row into HISTORY on every ⌘N / New Session click.
-    const currentTab = current.tabs.find((t) => t.id === current.activeTabId);
-    if (currentTab && currentTab.messages.length === 0 && current.messages.length === 0) {
-      setDrafts({ standard: "", coding: "" });
-      composerRef.current?.setValue("");
-      setSessionNotice(null);
-      setLastRun(null);
-      composerRef.current?.focus();
-      return;
-    }
-    // No pre-create snapshot of the active tab here: the sync effect below
-    // already mirrors codingCwd/messages into it on every change, and a
-    // snapshot taken from a stale closure (⌘N/⌘K) would overwrite that fresh
-    // mirror with old messages and truncate the conversation's history.
-    setTabs((existing) => [
-      ...existing,
-      makeTab("", [], defaultTabName("", existing.length)),
-    ]);
-    // The new tab id is generated inside the setter; pull it out via a
-    // microtask so the state update has committed.
-    queueMicrotask(() => {
-      setTabs((current) => {
-        const newest = current[current.length - 1];
-        if (newest) {
-          setActiveTabId(newest.id);
-          setCodingCwd(newest.cwd);
-          setMessages(newest.messages as unknown as ChatMessage[]);
-        }
-        return current;
-      });
-      // "Clean slate" — Claude-Desktop-style. Wipe the composer draft, any
-      // leftover banner / notice, and the last-run card. The user opened a
-      // new session because they wanted a *fresh* surface.
-      setDrafts({ standard: "", coding: "" });
-      composerRef.current?.setValue("");
-      setSessionNotice(null);
-      setLastRun(null);
-    });
-  }
-  // Persist tabs (and the active id) whenever the array changes. This is the
-  // single source of truth across reloads; localStorage hydrates on next boot.
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
-    } catch {
-      // quota or serialization error — non-fatal; in-memory state survives.
-    }
-  }, [tabs]);
-  useEffect(() => {
-    if (activeTabId) window.localStorage.setItem(tabsActiveKey, activeTabId);
-  }, [activeTabId]);
-
-  // Whenever the global codingCwd or messages change, write them back into
-  // the active tab. This keeps the tab "in sync" with the flat state without
-  // requiring every existing setMessages/setCodingCwd call-site to know about
-  // tabs.
-  useEffect(() => {
-    setTabs((current) =>
-      current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
-          : t,
-      ),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codingCwd, messages]);
-
   // Write the streamed assistant text back into `messages` when a run reaches
   // a terminal state. Live rendering reads the in-memory streamStore snapshot
   // directly (MessageItem), but that store is not persisted — without this
@@ -481,141 +390,6 @@ function App() {
   function updatePrompt(value: string) {
     setComposerValue(value);
     setDrafts((current) => ({ ...current, [mode]: value }));
-  }
-
-  // First user prompt of a conversation (session/tab id) — used for copy /
-  // save-to-library actions in the history menu.
-  function sessionFirstPrompt(id: string): string | null {
-    const tab = tabs.find((t) => t.id === id);
-    const msgs =
-      ((id === activeTabId ? (messages as unknown as TabMessage[]) : tab?.messages) ?? []);
-    return msgs.find((m) => m.role === "user")?.content ?? null;
-  }
-
-  // Clicking a HISTORY row returns you to THAT task's conversation (Claude /
-  // Codex behaviour) — NOT just refilling the composer (that lives in the
-  // right-click "Restore to composer" action). If the message lives in another
-  // session tab we switch to it first, then scroll+flash the message in place.
-  // Switch to a whole conversation (session/tab). The HISTORY list is now a
-  // list of conversations — clicking one loads that conversation in full, the
-  // way Claude / ChatGPT switch chats. `id` is a tab id.
-  function switchToSession(id: string) {
-    setPaletteOpen(false);
-    if (id === activeTabId) return;
-    const target = tabs.find((t) => t.id === id);
-    if (!target) return;
-    // Persist the current conversation back into its tab, then load the target.
-    setTabs((current) =>
-      current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
-          : t,
-      ),
-    );
-    setActiveTabId(target.id);
-    setCodingCwd(target.cwd);
-    setMessages(target.messages as unknown as ChatMessage[]);
-    setSessionNotice(null);
-  }
-
-  // Delete a whole conversation. Works on ANY conversation (this is the fix for
-  // "some conversations can't be deleted" — the old delete only hid a message
-  // preview while the underlying message stayed). If the active conversation is
-  // deleted, fall back to the newest remaining one, or a fresh empty session.
-  function deleteSession(id: string) {
-    const remaining = tabs.filter((t) => t.id !== id);
-    if (remaining.length === 0) {
-      // Last conversation → reset to a single fresh, empty one.
-      const fresh = makeTab("", []);
-      setTabs([fresh]);
-      setActiveTabId(fresh.id);
-      setCodingCwd(fresh.cwd);
-      setMessages([]);
-    } else {
-      if (id === activeTabId) {
-        const next = remaining
-          .slice()
-          .sort((a, b) => b.createdAt - a.createdAt)[0];
-        setActiveTabId(next.id);
-        setCodingCwd(next.cwd);
-        setMessages(next.messages as unknown as ChatMessage[]);
-      }
-      setTabs(remaining);
-    }
-    // Drop any per-conversation metadata so it doesn't linger.
-    setPinnedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
-    setArchivedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
-    setPromptLabels((p) => { const n = { ...p }; delete n[id]; return n; });
-    setPromptGroups((p) => { const n = { ...p }; delete n[id]; return n; });
-    setContextMenu(null);
-  }
-
-  // ---- History row actions: all persisted, each with a visible effect ----
-  function togglePinPrompt(id: string) {
-    setPinnedPromptIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-  function toggleArchivePrompt(id: string) {
-    setArchivedPromptIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    // Archiving implies leaving the Pinned section.
-    setPinnedPromptIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }
-  function setPromptGroupId(id: string, group: string | null) {
-    setPromptGroups((prev) => {
-      const next = { ...prev };
-      if (group && group.trim()) next[id] = group.trim();
-      else delete next[id];
-      return next;
-    });
-  }
-  function startRename(id: string) {
-    setContextMenu(null);
-    setRowEdit({ id, mode: "rename" });
-  }
-  function startNewGroup(id: string) {
-    setContextMenu(null);
-    setRowEdit({ id, mode: "newgroup" });
-  }
-  function commitRowEdit(value: string) {
-    const edit = rowEdit;
-    setRowEdit(null);
-    if (!edit) return;
-    const v = value.trim();
-    if (edit.mode === "rename") {
-      setPromptLabels((prev) => {
-        const next = { ...prev };
-        if (v) next[edit.id] = v;
-        else delete next[edit.id];
-        return next;
-      });
-    } else if (v) {
-      setPromptGroupId(edit.id, v);
-    }
-  }
-  async function savePromptToLibrary(id: string) {
-    const text = sessionFirstPrompt(id);
-    if (!text) return;
-    const name = (promptLabels[id] ?? text.split("\n").find(Boolean) ?? "Saved prompt").slice(0, 60);
-    try {
-      await upsertPrompt({ name, body: text, category: "History" });
-      setHistoryNote("Saved to Prompt Library");
-    } catch {
-      setHistoryNote("Couldn't save — Prompt Library unavailable");
-    }
   }
 
   // Claude-class right-click menu for a history row. Section header, icons,
@@ -1062,83 +836,6 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busyRunner, drafts, mode]);
-
-  const [historyFilter, setHistoryFilter] = useState("");
-  const historySearchInputRef = useRef<HTMLInputElement | null>(null);
-  // HISTORY is a list of CONVERSATIONS (sessions/tabs), newest first — the way
-  // Claude / ChatGPT show chats. Each row is one whole conversation, titled by
-  // its first prompt; clicking it loads that conversation. (It used to list
-  // every individual prompt, which read as "messages", not tasks.)
-  const recentPrompts = useMemo(() => {
-    const firstUserLine = (msgs: TabMessage[]): string => {
-      const u = msgs.find((m) => m.role === "user");
-      return u?.content.split("\n").map((s) => s.trim()).find(Boolean) ?? "";
-    };
-    const rows: HistoryRow[] = tabs
-      .map((t) => {
-        const msgs =
-          ((t.id === activeTabId ? (messages as unknown as TabMessage[]) : t.messages) ??
-            []);
-        const fp = firstUserLine(msgs);
-        const promptCount = msgs.filter((m) => m.role === "user").length;
-        const lastTs = msgs.length
-          ? Math.max(...msgs.map((m) => (m as { ts?: number }).ts ?? 0))
-          : t.createdAt;
-        const fallback = fp ? (fp.length > 56 ? `${fp.slice(0, 56)}…` : fp) : "New conversation";
-        return {
-          id: t.id,
-          title: promptLabels[t.id] ?? fallback,
-          detail:
-            promptCount > 0 ? `${promptCount} message${promptCount > 1 ? "s" : ""}` : "empty",
-          time: timeLabel(lastTs),
-          pinned: pinnedPromptIds.has(t.id),
-          group: promptGroups[t.id] ?? null,
-          archived: archivedPromptIds.has(t.id),
-          lastTs,
-          active: t.id === activeTabId,
-        };
-      })
-      .sort((a, b) => b.lastTs - a.lastTs);
-    if (!historyFilter.trim()) return rows;
-    const needle = historyFilter.trim().toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.title.toLowerCase().includes(needle) ||
-        r.detail.toLowerCase().includes(needle) ||
-        (r.group ?? "").toLowerCase().includes(needle),
-    );
-  }, [
-    tabs,
-    activeTabId,
-    messages,
-    historyFilter,
-    pinnedPromptIds,
-    promptLabels,
-    promptGroups,
-    archivedPromptIds,
-  ]);
-
-  // Partition the (filtered) rows into Pinned / named groups / Recent /
-  // Archived sections for a Claude-style organized list.
-  const historyView = useMemo(() => {
-    const live = recentPrompts.filter((r) => !r.archived);
-    const archived = recentPrompts.filter((r) => r.archived);
-    const pinned = live.filter((r) => r.pinned);
-    const groupMap = new Map<string, HistoryRow[]>();
-    const ungrouped: HistoryRow[] = [];
-    for (const r of live) {
-      if (r.pinned) continue;
-      if (r.group) {
-        const arr = groupMap.get(r.group) ?? [];
-        arr.push(r);
-        groupMap.set(r.group, arr);
-      } else {
-        ungrouped.push(r);
-      }
-    }
-    const groups = Array.from(groupMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    return { pinned, groups, ungrouped, archived };
-  }, [recentPrompts]);
 
   // Make ⌘K Search actually search the user's WORK, not just commands: each
   // recent prompt becomes a searchable palette entry that restores it to the
