@@ -249,23 +249,38 @@ fn resolve_grok_binary() -> PathBuf {
     if configured.contains('/') {
         return PathBuf::from(configured);
     }
-    let candidate = PathBuf::from(&configured);
-    if candidate.exists() {
-        return candidate;
-    }
     // Bare command name: search the augmented PATH (the same one every
     // status/one-shot command uses) for an executable file with that name.
+    // No cwd-relative lookup — a bare name must resolve like a shell would,
+    // never to a same-named file that happens to sit in the app's cwd.
     for dir in command_path().split(':') {
         if dir.is_empty() {
             continue;
         }
         let full = Path::new(dir).join(&configured);
-        if full.is_file() {
+        if is_executable_file(&full) {
             return full;
         }
     }
     let home = env::var("HOME").unwrap_or_default();
     PathBuf::from(format!("{home}/.grok/bin/grok"))
+}
+
+/// PATH-candidate check: a regular file with at least one execute bit. A
+/// plain `is_file()` would happily resolve to e.g. a README named `grok`,
+/// which a shell PATH lookup would skip.
+fn is_executable_file(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
 }
 
 fn shell_quote(value: &str) -> String {
@@ -707,13 +722,20 @@ fn load_session_state() -> Result<Option<SessionState>, String> {
     }
 }
 
-/// Atomic file write: serialize to a sibling temp file, then rename over the
-/// destination. `fs::write` truncates before writing, so a crash or power
-/// loss mid-write used to leave truncated JSON that failed to parse on every
-/// subsequent launch.
+/// Atomic file write: serialize to a sibling temp file, fsync it, then rename
+/// over the destination. `fs::write` truncates before writing, so a crash or
+/// power loss mid-write used to leave truncated JSON that failed to parse on
+/// every subsequent launch. The sync_all before the rename matters: without
+/// it a power loss can persist the rename but not the temp file's data,
+/// leaving an empty/torn file under the final name — exactly the corruption
+/// the temp+rename dance is meant to prevent.
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, contents)?;
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
     fs::rename(&tmp, path)
 }
 
