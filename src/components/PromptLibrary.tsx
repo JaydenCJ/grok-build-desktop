@@ -79,6 +79,7 @@ export function PromptLibrary({ onInsert, filter }: Props) {
       <header className="prompt-library-header">
         <input
           type="search"
+          autoFocus
           placeholder="Search prompts…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}

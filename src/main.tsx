@@ -21,7 +21,13 @@ window.addEventListener(
     const anchor = target?.closest("a[href]");
     if (!anchor) return;
     const href = anchor.getAttribute("href") ?? "";
-    if (!/^https?:\/\//i.test(href)) return;
+    if (!/^https?:\/\//i.test(href)) {
+      // Block script-ish URL schemes outright — rendered markdown is
+      // untrusted output, and a javascript:/data: anchor must never execute
+      // in or navigate the WebView.
+      if (/^\s*(javascript|data|vbscript|file):/i.test(href)) e.preventDefault();
+      return;
+    }
     e.preventDefault();
     if ("__TAURI_INTERNALS__" in window) {
       void import("@tauri-apps/plugin-opener")
