@@ -1,15 +1,27 @@
 # Responsible Automation
 
-Grok Desktop treats browser control as an assistive user experience, not a stealth or bypass system.
+Grok Build Desktop treats automation as an assistive, visible user experience —
+not a stealth or bypass system.
 
-## What We Adopted
+## What Ships Today
 
-- Visible Agent presence: monitored tabs show a GROK_DESKTOP badge and an Agent cursor.
-- Calm motion: cursor movement uses a smooth visual path so users can follow what the Agent is doing.
-- Focus guard: page changes are blocked by default while the user is typing in an editable field.
-- Control gating: DOM-changing actions are limited to tabs explicitly marked as controlled.
-- Multi-tab clarity: watched and controlled tabs stay visible in the extension popup and Mac app bridge panel.
-- Explicit state sync: Chrome Native Messaging writes tab state to macOS Application Support for the desktop UI.
+- Visible Agent presence: the agent overlay (`overlay.tsx`,
+  `set_agent_overlay`/`set_agent_cursor`) draws a click-through screen border
+  and an animated cursor sprite while Grok is acting. It is strictly visual —
+  no OS mouse or keyboard synthesis.
+- Browser automation runs a real, visible browser through the `browser-use`
+  package (`scripts/browser_automation.py`). No fingerprint masking or
+  automation-flag hiding is configured.
+- The macOS desktop bridge (`src-tauri/src/desktop.rs`) is read-only:
+  allowlisted apps only, hard-coded AppleScript with no interpolated input,
+  and every call is audited to `~/.grok-desktop/audit/`.
+- Grok runs are plain subprocesses of the user's own logged-in `grok` CLI,
+  with permission behavior surfaced in the UI (action policy and permission
+  mode map to real CLI flags).
+
+A previous iteration shipped a Chrome companion extension with a Native
+Messaging bridge; it has been removed from this codebase. The rules below
+still bind any future reintroduction.
 
 ## What We Do Not Implement
 
@@ -23,4 +35,6 @@ Grok Desktop treats browser control as an assistive user experience, not a steal
 
 ## Product Rule
 
-Agent behavior must be visible, user-authorized, focus-safe, and reversible. If a site or workflow requires human confirmation, Grok Desktop should hand control back to the user instead of trying to disguise automation.
+Agent behavior must be visible, user-authorized, focus-safe, and reversible.
+If a site or workflow requires human confirmation, Grok Build Desktop should
+hand control back to the user instead of trying to disguise automation.
