@@ -1,0 +1,3 @@
+# cmd.exe parses batch files line-by-line and misbehaves on LF-only files;
+# keep Windows scripts CRLF on every checkout.
+*.cmd text eol=crlf
