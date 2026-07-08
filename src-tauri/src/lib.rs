@@ -154,16 +154,14 @@ fn strip_ansi_codes(value: &str) -> String {
     let mut chars = value.chars().peekable();
 
     while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for code_ch in chars.by_ref() {
-                    if ('@'..='~').contains(&code_ch) {
-                        break;
-                    }
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for code_ch in chars.by_ref() {
+                if ('@'..='~').contains(&code_ch) {
+                    break;
                 }
-                continue;
             }
+            continue;
         }
         output.push(ch);
     }
@@ -349,7 +347,7 @@ fn prepare_child_process(command: &mut Command) {
             // Become the leader of a new process group so we can kill
             // descendants — same pattern as runs/process.rs::spawn.
             nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
             Ok(())
         });
     }
@@ -854,7 +852,7 @@ fn html_attr_value(tag: &str, attr: &str) -> Option<String> {
     None
 }
 
-fn asset_path(root: &PathBuf, canonical_root: &PathBuf, reference: &str) -> Option<PathBuf> {
+fn asset_path(root: &Path, canonical_root: &Path, reference: &str) -> Option<PathBuf> {
     let clean = reference
         .split(['?', '#'])
         .next()
@@ -902,8 +900,8 @@ fn read_asset_within_budget(path: PathBuf, used: &mut u64, skipped: &mut bool) -
 
 fn inline_stylesheets(
     mut html: String,
-    root: &PathBuf,
-    canonical_root: &PathBuf,
+    root: &Path,
+    canonical_root: &Path,
     used: &mut u64,
     skipped: &mut bool,
 ) -> String {
@@ -942,8 +940,8 @@ fn inline_stylesheets(
 
 fn inline_scripts(
     mut html: String,
-    root: &PathBuf,
-    canonical_root: &PathBuf,
+    root: &Path,
+    canonical_root: &Path,
     used: &mut u64,
     skipped: &mut bool,
 ) -> String {
@@ -981,7 +979,7 @@ fn inline_scripts(
     html
 }
 
-fn inline_static_assets(html: String, root: &PathBuf) -> String {
+fn inline_static_assets(html: String, root: &Path) -> String {
     let Ok(canonical_root) = root.canonicalize() else {
         return html;
     };
@@ -1255,7 +1253,7 @@ fn mode_context(mode: &str) -> &'static str {
     }
 }
 
-fn grok_prompt(prompt: &str, mode: &str, cwd: &PathBuf) -> String {
+fn grok_prompt(prompt: &str, mode: &str, cwd: &Path) -> String {
     format!(
         r#"{context}
 
@@ -1353,10 +1351,9 @@ fn normalized_permission_mode(permission_mode: Option<String>) -> Option<String>
     }
 }
 
-fn grok_args(
-    prompt: &str,
-    mode: &str,
-    cwd: &PathBuf,
+/// Optional run configuration for `grok_args`. Defaults mirror the composer's
+/// safe defaults: no model/effort overrides, web search and subagents on.
+struct GrokRunOptions {
     model: Option<String>,
     effort: Option<String>,
     reasoning_effort: Option<String>,
@@ -1366,7 +1363,36 @@ fn grok_args(
     web_search_enabled: bool,
     subagents_enabled: bool,
     self_check: bool,
-) -> Vec<String> {
+}
+
+impl Default for GrokRunOptions {
+    fn default() -> Self {
+        Self {
+            model: None,
+            effort: None,
+            reasoning_effort: None,
+            permission_mode: None,
+            best_of_n: None,
+            experimental_memory: false,
+            web_search_enabled: true,
+            subagents_enabled: true,
+            self_check: false,
+        }
+    }
+}
+
+fn grok_args(prompt: &str, mode: &str, cwd: &Path, options: GrokRunOptions) -> Vec<String> {
+    let GrokRunOptions {
+        model,
+        effort,
+        reasoning_effort,
+        permission_mode,
+        best_of_n,
+        experimental_memory,
+        web_search_enabled,
+        subagents_enabled,
+        self_check,
+    } = options;
     let prepared_prompt = grok_prompt(prompt, mode, cwd);
     if let Ok(template) = env::var("GROK_DESKTOP_GROK_ARGS") {
         return split_template_args(&template, &prepared_prompt, mode);
@@ -1619,7 +1645,7 @@ async fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> Too
         let cwd = normalized_cwd(cwd);
         run_external_command(
             &program,
-            grok_args(&prompt, &mode, &cwd, None, None, None, None, None, false, true, true, false),
+            grok_args(&prompt, &mode, &cwd, GrokRunOptions::default()),
             Some(cwd),
             command_timeout_secs(240),
             true,
