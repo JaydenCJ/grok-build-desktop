@@ -36,8 +36,12 @@ export function ToolsPage({ open, onClose }: Props) {
   const [query, setQuery] = useState('');
 
   const refresh = async () => {
-    const run = await listMcpServers();
-    if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    try {
+      const run = await listMcpServers();
+      if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    } catch {
+      // Backend unavailable (web preview / grok missing) — keep the last list.
+    }
   };
   const refreshSkills = async () => {
     setInstalledSkills(new Set(await listInstalledSkills()));
@@ -131,6 +135,8 @@ export function ToolsPage({ open, onClose }: Props) {
         setNotice({ kind: 'err', text: run?.stderr || run?.output || 'grok mcp add failed' });
       }
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -144,6 +150,8 @@ export function ToolsPage({ open, onClose }: Props) {
       if (run?.ok) setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
       else setNotice({ kind: 'err', text: run?.stderr || 'grok mcp remove failed' });
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }

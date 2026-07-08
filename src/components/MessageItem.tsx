@@ -36,6 +36,16 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   const ended =
     snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
 
+  // Failed / stopped runs get an inline note under the body — the status bar
+  // already says "failed", but the bubble itself must explain why it looks
+  // truncated (or empty) once the status bar has moved on to the next run.
+  const endNote =
+    snap.state === 'failed'
+      ? `Run failed${snap.error ? ` — ${snap.error}` : ''}`
+      : snap.state === 'cancelled'
+        ? 'Run stopped before completion'
+        : null;
+
   // While the run is streaming, render the typewriter-paced raw text (smooth,
   // Claude-like cadence). Once it settles, swap to the fully-parsed markdown
   // HTML (code blocks, formatting). TraceTimeline (tool/subagent cards) shows
@@ -51,6 +61,11 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
           {smooth.caretVisible ? <span className="stream-caret">▋</span> : null}
         </pre>
       )}
+      {endNote ? (
+        <div className="message-error" role="alert">
+          {endNote}
+        </div>
+      ) : null}
     </>
   );
 }
