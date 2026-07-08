@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { ThemeMode } from "../app/types";
+import { t } from "../i18n";
 
 export interface TitleBarProps {
   codingCwd: string;
@@ -50,7 +51,7 @@ export function TitleBar({
             onClick={pickFolder}
             type="button"
             disabled={folderPickerBusy}
-            title={codingCwd ? codingCwd : "Pick a project folder"}
+            title={codingCwd ? codingCwd : t('titleBar.pickFolderTitle')}
           >
             {folderPickerBusy ? <Loader2 className="spin" size={14} /> : <FolderGit2 size={14} />}
             <span>{repoName}</span>
@@ -62,19 +63,23 @@ export function TitleBar({
                 className="primary-run"
                 onClick={() => stopRun(activeRunId)}
                 type="button"
-                title="Stop the current run"
+                title={t('titleBar.stopTitle')}
               >
                 <X size={15} />
-                <span>Stop</span>
+                <span>{t('titleBar.stop')}</span>
               </button>
             ) : (
               <span
                 className={`conn-pill ${isGrokReady ? "ready" : "blocked"}`}
-                title={isGrokReady ? "Connected to grok.com" : `Grok ${statusLabel.toLowerCase()}`}
-                aria-label={isGrokReady ? "Grok connected" : "Grok not connected"}
+                title={
+                  isGrokReady
+                    ? t('titleBar.connectedTitle')
+                    : t('titleBar.offlineTitle', { status: statusLabel.toLowerCase() })
+                }
+                aria-label={isGrokReady ? t('titleBar.connectedAria') : t('titleBar.notConnectedAria')}
               >
                 <span className="conn-dot-mini" aria-hidden />
-                {isGrokReady ? "Grok" : "Offline"}
+                {isGrokReady ? t('titleBar.grok') : t('titleBar.offline')}
               </span>
             )}
             {/* Day / night theme toggle (also ⌘⇧L). Bordered + full-contrast
@@ -82,8 +87,8 @@ export function TitleBar({
             <button
               className="titlebar-icon-btn theme-toggle"
               type="button"
-              aria-label={themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={themeMode === "dark" ? "Switch to light mode (⌘⇧L)" : "Switch to dark mode (⌘⇧L)"}
+              aria-label={themeMode === "dark" ? t('titleBar.toLight') : t('titleBar.toDark')}
+              title={themeMode === "dark" ? t('titleBar.toLightTitle') : t('titleBar.toDarkTitle')}
               onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
             >
               {themeMode === "dark" ? (
@@ -97,8 +102,8 @@ export function TitleBar({
             <button
               className={`detail-toggle${anyPanelOpen ? " active" : ""}`}
               type="button"
-              aria-label="Open panels menu"
-              title="Panels — Preview, Context, Terminal"
+              aria-label={t('titleBar.panelsAria')}
+              title={t('titleBar.panelsTitle')}
               onClick={openPanelMenu}
             >
               <PanelRight size={16} />

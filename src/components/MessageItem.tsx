@@ -4,6 +4,7 @@ import { useSmoothText } from '../hooks/useSmoothText';
 import { scheduleMarkdownParse } from '../lib/markdownWorker';
 import { sanitizeHtml } from '../lib/sanitizeHtml';
 import { TraceTimeline } from './TraceTimeline';
+import { t } from '../i18n';
 
 interface Props {
   runId: string;
@@ -60,11 +61,11 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
           queue moves on, leaving a silent empty bubble. */}
       {snap.state === 'failed' ? (
         <div className="message-error" role="alert">
-          Run failed{snap.error ? `: ${snap.error}` : ''}
+          {snap.error ? t('message.runFailedWithError', { error: snap.error }) : t('message.runFailed')}
         </div>
       ) : null}
       {snap.state === 'cancelled' ? (
-        <div className="message-error message-cancelled">Stopped by you.</div>
+        <div className="message-error message-cancelled">{t('message.stopped')}</div>
       ) : null}
     </>
   );

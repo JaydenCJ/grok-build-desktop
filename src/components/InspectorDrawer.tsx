@@ -55,6 +55,7 @@ import {
   grokInspectSection,
   grokTrust,
 } from "../app/format";
+import { t } from "../i18n";
 
 export interface InspectorDrawerProps {
   open: boolean;
@@ -156,7 +157,7 @@ export function InspectorDrawer({
       pluginItems: grokInspectSection(inspectOutput, "Plugins", 8),
       mcpItems: grokInspectSection(inspectOutput, "MCP Servers", 8),
       hookItems: grokInspectSection(inspectOutput, "Hooks", 8),
-      permissionsSource: grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, "not inspected"),
+      permissionsSource: grokInspectLine(inspectOutput, /Source:\s*([^\n]+)/i, t("inspector.notInspected")),
     }),
     [inspectOutput],
   );
@@ -172,13 +173,17 @@ export function InspectorDrawer({
             open={open}
           >
             <summary>
-              <span><PanelRight size={16} /> Context and tools</span>
+              <span><PanelRight size={16} /> {t("inspector.summaryTitle")}</span>
               <small>
-                {grokInspectCount(inspectOutput, "Skills")} skills · {grokInspectCount(inspectOutput, "MCP Servers")} MCP · {grokInspectCount(inspectOutput, "Agents")} agents
+                {t("inspector.summaryCounts", {
+                  skills: grokInspectCount(inspectOutput, "Skills"),
+                  mcp: grokInspectCount(inspectOutput, "MCP Servers"),
+                  agents: grokInspectCount(inspectOutput, "Agents"),
+                })}
               </small>
             </summary>
-          <aside className="inspector" aria-label="Grok context">
-            <div className="inspector-tabs" role="tablist" aria-label="Grok capability inspector">
+          <aside className="inspector" aria-label={t("inspector.ariaLabel")}>
+            <div className="inspector-tabs" role="tablist" aria-label={t("inspector.tablistAria")}>
               {inspectorTabs.map((tab) => (
                 <button
                   aria-pressed={inspectorTab === tab.id}
@@ -191,17 +196,17 @@ export function InspectorDrawer({
                 </button>
               ))}
               <button
-                aria-label="Toggle dock position"
+                aria-label={t("inspector.toggleDock")}
                 onClick={() => onDockPositionChange(dockPosition === "right" ? "bottom" : "right")}
-                title={`Move dock to ${dockPosition === "right" ? "bottom" : "right"}`}
+                title={dockPosition === "right" ? t("inspector.moveDockBottom") : t("inspector.moveDockRight")}
                 type="button"
               >
                 <PanelRight size={16} />
               </button>
               <button
-                aria-label="Close inspector"
+                aria-label={t("inspector.close")}
                 onClick={onClose}
-                title="Close (⌘B clears panels)"
+                title={t("inspector.closeTitle")}
                 type="button"
               >
                 <X size={16} />
@@ -213,7 +218,7 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Model</span>
+                      <span>{t("inspector.model")}</span>
                       <button disabled={contextBusy !== null} onClick={refreshGrokModels} type="button">
                         {contextBusy === "models" ? <Loader2 className="spin" size={14} /> : <RefreshCcw size={14} />}
                       </button>
@@ -223,12 +228,12 @@ export function InspectorDrawer({
                       <strong>{activeModel}</strong>
                       <ShieldCheck size={15} />
                     </div>
-                    <p>{activeModelMeta.detail}. Grok Desktop tunes the CLI with model, agent effort, reasoning effort, permissions, memory, web search, subagents, repo path, and ecosystem context.</p>
+                    <p>{t("inspector.modelBlurb", { detail: activeModelMeta.detail })}</p>
                     <div className="engine-grid">
                       <label>
-                        <span>Model</span>
+                        <span>{t("inspector.model")}</span>
                         <select
-                          aria-label="Grok model preset"
+                          aria-label={t("inspector.modelPresetAria")}
                           onChange={(event) => changeModelPreset(event.currentTarget.value as GrokModelId)}
                           value={modelPreset}
                         >
@@ -240,9 +245,9 @@ export function InspectorDrawer({
                         </select>
                       </label>
                       <label>
-                        <span>Agent effort</span>
+                        <span>{t("inspector.agentEffort")}</span>
                         <select
-                          aria-label="Agent effort"
+                          aria-label={t("inspector.agentEffort")}
                           onChange={(event) => setEffortLevel(event.currentTarget.value as EffortLevel)}
                           value={effortLevel}
                         >
@@ -254,9 +259,9 @@ export function InspectorDrawer({
                         </select>
                       </label>
                       <label>
-                        <span>Reasoning</span>
+                        <span>{t("inspector.reasoning")}</span>
                         <select
-                          aria-label="Reasoning effort"
+                          aria-label={t("composerSection.reasoningEffort")}
                           onChange={(event) => setReasoningEffort(event.currentTarget.value as ReasoningEffort)}
                           value={reasoningEffort}
                         >
@@ -268,9 +273,9 @@ export function InspectorDrawer({
                         </select>
                       </label>
                       <label>
-                        <span>Best-of-N</span>
+                        <span>{t("inspector.bestOfN")}</span>
                         <select
-                          aria-label="Best of N"
+                          aria-label={t("inspector.bestOfNAria")}
                           onChange={(event) => setBestOfN(Number(event.currentTarget.value))}
                           value={bestOfN}
                         >
@@ -282,9 +287,9 @@ export function InspectorDrawer({
                         </select>
                       </label>
                       <label>
-                        <span>Permission</span>
+                        <span>{t("inspector.permission")}</span>
                         <select
-                          aria-label="Permission mode"
+                          aria-label={t("inspector.permissionModeAria")}
                           onChange={(event) => setPermissionMode(event.currentTarget.value as PermissionMode)}
                           value={permissionMode}
                         >
@@ -297,9 +302,9 @@ export function InspectorDrawer({
                       </label>
                       {modelPreset === "custom" ? (
                         <label className="engine-wide">
-                          <span>Custom ID</span>
+                          <span>{t("inspector.customId")}</span>
                           <input
-                            aria-label="Custom Grok model ID"
+                            aria-label={t("inspector.customIdAria")}
                             onChange={(event) => setCustomModel(event.currentTarget.value)}
                             placeholder="grok-build"
                             value={customModel}
@@ -314,7 +319,7 @@ export function InspectorDrawer({
                           onChange={(event) => setExperimentalMemory(event.currentTarget.checked)}
                           type="checkbox"
                         />
-                        <span>Memory</span>
+                        <span>{t("inspector.memory")}</span>
                       </label>
                       <label>
                         <input
@@ -322,7 +327,7 @@ export function InspectorDrawer({
                           onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
                           type="checkbox"
                         />
-                        <span>Web</span>
+                        <span>{t("inspector.web")}</span>
                       </label>
                       <label>
                         <input
@@ -330,7 +335,7 @@ export function InspectorDrawer({
                           onChange={(event) => setSubagentsEnabled(event.currentTarget.checked)}
                           type="checkbox"
                         />
-                        <span>Subagents</span>
+                        <span>{t("inspector.subagents")}</span>
                       </label>
                       <label>
                         <input
@@ -338,13 +343,13 @@ export function InspectorDrawer({
                           onChange={(event) => setSelfCheck(event.currentTarget.checked)}
                           type="checkbox"
                         />
-                        <span>Check</span>
+                        <span>{t("inspector.check")}</span>
                       </label>
                     </div>
                     <div className="auth-actions">
                       <button disabled={busyRunner !== null} onClick={() => startGrokLogin(false)} type="button">
                         <Zap size={15} />
-                        Connect
+                        {t("inspector.connect")}
                       </button>
                       <button
                         className="secondary-button"
@@ -353,11 +358,11 @@ export function InspectorDrawer({
                         type="button"
                       >
                         <TerminalSquare size={15} />
-                        Device
+                        {t("inspector.device")}
                       </button>
                       <button className="secondary-button" disabled={busyRunner !== null} onClick={refreshGrokAuthStatus} type="button">
                         <RefreshCcw size={15} />
-                        Refresh
+                        {t("common.refresh")}
                       </button>
                     </div>
                     {modelsRun ? <pre className="mini-output">{formatOutput(modelsRun)}</pre> : null}
@@ -365,7 +370,7 @@ export function InspectorDrawer({
 
                   <section className="inspector-card">
                     <div className="card-head">
-                      <span>Repo</span>
+                      <span>{t("inspector.repo")}</span>
                       <code>{grokTrust(inspectOutput)}</code>
                     </div>
                     <div className="repo-readout">
@@ -375,21 +380,21 @@ export function InspectorDrawer({
                     </div>
                     <div className="branch-readout">
                       <GitBranch size={15} />
-                      <span>main</span>
-                      <small>local workspace</small>
+                      <span>{t("inspector.branchMain")}</span>
+                      <small>{t("inspector.branchLocal")}</small>
                     </div>
                     <div className="metric-grid">
                       <div>
                         <strong>{grokInspectCount(inspectOutput, "Skills")}</strong>
-                        <span>Skills</span>
+                        <span>{t("inspector.skills")}</span>
                       </div>
                       <div>
                         <strong>{grokInspectCount(inspectOutput, "MCP Servers")}</strong>
-                        <span>MCP</span>
+                        <span>{t("inspector.mcp")}</span>
                       </div>
                       <div>
                         <strong>{grokInspectCount(inspectOutput, "Agents")}</strong>
-                        <span>Agents</span>
+                        <span>{t("inspector.agents")}</span>
                       </div>
                     </div>
                     <button
@@ -399,13 +404,13 @@ export function InspectorDrawer({
                       type="button"
                     >
                       {contextBusy === "inspect" ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
-                      Inspect Grok
+                      {t("inspector.inspectGrok")}
                     </button>
                   </section>
 
                   <section className="inspector-card">
                     <div className="card-head">
-                      <span>Context Files</span>
+                      <span>{t("inspector.contextFiles")}</span>
                       <code>{contextFiles.length}</code>
                     </div>
                     <div className="file-list">
@@ -424,10 +429,10 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Skills</span>
-                      <code>{grokInspectCount(inspectOutput, "Skills")} discovered</code>
+                      <span>{t("inspector.skills")}</span>
+                      <code>{t("inspector.discovered", { count: grokInspectCount(inspectOutput, "Skills") })}</code>
                     </div>
-                    <p>Grok inspect reads Claude-compatible skill sources and plugin skills, then Grok Desktop adds the best matches to the coding prompt.</p>
+                    <p>{t("inspector.skillsBlurb")}</p>
                     <button
                       className="secondary-button"
                       disabled={contextBusy !== null}
@@ -435,12 +440,12 @@ export function InspectorDrawer({
                       type="button"
                     >
                       {contextBusy === "inspect" ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
-                      Refresh Skills
+                      {t("inspector.refreshSkills")}
                     </button>
                   </section>
                   <section className="inspector-card">
                     <div className="capability-list">
-                      {(skillItems.length ? skillItems : ["Run Inspect Grok to load available skills."]).map((item) => (
+                      {(skillItems.length ? skillItems : [t("inspector.loadSkillsHint")]).map((item) => (
                         <span key={item}><Sparkles size={14} /> {item}</span>
                       ))}
                     </div>
@@ -452,28 +457,28 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>MCP</span>
-                      <code>{grokInspectCount(inspectOutput, "MCP Servers")} discovered</code>
+                      <span>{t("inspector.mcp")}</span>
+                      <code>{t("inspector.discovered", { count: grokInspectCount(inspectOutput, "MCP Servers") })}</code>
                     </div>
-                    <p>Shows servers discovered by Grok inspect and the active managed list from `grok mcp list`.</p>
+                    <p>{t("inspector.mcpBlurb")}</p>
                     <div className="auth-actions">
                       <button disabled={busyRunner !== null} onClick={refreshGrokMcp} type="button">
                         {busyRunner === "mcp" ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
-                        List MCP
+                        {t("inspector.listMcp")}
                       </button>
                       <button className="secondary-button" disabled={busyRunner !== null} onClick={doctorGrokMcp} type="button">
                         {busyRunner === "mcp-doctor" ? <Loader2 className="spin" size={15} /> : <ClipboardCheck size={15} />}
-                        Doctor
+                        {t("common.doctor")}
                       </button>
                     </div>
                   </section>
                   <section className="inspector-card">
                     <div className="card-head">
-                      <span>Discovered Servers</span>
+                      <span>{t("inspector.discoveredServers")}</span>
                       <code>{mcpItems.length}</code>
                     </div>
                     <div className="capability-list">
-                      {(mcpItems.length ? mcpItems : ["No inspect data yet."]).map((item) => (
+                      {(mcpItems.length ? mcpItems : [t("inspector.noInspectData")]).map((item) => (
                         <span key={item}><Wrench size={14} /> {item}</span>
                       ))}
                     </div>
@@ -487,18 +492,18 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Agents</span>
-                      <code>{grokInspectCount(inspectOutput, "Agents")} available</code>
+                      <span>{t("inspector.agents")}</span>
+                      <code>{t("inspector.available", { count: grokInspectCount(inspectOutput, "Agents") })}</code>
                     </div>
-                    <p>Agent metadata helps route repo analysis, review, debugging, browser, and design tasks to the right Grok sub-capability.</p>
+                    <p>{t("inspector.agentsBlurb")}</p>
                     <button className="secondary-button" disabled={busyRunner !== null} onClick={refreshGrokSessions} type="button">
                       {busyRunner === "sessions" ? <Loader2 className="spin" size={15} /> : <History size={15} />}
-                      Sessions
+                      {t("inspector.sessions")}
                     </button>
                   </section>
                   <section className="inspector-card">
                     <div className="capability-list">
-                      {(agentItems.length ? agentItems : ["Run Inspect Grok to load agents."]).map((item) => (
+                      {(agentItems.length ? agentItems : [t("inspector.loadAgentsHint")]).map((item) => (
                         <span key={item}><Bot size={14} /> {item}</span>
                       ))}
                     </div>
@@ -511,18 +516,18 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Plugins</span>
-                      <code>{grokInspectCount(inspectOutput, "Plugins")} discovered</code>
+                      <span>{t("inspector.plugins")}</span>
+                      <code>{t("inspector.discovered", { count: grokInspectCount(inspectOutput, "Plugins") })}</code>
                     </div>
-                    <p>Grok Desktop separates discovered plugins from the active managed list so developers can see what Grok can use versus what it owns.</p>
+                    <p>{t("inspector.pluginsBlurb")}</p>
                     <button className="secondary-button" disabled={busyRunner !== null} onClick={refreshGrokPlugins} type="button">
                       {busyRunner === "plugins" ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
-                      List Plugins
+                      {t("inspector.listPlugins")}
                     </button>
                   </section>
                   <section className="inspector-card">
                     <div className="capability-list">
-                      {(pluginItems.length ? pluginItems : ["Run Inspect Grok to load plugins."]).map((item) => (
+                      {(pluginItems.length ? pluginItems : [t("inspector.loadPluginsHint")]).map((item) => (
                         <span key={item}><Layers3 size={14} /> {item}</span>
                       ))}
                     </div>
@@ -535,14 +540,14 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Hooks</span>
-                      <code>{grokInspectCount(inspectOutput, "Hooks")} loaded</code>
+                      <span>{t("inspector.hooks")}</span>
+                      <code>{t("inspector.loaded", { count: grokInspectCount(inspectOutput, "Hooks") })}</code>
                     </div>
-                    <p>Hooks are surfaced as first-class context because they change how Grok behaves before and after tool work.</p>
+                    <p>{t("inspector.hooksBlurb")}</p>
                   </section>
                   <section className="inspector-card">
                     <div className="capability-list">
-                      {(hookItems.length ? hookItems : ["Run Inspect Grok to load hooks."]).map((item) => (
+                      {(hookItems.length ? hookItems : [t("inspector.loadHooksHint")]).map((item) => (
                         <span key={item}><Zap size={14} /> {item}</span>
                       ))}
                     </div>
@@ -554,13 +559,13 @@ export function InspectorDrawer({
                 <>
                   <section className="inspector-card hero-card">
                     <div className="card-head">
-                      <span>Approvals</span>
+                      <span>{t("inspector.approvals")}</span>
                       <code>{permissionsSource}</code>
                     </div>
                     <div className="approval-select">
                       <ShieldCheck size={16} />
                       <select
-                        aria-label="Approval policy"
+                        aria-label={t("inspector.approvalPolicyAria")}
                         onChange={(event) => setActionPolicy(event.currentTarget.value as ActionPolicy)}
                         value={actionPolicy}
                       >
@@ -575,26 +580,26 @@ export function InspectorDrawer({
                   </section>
                   <section className="inspector-card">
                     <div className="card-head">
-                      <span>Grok Optimization</span>
+                      <span>{t("inspector.optimization")}</span>
                       <code>{effortLevels[effortLevel].label}</code>
                     </div>
                     <div className="safety-list">
                       {grokOptimizationRules.map((rule) => (
                         <span key={rule}><ShieldCheck size={14} /> {rule}</span>
                       ))}
-                      <span><ShieldCheck size={14} /> Model: {activeModel}</span>
-                      <span><ShieldCheck size={14} /> Permission mode: {permissionModes[permissionMode].label}</span>
-                      <span><ShieldCheck size={14} /> Reasoning: {activeReasoningLabel}</span>
-                      <span><ShieldCheck size={14} /> Web search: {webSearchEnabled ? "enabled" : "disabled"}</span>
-                      <span><ShieldCheck size={14} /> Subagents: {subagentsEnabled ? "enabled" : "disabled"}</span>
-                      <span><ShieldCheck size={14} /> Self-check: {selfCheck ? "enabled" : "off"}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationModel", { model: activeModel })}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationPermission", { label: permissionModes[permissionMode].label })}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationReasoning", { label: activeReasoningLabel })}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationWebSearch", { state: webSearchEnabled ? t("common.enabled") : t("common.disabled") })}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationSubagents", { state: subagentsEnabled ? t("common.enabled") : t("common.disabled") })}</span>
+                      <span><ShieldCheck size={14} /> {t("inspector.optimizationSelfCheck", { state: selfCheck ? t("common.enabled") : t("common.off") })}</span>
                     </div>
                   </section>
                   <section className="inspector-card">
                     <div className="card-head">
-                      <span>Command History</span>
+                      <span>{t("inspector.commandHistory")}</span>
                       <button
-                        aria-label="Clear run history"
+                        aria-label={t("inspector.clearRunHistory")}
                         disabled={history.length === 0 && !lastRun}
                         onClick={clearRunHistory}
                         type="button"
@@ -612,7 +617,7 @@ export function InspectorDrawer({
                           </button>
                         ))
                       ) : (
-                        <p>No runs yet.</p>
+                        <p>{t("inspector.noRuns")}</p>
                       )}
                     </div>
                   </section>

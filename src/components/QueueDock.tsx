@@ -4,6 +4,7 @@ import { useElapsed } from '../hooks/useElapsed';
 import { useQueue } from '../hooks/useQueue';
 import { cancelPendingRuns, cancelRun, getQueue, resumePendingRuns } from '../lib/grok';
 import { replaceQueue } from '../lib/streamStore';
+import { t } from '../i18n';
 
 function formatElapsed(ms: number): string {
   const s = ms / 1000;
@@ -56,9 +57,11 @@ export function QueueDock() {
     <div className="queue-dock">
       {resumeBannerVisible ? (
         <div className="queue-banner">
-          <span>↻ Last session had {bannerCount} pending task{bannerCount === 1 ? '' : 's'}</span>
-          <button onClick={handleResume}>Resume all</button>
-          <button onClick={handleCancelAll}>Cancel all</button>
+          <span>
+            {t(bannerCount === 1 ? 'queue.bannerOne' : 'queue.bannerMany', { count: bannerCount })}
+          </span>
+          <button onClick={handleResume}>{t('queue.resumeAll')}</button>
+          <button onClick={handleCancelAll}>{t('queue.cancelAll')}</button>
         </div>
       ) : null}
 
@@ -69,14 +72,16 @@ export function QueueDock() {
         onClick={() => setExpanded((v) => !v)}
       >
         {active ? (
-          <span className="queue-active">▶ Running {elapsed != null ? formatElapsed(elapsed) : '0s'}</span>
+          <span className="queue-active">
+            {t('queue.running', { elapsed: elapsed != null ? formatElapsed(elapsed) : '0s' })}
+          </span>
         ) : (
-          <span className="queue-idle">▶ Idle</span>
+          <span className="queue-idle">{t('queue.idle')}</span>
         )}
         {queue.items.length > 0 ? (
-          <span className="queue-count">+ {queue.items.length} queued</span>
+          <span className="queue-count">{t('queue.queuedCount', { count: queue.items.length })}</span>
         ) : null}
-        <span className="queue-expand">{expanded ? '⤒ collapse' : '⤓ expand'}</span>
+        <span className="queue-expand">{expanded ? t('queue.collapse') : t('queue.expand')}</span>
       </button>
 
       {expanded && queue.items.length > 0 ? (
@@ -85,7 +90,7 @@ export function QueueDock() {
             <li key={item.id} className="queue-item">
               <span className="queue-item-state">⏸</span>
               <span className="queue-item-prompt">{item.prompt.slice(0, 80)}</span>
-              <button onClick={() => cancelRun(item.id)} aria-label="Cancel this queued run">✕</button>
+              <button onClick={() => cancelRun(item.id)} aria-label={t('queue.cancelQueuedRun')}>✕</button>
             </li>
           ))}
         </ul>

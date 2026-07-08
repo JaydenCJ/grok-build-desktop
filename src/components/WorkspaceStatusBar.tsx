@@ -15,6 +15,7 @@ import {
 import type { ToolRun } from "../lib/grok";
 import type { ActionPolicy } from "../app/types";
 import { actionPolicies } from "../app/constants";
+import { t } from "../i18n";
 
 export interface WorkspaceStatusBarProps {
   workspacePath: string;
@@ -52,7 +53,7 @@ export function WorkspaceStatusBar({
   clearRunHistory,
 }: WorkspaceStatusBarProps) {
   return (
-        <footer className="workspace-statusbar" aria-label="Workspace status">
+        <footer className="workspace-statusbar" aria-label={t('workspace.ariaLabel')}>
           {/* These chips looked like controls but were dead text. Now they're
               real buttons: project → folder picker, model → Model settings,
               policy → Permissions settings. */}
@@ -61,7 +62,7 @@ export function WorkspaceStatusBar({
             className="status-cluster status-action"
             onClick={pickFolder}
             disabled={folderPickerBusy}
-            title="Pick the project folder Grok runs in"
+            title={t('workspace.pickFolderTitle')}
           >
             <FolderGit2 size={13} />
             <span className="status-cwd" title={workspacePath}>{workspacePath}</span>
@@ -70,17 +71,17 @@ export function WorkspaceStatusBar({
             type="button"
             className="status-cluster status-action"
             onClick={openModelSettings}
-            title="Change model & reasoning"
+            title={t('workspace.changeModelTitle')}
           >
             <Sparkles size={13} />
             <span>{activeModel}</span>
-            {!modelIsVerified ? <span className="status-warn">unverified</span> : null}
+            {!modelIsVerified ? <span className="status-warn">{t('workspace.unverified')}</span> : null}
           </button>
           <button
             type="button"
             className="status-cluster status-action"
             onClick={openPermissionSettings}
-            title="Change action policy & permissions"
+            title={t('workspace.changePolicyTitle')}
           >
             <ShieldCheck size={13} />
             <span>{actionPolicies[actionPolicy].label}</span>
@@ -98,26 +99,29 @@ export function WorkspaceStatusBar({
             )}
             <span>
               {grokIsRunning
-                ? "Running"
+                ? t('common.running')
                 : lastRun && totalRuns > 0
-                  ? `${lastRun.ok ? "Last run ok" : "Last run failed"} · ${(lastRun.duration_ms / 1000).toFixed(1)}s`
+                  ? t('workspace.lastRun', {
+                      status: lastRun.ok ? t('workspace.lastRunOk') : t('workspace.lastRunFailed'),
+                      seconds: (lastRun.duration_ms / 1000).toFixed(1),
+                    })
                   : isGrokReady
-                    ? "Idle · ready"
-                    : "Ready"}
+                    ? t('workspace.idleReady')
+                    : t('workspace.ready')}
             </span>
           </div>
           <div className="status-cluster status-right">
             <History size={13} />
-            <span>{totalRuns} runs</span>
+            <span>{t('workspace.runsCount', { count: totalRuns })}</span>
             <button
               className="status-clear"
               disabled={messagesCount === 0 && historyCount === 0}
               onClick={clearRunHistory}
               type="button"
-              title="Clear conversation, run history, and terminal"
+              title={t('workspace.clearTitle')}
             >
               <Trash2 size={12} />
-              <span>Clear</span>
+              <span>{t('workspace.clear')}</span>
             </button>
           </div>
         </footer>

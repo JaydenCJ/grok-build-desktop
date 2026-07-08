@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useModalFocus } from '../hooks/useModalFocus';
+import { t } from '../i18n';
 
 export interface PaletteAction {
   id: string;
@@ -86,7 +87,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
       className="palette-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Command palette"
+      aria-label={t('palette.ariaLabel')}
       onClick={onClose}
     >
       <div className="palette-shell" ref={shellRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
@@ -96,7 +97,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
             ref={inputRef}
             className="palette-search-input"
             value={query}
-            placeholder="Type a command…"
+            placeholder={t('palette.placeholder')}
             onChange={(e) => {
               setQuery(e.currentTarget.value);
               setHighlight(0);
@@ -121,11 +122,11 @@ export function CommandPalette({ open, actions, onClose }: Props) {
               // Escape is handled by the useModalFocus trap.
             }}
           />
-          <span className="palette-search-kbd">esc</span>
+          <span className="palette-search-kbd">{t('palette.escHint')}</span>
         </div>
         <div className="palette-list" role="listbox" ref={listRef}>
           {filtered.length === 0 ? (
-            <div className="palette-empty">No commands match.</div>
+            <div className="palette-empty">{t('palette.noMatch')}</div>
           ) : (
             filtered.map((action, idx) => (
               <button

@@ -21,6 +21,7 @@ import {
   modeCopy,
   reasoningEfforts,
 } from "../app/constants";
+import { t } from "../i18n";
 
 export interface ComposerSectionProps {
   composerRef: React.RefObject<ComposerHandle | null>;
@@ -84,7 +85,7 @@ export function ComposerSection({
                 <div className="autopilot-warning" role="alert">
                   <AlertTriangle size={15} />
                   <div>
-                    <strong>Autopilot is on — Grok auto-approves every action.</strong>
+                    <strong>{t('composerSection.autopilotTitle')}</strong>
                     <span>
                       It can edit files and run shell commands with{" "}
                       <code>--always-approve</code>, no confirmation. Only use this in a
@@ -95,9 +96,9 @@ export function ComposerSection({
                     type="button"
                     className="autopilot-warning-dismiss"
                     onClick={() => setActionPolicy("patch")}
-                    title="Switch back to Patch ready"
+                    title={t('composerSection.autopilotSwitchTitle')}
                   >
-                    Switch to Patch
+                    {t('composerSection.autopilotSwitch')}
                   </button>
                 </div>
               ) : null}
@@ -111,11 +112,11 @@ export function ComposerSection({
                   setDrafts((current) => ({ ...current, [mode]: text }));
                 }}
                 onEnqueued={handleEnqueued}
-                onError={(message) => setSessionNotice(`Send failed: ${message}`)}
+                onError={(message) => setSessionNotice(t('composerSection.sendFailed', { message }))}
               />
               <div className="composer-footer">
                 <select
-                  aria-label="Interaction mode"
+                  aria-label={t('composerSection.interactionMode')}
                   className="mode-select"
                   onChange={(event) => switchMode(event.currentTarget.value as Mode)}
                   value={mode}
@@ -127,9 +128,13 @@ export function ComposerSection({
                   ))}
                 </select>
                 <select
-                  aria-label="Grok model"
+                  aria-label={t('composerSection.grokModel')}
                   className="model-select-footer"
-                  title={modelIsVerified ? `Model: ${activeModel}` : `${activeModel} — not in grok CLI list, may fall back`}
+                  title={
+                    modelIsVerified
+                      ? t('composerSection.modelTitle', { model: activeModel })
+                      : t('composerSection.modelUnverifiedTitle', { model: activeModel })
+                  }
                   onChange={(event) => {
                     const value = event.currentTarget.value;
                     if (isGrokModelId(value)) {
@@ -145,14 +150,14 @@ export function ComposerSection({
                     const verified = availableModels.length === 0 || availableModels.includes(id);
                     return (
                       <option key={id} value={id}>
-                        {verified ? id : `${id} · not in CLI`}
+                        {verified ? id : t('composerSection.modelNotInCli', { id })}
                       </option>
                     );
                   })}
-                  <option value="custom">Custom…</option>
+                  <option value="custom">{t('composerSection.customOption')}</option>
                 </select>
                 <select
-                  aria-label="Coding workflow"
+                  aria-label={t('composerSection.codingWorkflow')}
                   className="workflow-select"
                   onChange={(event) => {
                     const preset = codingPresets.find((item) => item.id === event.currentTarget.value);
@@ -167,7 +172,7 @@ export function ComposerSection({
                   ))}
                 </select>
                 <select
-                  aria-label="Action policy"
+                  aria-label={t('composerSection.actionPolicy')}
                   onChange={(event) => setActionPolicy(event.currentTarget.value as ActionPolicy)}
                   value={actionPolicy}
                 >
@@ -181,25 +186,29 @@ export function ComposerSection({
                     glance below the chat box (Claude-style). Labels are
                     self-describing since the footer has no separate captions. */}
                 <select
-                  aria-label="Agent effort"
+                  aria-label={t('composerSection.agentEffort')}
                   className="run-select"
-                  title="Agent effort — how hard Grok works per turn"
+                  title={t('composerSection.agentEffortTitle')}
                   value={effortLevel}
                   onChange={(event) => setEffortLevel(event.currentTarget.value as EffortLevel)}
                 >
                   {(Object.keys(effortLevels) as EffortLevel[]).map((k) => (
-                    <option key={k} value={k}>{`Effort: ${effortLevels[k].label}`}</option>
+                    <option key={k} value={k}>
+                      {t('composerSection.effortOption', { label: effortLevels[k].label })}
+                    </option>
                   ))}
                 </select>
                 <select
-                  aria-label="Reasoning effort"
+                  aria-label={t('composerSection.reasoningEffort')}
                   className="run-select"
-                  title="Reasoning effort — extra thinking budget on hard paths"
+                  title={t('composerSection.reasoningEffortTitle')}
                   value={reasoningEffort}
                   onChange={(event) => setReasoningEffort(event.currentTarget.value as ReasoningEffort)}
                 >
                   {(Object.keys(reasoningEfforts) as ReasoningEffort[]).map((k) => (
-                    <option key={k} value={k}>{`Reasoning: ${reasoningEfforts[k].label}`}</option>
+                    <option key={k} value={k}>
+                      {t('composerSection.reasoningOption', { label: reasoningEfforts[k].label })}
+                    </option>
                   ))}
                 </select>
                 {/* Raw grok --permission-mode lives in Settings → Permissions
@@ -207,25 +216,25 @@ export function ComposerSection({
                     policy" (Review/Plan/Patch/Autopilot) as the single
                     permission control, so the two no longer overlap. */}
                 <select
-                  aria-label="Best-of-N"
+                  aria-label={t('composerSection.bestOfN')}
                   className="run-select"
-                  title="Best-of-N — run N ways in parallel, keep the best"
+                  title={t('composerSection.bestOfNTitle')}
                   value={bestOfN}
                   onChange={(event) => setBestOfN(Number(event.currentTarget.value))}
                 >
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>{`Best-of-${n}`}</option>
+                    <option key={n} value={n}>{t('composerSection.bestOfOption', { n })}</option>
                   ))}
                 </select>
                 <span className="composer-hint" aria-hidden="true">
-                  ↵ Send · ⇧↵ Newline
+                  {t('composerSection.enterHint')}
                 </span>
                 {grokIsRunning && activeRunId ? (
                   <button
                     className="mini-run"
                     onClick={() => stopRun(activeRunId)}
                     type="button"
-                    title="Stop run"
+                    title={t('composerSection.stopRun')}
                   >
                     <X size={16} />
                   </button>

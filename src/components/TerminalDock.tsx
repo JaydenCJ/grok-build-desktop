@@ -3,6 +3,7 @@
 import { Loader2, Play, SquareTerminal, TerminalSquare } from "lucide-react";
 import type { DockPosition } from "../app/types";
 import { terminalClass, terminalPrefix, terminalText } from "../app/format";
+import { t } from "../i18n";
 
 export interface TerminalDockProps {
   open: boolean;
@@ -43,12 +44,12 @@ export function TerminalDock({
           <summary className="terminal-summary">
             <span>
               <SquareTerminal size={16} />
-              <strong>Terminal</strong>
-              <small className={busyRunner ? "running" : ""}>{busyRunner ? "Running" : "Idle"}</small>
+              <strong>{t('terminal.title')}</strong>
+              <small className={busyRunner ? "running" : ""}>{busyRunner ? t('common.running') : t('common.idle')}</small>
             </span>
             <span>
               <button
-                aria-label="Dock terminal right"
+                aria-label={t('terminal.dockRight')}
                 className={dockPosition === "right" ? "dock-dot active" : "dock-dot"}
                 onClick={(event) => {
                   event.preventDefault();
@@ -56,10 +57,10 @@ export function TerminalDock({
                 }}
                 type="button"
               >
-                Right
+                {t('common.right')}
               </button>
               <button
-                aria-label="Dock terminal bottom"
+                aria-label={t('terminal.dockBottom')}
                 className={dockPosition === "bottom" ? "dock-dot active" : "dock-dot"}
                 onClick={(event) => {
                   event.preventDefault();
@@ -67,22 +68,22 @@ export function TerminalDock({
                 }}
                 type="button"
               >
-                Bottom
+                {t('common.bottom')}
               </button>
-              <small>{terminalDisplay.length} lines</small>
+              <small>{t('terminal.linesCount', { count: terminalDisplay.length })}</small>
             </span>
           </summary>
           <div className="terminal-head">
             <div>
               <SquareTerminal size={17} />
-              <strong>Terminal</strong>
-              <span className={busyRunner ? "running" : ""}>{busyRunner ? "Running" : "Idle"}</span>
+              <strong>{t('terminal.title')}</strong>
+              <span className={busyRunner ? "running" : ""}>{busyRunner ? t('common.running') : t('common.idle')}</span>
             </div>
             <div className="terminal-actions">
               <label>
                 <TerminalSquare size={15} />
                 <input
-                  aria-label="Shell command"
+                  aria-label={t('terminal.shellCommand')}
                   onChange={(event) => setShellCommand(event.currentTarget.value)}
                   value={shellCommand}
                 />
@@ -93,7 +94,7 @@ export function TerminalDock({
                 type="button"
               >
                 {busyRunner === "shell" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-                Run
+                {t('common.run')}
               </button>
             </div>
           </div>

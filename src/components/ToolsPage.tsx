@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useModalFocus } from '../hooks/useModalFocus';
+import { t } from '../i18n';
 import {
   FOLDER_PLACEHOLDER,
   MCP_CATALOG,
@@ -103,7 +104,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
     setNotice(null);
     try {
       await installSkill(entry);
-      setNotice({ kind: 'ok', text: `Installed "${entry.name}". Grok will pick it up on its next run.` });
+      setNotice({ kind: 'ok', text: t('tools.installedSkill', { name: entry.name }) });
       await refreshSkills();
     } catch (e) {
       setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -117,7 +118,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
     setNotice(null);
     try {
       await removeSkill(entry.slug);
-      setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
+      setNotice({ kind: 'ok', text: t('tools.removedEntry', { name: entry.name }) });
       await refreshSkills();
     } catch (e) {
       setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -144,7 +145,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
         if (!folder) {
           setNotice({
             kind: 'err',
-            text: `"${entry.name}" needs a folder to expose — pick one to finish adding it.`,
+            text: t('tools.needsFolder', { name: entry.name }),
           });
           return;
         }
@@ -157,9 +158,15 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
         envPairs: entry.requiredEnv?.map((e) => `${e.key}=`),
       });
       if (run?.ok) {
-        setNotice({ kind: 'ok', text: `Added "${entry.name}". ${entry.requiredEnv?.length ? 'Set its API key/env in ~/.grok/config.toml, then restart Grok.' : ''}` });
+        setNotice({
+          kind: 'ok',
+          text: t('tools.addedEntry', {
+            name: entry.name,
+            envHint: entry.requiredEnv?.length ? t('tools.envHint') : '',
+          }),
+        });
       } else {
-        setNotice({ kind: 'err', text: run?.stderr || run?.output || 'grok mcp add failed' });
+        setNotice({ kind: 'err', text: run?.stderr || run?.output || t('tools.addFailed') });
       }
       await refresh();
     } catch (e) {
@@ -174,8 +181,8 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
     setNotice(null);
     try {
       const run = await removeMcpServer(entry.id);
-      if (run?.ok) setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
-      else setNotice({ kind: 'err', text: run?.stderr || 'grok mcp remove failed' });
+      if (run?.ok) setNotice({ kind: 'ok', text: t('tools.removedEntry', { name: entry.name }) });
+      else setNotice({ kind: 'err', text: run?.stderr || t('tools.removeFailed') });
       await refresh();
     } catch (e) {
       setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -185,11 +192,11 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
   };
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Tools" onClick={onClose}>
+    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t('tools.ariaLabel')} onClick={onClose}>
       <div className="tools-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="tools-head">
           <div>
-            <h2>Tools &amp; Skills</h2>
+            <h2>{t('tools.title')}</h2>
             <p>
               {tab === 'mcp' ? (
                 <>
@@ -206,7 +213,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
               )}
             </p>
           </div>
-          <button ref={closeRef} type="button" className="settings-close" aria-label="Close" onClick={onClose}>
+          <button ref={closeRef} type="button" className="settings-close" aria-label={t('common.close')} onClick={onClose}>
             ✕
           </button>
         </div>
@@ -219,7 +226,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
             className={`tools-tab${tab === 'mcp' ? ' active' : ''}`}
             onClick={() => setTab('mcp')}
           >
-            MCP servers
+            {t('tools.tabMcp')}
           </button>
           <button
             type="button"
@@ -228,7 +235,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
             className={`tools-tab${tab === 'skills' ? ' active' : ''}`}
             onClick={() => setTab('skills')}
           >
-            Skills
+            {t('tools.tabSkills')}
           </button>
         </div>
 
@@ -236,7 +243,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
 
         <input
           className="tools-search"
-          placeholder={tab === 'mcp' ? 'Search tools (github, postgres, search…)' : 'Search skills (review, tests, debug…)'}
+          placeholder={tab === 'mcp' ? t('tools.searchMcpPlaceholder') : t('tools.searchSkillsPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
         />
@@ -258,14 +265,14 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
                   <div className="tool-mcp-actions">
                     {installed ? (
                       <>
-                        <span className="tool-mcp-badge">✓ Installed</span>
+                        <span className="tool-mcp-badge">{t('tools.installedBadge')}</span>
                         <button
                           type="button"
                           className="tool-mcp-remove"
                           disabled={busy !== null}
                           onClick={() => void handleRemoveSkill(entry)}
                         >
-                          {busy === entry.slug ? '…' : 'Remove'}
+                          {busy === entry.slug ? t('common.busy') : t('common.remove')}
                         </button>
                       </>
                     ) : (
@@ -275,7 +282,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
                         disabled={busy !== null}
                         onClick={() => void handleInstallSkill(entry)}
                       >
-                        {busy === entry.slug ? 'Installing…' : 'Install'}
+                        {busy === entry.slug ? t('tools.installing') : t('tools.install')}
                       </button>
                     )}
                   </div>
@@ -296,7 +303,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
                 <p className="tool-mcp-desc">{entry.description}</p>
                 {entry.requiredEnv?.length ? (
                   <p className="tool-mcp-env">
-                    Needs: {entry.requiredEnv.map((e) => e.key).join(', ')}
+                    {t('tools.needs', { keys: entry.requiredEnv.map((e) => e.key).join(', ') })}
                   </p>
                 ) : null}
                 {entry.argHint ? <p className="tool-mcp-hint">{entry.argHint}</p> : null}
@@ -306,14 +313,14 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
                 <div className="tool-mcp-actions">
                   {connected ? (
                     <>
-                      <span className="tool-mcp-badge">✓ Connected</span>
+                      <span className="tool-mcp-badge">{t('tools.connectedBadge')}</span>
                       <button
                         type="button"
                         className="tool-mcp-remove"
                         disabled={busy !== null}
                         onClick={() => void handleRemove(entry)}
                       >
-                        {busy === entry.id ? '…' : 'Remove'}
+                        {busy === entry.id ? t('common.busy') : t('common.remove')}
                       </button>
                     </>
                   ) : (
@@ -323,7 +330,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
                       disabled={busy !== null}
                       onClick={() => void handleAdd(entry)}
                     >
-                      {busy === entry.id ? 'Adding…' : 'Add'}
+                      {busy === entry.id ? t('tools.adding') : t('tools.add')}
                     </button>
                   )}
                 </div>
@@ -346,7 +353,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
             </span>
           )}
           <button type="button" onClick={() => void (tab === 'mcp' ? refresh() : refreshSkills())}>
-            Refresh
+            {t('common.refresh')}
           </button>
         </div>
       </div>
