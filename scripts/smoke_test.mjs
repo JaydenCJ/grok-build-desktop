@@ -375,4 +375,27 @@ assert.ok(read("src/components/ToolsPage.tsx").includes("SKILL_CATALOG") &&
   read("src/components/ToolsPage.tsx").includes("tools-tab"),
   "Tools page must expose a Skills tab");
 
+// 16) Security hardening guards.
+// marked does not sanitize its HTML — every dangerouslySetInnerHTML value in
+// MessageItem must go through the DOMPurify wrapper.
+const messageItem = read("src/components/MessageItem.tsx");
+assert.ok(messageItem.includes("sanitizeHtml("),
+  "MessageItem must sanitize worker HTML before dangerouslySetInnerHTML");
+assert.ok(!messageItem.includes("__html: html"),
+  "MessageItem must never inject unsanitized worker HTML");
+// The preview iframe must stay an opaque origin: allow-scripts combined with
+// allow-same-origin would let previewed project JS reach the app's origin.
+assert.ok(app.includes('sandbox="allow-forms allow-popups allow-scripts"'),
+  "preview iframe must keep its sandbox attribute");
+assert.ok(!app.includes("allow-same-origin"),
+  "preview iframe sandbox must not include allow-same-origin");
+// A real CSP must be configured (it also governs the srcdoc preview iframe).
+assert.ok(typeof tauriConf.app?.security?.csp === "string" &&
+  tauriConf.app.security.csp.includes("default-src 'self'"),
+  "tauri.conf.json must set a real Content-Security-Policy (not null)");
+// Directory-scoped MCP catalog installs must go through the folder picker —
+// never silently expose $HOME.
+assert.ok(read("src/components/ToolsPage.tsx").includes("pickExposedFolder"),
+  "ToolsPage must make the user pick the folder exposed to filesystem/git MCP servers");
+
 console.log("smoke: ok");
