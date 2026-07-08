@@ -38,6 +38,10 @@ interface Props {
     prompt: string;
     rawText: string;
   }) => void;
+  /** Called when enqueueing the prompt fails, with a human-readable message.
+   *  The host surfaces it (session notice) — a silent console.error left the
+   *  user staring at a composer that "ate" their prompt. */
+  onError?: (message: string) => void;
   /**
    * Optional draft-persistence callback. **Called only on blur and on unmount**,
    * not on every keystroke — passing it as a per-keystroke listener would force
@@ -82,6 +86,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     initialValue,
     placeholder,
     onEnqueued,
+    onError,
     onTextChange,
   }: Props,
   outerRef,
@@ -156,7 +161,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const caret = el.selectionStart ?? 0;
     const before = el.value.slice(0, mention.start);
     const after = el.value.slice(caret);
-    const insertion = `@${entry.path} `;
+    // Quote paths containing whitespace so extractFileMentions can parse them
+    // back out as one token ("My Project/notes.md" would otherwise become @My).
+    const insertion = /\s/.test(entry.path) ? `@"${entry.path}" ` : `@${entry.path} `;
     el.value = `${before}${insertion}${after}`;
     const newCaret = before.length + insertion.length;
     el.setSelectionRange(newCaret, newCaret);
@@ -211,9 +218,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
     } catch (err) {
       console.error('[grok-desktop] enqueue failed', err);
+      // Surface the failure — the prompt is still in the textarea, so the
+      // user can retry once the cause (e.g. backend not ready) is fixed.
+      onError?.(err instanceof Error ? err.message : String(err));
     } finally {
       notePendingSubmitEnd();
       setSubmitting(false);
+      // Disabling the textarea during submit blurs it; restore focus so the
+      // type→Enter→type flow survives every send. rAF lets the re-enable
+      // render commit first.
+      requestAnimationFrame(() => ref.current?.focus());
     }
   };
 
@@ -268,8 +282,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           setTimeout(() => setMention(null), 100);
         }}
         onKeyDown={(e) => {
-          // When the file picker is open it owns Enter/Tab/Arrows/Esc.
-          if (mention) {
+          // When the file picker is open it owns Enter/Tab/Arrows/Esc. Mirror
+          // the render condition below (`mention && cwd.trim()`): with no cwd
+          // the picker never shows, so a trailing @word must not swallow Enter.
+          if (mention && cwd.trim()) {
             const navKeys = ['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape'];
             if (navKeys.includes(e.key)) return;
           }

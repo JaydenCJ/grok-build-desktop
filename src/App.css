@@ -100,6 +100,10 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+
+  /* Tell the engine the page is dark so native scrollbars, <select> popups
+     and autofill match the near-black surfaces instead of staying light. */
+  color-scheme: dark;
 }
 
 /* Light theme — warm parchment, Claude-Desktop vibe. */
@@ -143,6 +147,8 @@ body[data-theme="light"] {
 
   /* Light-mode legacy aliases follow the new tokens automatically since
    * the --grok-* names are var() aliases of the canonical names above. */
+
+  color-scheme: light;
 }
 
 * {
@@ -740,6 +746,8 @@ pre {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  /* Anchor for the .session-toast overlay. */
+  position: relative;
 }
 
 .preview-panel {
@@ -2327,6 +2335,32 @@ button.status-cluster.status-action:disabled {
   color: #9b4f1c;
 }
 
+.message-error.message-cancelled {
+  background: var(--bg-3);
+  color: var(--text-2);
+}
+
+/* Session-level notices (folder pick, restore/save failures, send errors)
+   surfaced as a transient toast over the conversation — previously they
+   rendered only inside the collapsed Terminal dock where nobody saw them. */
+.session-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(680px, 85%);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--bg-4);
+  border: 1px solid var(--border-2);
+  color: var(--text-1);
+  font-size: 12px;
+  text-align: center;
+  box-shadow: var(--shadow-pop, 0 8px 24px -8px rgba(0,0,0,0.5));
+  animation: palette-fade 120ms ease-out;
+}
+
 .message.status-streaming .message-body p {
   color: var(--text-muted);
 }
@@ -3473,6 +3507,15 @@ button.status-cluster.status-action:disabled {
   padding: 6px 14px;
   user-select: none;
   transition: background 120ms ease;
+  /* It's a real <button> now (keyboard/AT reachable) — neutralize the global
+     button chrome so the row keeps its original strip look. */
+  width: 100%;
+  background: transparent;
+  border-radius: 0;
+  color: inherit;
+  justify-content: flex-start;
+  min-height: 0;
+  text-align: left;
 }
 .queue-summary:hover { background: var(--grok-bg-3); }
 .queue-active { color: var(--grok-text-1); font-weight: 600; }

@@ -31,6 +31,16 @@ export function CommandPalette({ open, actions, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the highlighted row visible — the list scrolls (max 60vh) and the
+  // catalogue is longer than the viewport, so arrow-nav could select a row
+  // below the fold and Enter would run an invisible command.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector('.is-highlight')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [highlight]);
 
   // Reset query + focus when palette opens.
   useEffect(() => {
@@ -113,7 +123,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
           />
           <span className="palette-search-kbd">esc</span>
         </div>
-        <div className="palette-list" role="listbox">
+        <div className="palette-list" role="listbox" ref={listRef}>
           {filtered.length === 0 ? (
             <div className="palette-empty">No commands match.</div>
           ) : (
