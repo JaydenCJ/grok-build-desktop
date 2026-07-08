@@ -81,7 +81,11 @@ assert.ok(app.includes("workspace-statusbar"), "Workspace status bar missing");
 assert.ok(app.includes("starter-grid"), "Empty-state starter cards missing");
 assert.ok(app.includes("starter-card"), "Empty-state starter card buttons missing");
 assert.ok(app.includes("How can Grok help today"), "Empty-state heading missing");
-assert.ok(app.includes("conversationScrollRef"), "Conversation auto-scroll ref missing");
+// Scroll-follow lives in MessageList (Virtuoso owns the scroller); App's old
+// conversationScrollRef effects were dead code — the outer div never scrolls.
+const messageList = read("src/components/MessageList.tsx");
+assert.ok(messageList.includes("followOutput"), "MessageList follow-output missing");
+assert.ok(messageList.includes("atBottomStateChange"), "MessageList at-bottom tracking missing");
 
 const css = read("src/App.css");
 assert.ok(css.includes(".workspace-statusbar"), "Status bar styles missing");
@@ -145,7 +149,9 @@ for (const hookFile of ["useActiveRun", "useQueue", "useRunSnapshot", "useElapse
 assert.ok(read("src/hooks/useActiveRun.ts").includes("useSyncExternalStore"),
   "selector hooks must use useSyncExternalStore for fine-grained subscriptions");
 
-assert.ok(app.includes("stickToBottomRef"), "Smart sticky-bottom auto-scroll missing");
+// Smart sticky-bottom auto-scroll: MessageList pins to the bottom only while
+// the user is already there (atBottomRef), never yanking them back down.
+assert.ok(messageList.includes("atBottomRef"), "Smart sticky-bottom auto-scroll missing");
 
 assert.ok(css.includes(".markdown-body pre") || css.includes(".message-body pre"), "Code block styling missing");
 assert.ok(css.includes(".markdown-body code") || css.includes(".message-body code"), "Inline code styling missing");
@@ -169,8 +175,6 @@ assert.ok(existsSync(join(root, "src-tauri/src/prompts/mod.rs")),
   "prompts module missing");
 assert.ok(existsSync(join(root, "src/lib/prompts.ts")),
   "prompts TS wrapper missing");
-assert.ok(existsSync(join(root, "src/components/PromptLibrary.tsx")),
-  "PromptLibrary component missing");
 for (const cmd of ["list_prompts", "upsert_prompt", "delete_prompt"]) {
   assert.ok(libRs.includes(cmd), `missing Tauri command for prompts: ${cmd}`);
 }

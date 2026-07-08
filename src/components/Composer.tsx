@@ -6,8 +6,7 @@ import {
   useState,
 } from 'react';
 import { enqueueRun } from '../lib/grok';
-import { useActiveRun } from '../hooks/useActiveRun';
-import { useQueue } from '../hooks/useQueue';
+import { useHasInflight } from '../hooks/useActiveRun';
 import {
   notePendingSubmitEnd,
   notePendingSubmitStart,
@@ -27,8 +26,6 @@ export interface ComposerHandle {
 interface Props {
   cwd: string;
   argsBuilder: () => string[];
-  /** Optional wrapper called once before sending — used to add a coding-mode preamble etc. */
-  promptWrapper?: (raw: string) => string;
   /** Initial seed value (e.g. restored from session_state drafts). Only applied once on mount. */
   initialValue?: string;
   placeholder?: string;
@@ -82,7 +79,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   {
     cwd,
     argsBuilder,
-    promptWrapper,
     initialValue,
     placeholder,
     onEnqueued,
@@ -101,8 +97,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
-  const active = useActiveRun();
-  const queue = useQueue();
+  // Primitive selector — subscribing to whole run/queue snapshots would
+  // re-render the Composer on every streamed token (see useHasInflight).
+  const hasInflight = useHasInflight();
 
   useImperativeHandle(
     outerRef,
@@ -136,9 +133,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const hasInflight =
-    Boolean(active && active.state === 'running') || queue.items.length > 0;
 
   /**
    * Re-scan the textarea for an active @mention. Called on input + caret
@@ -203,17 +197,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setMention(null);
     notePendingSubmitStart();
     try {
-      const withFiles = await expandMentionsInPrompt(rawText);
-      const wrapped = promptWrapper ? promptWrapper(withFiles) : withFiles;
+      const prompt = await expandMentionsInPrompt(rawText);
       const args = argsBuilder();
-      args.push('-p', wrapped);
-      const result = await enqueueRun({ prompt: wrapped, cwd, args });
+      args.push('-p', prompt);
+      const result = await enqueueRun({ prompt, cwd, args });
       el.value = '';
       onTextChangeRef.current?.('');
       onEnqueued?.({
         runId: result.runId,
         position: result.position,
-        prompt: wrapped,
+        prompt,
         rawText,
       });
     } catch (err) {
