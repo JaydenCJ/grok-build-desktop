@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   frontend:
-    name: frontend · build + test
+    name: frontend · lint + build + test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +25,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Format check (prettier)
+        run: npm run format:check
 
       - name: Build (tsc + vite)
         run: npm run build
@@ -37,6 +44,7 @@ jobs:
   e2e:
     name: e2e · headless chromium
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -58,8 +66,44 @@ jobs:
         run: npm run test:e2e
 
   rust:
-    name: rust · check + test (macOS)
+    name: rust · check + clippy + test (macOS)
     runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check
+
+      - name: cargo clippy (deny warnings)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+  rust-windows:
+    # Compiles the #[cfg(windows)] paths (taskkill process-tree termination)
+    # that no other job sees. cargo check/test don't need dist/ — the tauri
+    # build script only embeds frontendDist at bundle time (same as the
+    # macOS job).
+    name: rust · check + test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
