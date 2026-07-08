@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo } from 'react';
 import { useRunHtml, useRunSnapshot } from '../hooks/useRunSnapshot';
 import { useSmoothText } from '../hooks/useSmoothText';
-import { scheduleMarkdownParse } from '../lib/markdownWorker';
 import { sanitizeHtml } from '../lib/sanitizeHtml';
 import { TraceTimeline } from './TraceTimeline';
 import { t } from '../i18n';
@@ -24,9 +23,16 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   // off-thread markdown worker so code blocks and formatting survive a restart
   // instead of showing raw ``` text. Falls back to plain text if the worker is
   // unavailable. Keyed by the message's stable synthetic runId (msg:<id>).
+  // Lazy-import like streamStore does — markdownWorker's only other importers
+  // are dynamic, and mixing a static import here would fold the module into
+  // the main chunk (Vite warns about exactly that).
   useEffect(() => {
     if (!snap && runId && fallbackText && html === undefined) {
-      scheduleMarkdownParse(runId, fallbackText);
+      import('../lib/markdownWorker')
+        .then(({ scheduleMarkdownParse }) => scheduleMarkdownParse(runId, fallbackText))
+        .catch(() => {
+          /* worker unavailable; the plain-text fallback below renders */
+        });
     }
   }, [snap, runId, fallbackText, html]);
 
