@@ -90,7 +90,7 @@ pub fn spawn(cmd_path: &Path, args: &[String], cwd: &Path) -> std::io::Result<Sp
         command.pre_exec(|| {
             // Become the leader of a new process group so we can kill descendants.
             nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
             Ok(())
         });
     }
