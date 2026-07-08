@@ -48,10 +48,21 @@ if (!existsSync(join(root, 'dist/index.html'))) {
   process.exit(1);
 }
 
+// `--host 127.0.0.1` keeps the bind address in lockstep with the probe URL:
+// without it vite binds "localhost", which resolves to ::1 on some runners
+// (e.g. GitHub Actions) while the probe polls 127.0.0.1 and times out.
 const server = spawn(
   process.execPath,
-  [join(root, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] },
+  [
+    join(root, 'node_modules/vite/bin/vite.js'),
+    'preview',
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(PORT),
+    '--strictPort',
+  ],
+  { cwd: root, stdio: ['ignore', 'inherit', 'inherit'] },
 );
 server.on('exit', (code) => {
   if (!shuttingDown) {
@@ -116,7 +127,7 @@ try {
   console.log('e2e: conversation switching ok (new session + history restore)');
 
   // 4. The mock must have answered every command the app invoked.
-  const unknown = await page.evaluate(() => window.__E2E_UNKNOWN_COMMANDS__ ?? []);
+  const unknown = await page.evaluate(() => globalThis.__E2E_UNKNOWN_COMMANDS__ ?? []);
   if (unknown.length > 0) {
     console.warn(`e2e: note — unmocked commands invoked: ${[...new Set(unknown)].join(', ')}`);
   }
