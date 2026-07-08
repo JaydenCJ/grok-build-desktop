@@ -1,13 +1,23 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// Single source of truth for the version shown in Settings → About.
+const pkg = JSON.parse(
+  readFileSync(resolve(__dirname, "package.json"), "utf8"),
+) as { version: string };
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
 
   build: {
     // Two entries: main app + transparent agent-overlay window (G2).

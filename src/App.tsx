@@ -2749,7 +2749,7 @@ function App() {
         codingCwd={codingCwd}
         setCodingCwd={setCodingCwd}
         onPickFolder={() => void pickFolder()}
-        appVersion="0.4.0"
+        appVersion={typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} />
