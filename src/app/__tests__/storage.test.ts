@@ -90,7 +90,7 @@ describe('storedMessages', () => {
     const messages = storedMessages();
     expect(messages).toHaveLength(120);
     expect(messages[0].id).toBe('m10');
-    expect(messages.at(-1)?.id).toBe('m129');
+    expect(messages[messages.length - 1]?.id).toBe('m129');
   });
 });
 
