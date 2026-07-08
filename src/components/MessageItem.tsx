@@ -1,7 +1,8 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useRunHtml, useRunSnapshot } from '../hooks/useRunSnapshot';
 import { useSmoothText } from '../hooks/useSmoothText';
 import { scheduleMarkdownParse } from '../lib/markdownWorker';
+import { sanitizeHtml } from '../lib/sanitizeHtml';
 import { TraceTimeline } from './TraceTimeline';
 
 interface Props {
@@ -13,6 +14,9 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   const snap = useRunSnapshot(runId);
   const html = useRunHtml(runId);
   const smooth = useSmoothText(runId);
+
+  // marked does not sanitize; strip scripts/handlers before injecting.
+  const safeHtml = useMemo(() => (html ? sanitizeHtml(html) : html), [html]);
 
   // Restored/legacy assistant messages (loaded from storage after a restart)
   // have stored text but no live run snapshot. Render them through the SAME
@@ -26,8 +30,8 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   }, [snap, runId, fallbackText, html]);
 
   if (!snap) {
-    if (html) {
-      return <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+    if (safeHtml) {
+      return <div className="message-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
     }
     if (fallbackText) return <pre className="message-body">{fallbackText}</pre>;
     return null;
@@ -43,8 +47,8 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   return (
     <>
       <TraceTimeline runId={runId} />
-      {ended && html ? (
-        <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />
+      {ended && safeHtml ? (
+        <div className="message-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
       ) : (
         <pre className="message-body streaming-raw">
           {smooth.text || fallbackText || ''}
