@@ -58,7 +58,8 @@ export type StaticPreview = {
   available: boolean;
   root: string;
   entryPath: string;
-  html: string;
+  /** grokpreview:// URL served by the backend with its own CSP. */
+  previewUrl: string;
   files: StaticPreviewFile[];
   detail: string;
   updatedAt: number;

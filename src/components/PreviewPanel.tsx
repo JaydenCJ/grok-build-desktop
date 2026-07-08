@@ -19,7 +19,7 @@ export function PreviewPanel({
   onRefresh,
 }: PreviewPanelProps) {
   const previewFiles = staticPreview?.files ?? [];
-  const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
+  const previewReady = Boolean(staticPreview?.available && staticPreview.previewUrl);
   const previewEntry = staticPreview?.entryPath
     ? staticPreview.entryPath.split("/").pop() || "index.html"
     : "index.html";
@@ -51,9 +51,15 @@ export function PreviewPanel({
             </div>
             <div className="preview-frame-wrap">
               {previewReady ? (
+                // The src points at the token-gated grokpreview:// custom
+                // protocol: the served document carries its own CSP instead of
+                // inheriting the strict app CSP (which an about:srcdoc
+                // document would), and the sandbox (which deliberately omits
+                // the same-origin flag) keeps it an opaque origin with no
+                // Tauri IPC access.
                 <iframe
                   sandbox="allow-forms allow-popups allow-scripts"
-                  srcDoc={staticPreview?.html}
+                  src={staticPreview?.previewUrl}
                   title="Generated static site preview"
                 />
               ) : (

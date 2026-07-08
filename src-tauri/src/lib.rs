@@ -115,10 +115,28 @@ struct StaticPreview {
     available: bool,
     root: String,
     entry_path: String,
-    html: String,
+    /// URL on the `grokpreview` custom scheme the iframe should load. The
+    /// document is served by `preview_scheme_response` with its own CSP, so
+    /// it does not inherit the strict app CSP (about:srcdoc would).
+    preview_url: String,
     files: Vec<StaticPreviewFile>,
     detail: String,
     updated_at: u128,
+}
+
+/// The one preview root the `grokpreview://` custom protocol may serve from.
+/// `get_static_preview` stores the canonicalized project root plus a fresh
+/// random token; the scheme handler rejects any request that does not carry
+/// the current token or that resolves outside this root, so a compromised
+/// renderer cannot use the scheme as an arbitrary-file oracle beyond the
+/// folder the user already chose for preview.
+#[derive(Default)]
+struct PreviewState(Mutex<Option<RegisteredPreview>>);
+
+struct RegisteredPreview {
+    token: String,
+    /// Canonicalized preview root; every served path must stay under it.
+    root: PathBuf,
 }
 
 fn truncate_text(value: String) -> String {
@@ -1009,15 +1027,160 @@ fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
     files
 }
 
-#[tauri::command]
-async fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
-    // Reads and inlines project files — off the main thread.
-    tauri::async_runtime::spawn_blocking(move || get_static_preview_blocking(cwd))
-        .await
-        .map_err(|error| error.to_string())?
+const PREVIEW_SCHEME: &str = "grokpreview";
+
+/// CSP attached to every response served on the preview scheme. The preview
+/// document is arbitrary generated-site code, so this policy is deliberately
+/// permissive (inline scripts/styles and remote subresources work, matching
+/// the old srcdoc behavior); the real isolation is the sandboxed iframe
+/// without allow-same-origin (opaque origin, no Tauri IPC). The header exists
+/// so the document has an explicit policy of its own instead of relying on
+/// inheritance, and so plugins and base-URI rewrites stay disabled.
+const PREVIEW_DOCUMENT_CSP: &str = "default-src 'self' 'unsafe-inline' data: blob:; \
+    script-src 'self' 'unsafe-inline' https:; \
+    style-src 'self' 'unsafe-inline' https:; \
+    img-src 'self' data: blob: https: http:; \
+    font-src 'self' data: https:; \
+    media-src 'self' data: blob:; \
+    connect-src 'self' https:; \
+    object-src 'none'; base-uri 'none'";
+
+fn preview_scheme_url(token: &str) -> String {
+    // Windows and Android map custom schemes onto http://{scheme}.localhost;
+    // macOS/Linux WebViews load the scheme directly.
+    if cfg!(any(windows, target_os = "android")) {
+        format!("http://{PREVIEW_SCHEME}.localhost/{token}/index.html")
+    } else {
+        format!("{PREVIEW_SCHEME}://localhost/{token}/index.html")
+    }
 }
 
-fn get_static_preview_blocking(cwd: Option<String>) -> Result<StaticPreview, String> {
+fn percent_decode_path(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'%' && index + 2 < bytes.len() {
+            let hex = &value[index + 1..index + 3];
+            if let Ok(decoded) = u8::from_str_radix(hex, 16) {
+                out.push(decoded);
+                index += 3;
+                continue;
+            }
+        }
+        out.push(byte);
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn preview_content_type(rel: &str) -> &'static str {
+    let extension = rel.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match extension.as_str() {
+        "html" | "htm" => "text/html; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "json" => "application/json",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "ico" => "image/x-icon",
+        "woff2" => "font/woff2",
+        "woff" => "font/woff",
+        "txt" | "md" => "text/plain; charset=utf-8",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+fn preview_http_response(
+    status: u16,
+    content_type: &str,
+    body: Vec<u8>,
+) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .header("Content-Security-Policy", PREVIEW_DOCUMENT_CSP)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Cache-Control", "no-store")
+        .body(body)
+        .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
+/// Serve one request on the preview scheme. Expected path shape:
+/// `/{token}/{relative/path}` where an empty relative path means index.html.
+/// Everything is validated against the single registered preview root:
+/// wrong/absent token -> 404, path traversal (canonicalize + starts_with)
+/// -> 404, oversized files -> 413.
+fn preview_scheme_response(
+    registered: Option<&RegisteredPreview>,
+    request_path: &str,
+) -> tauri::http::Response<Vec<u8>> {
+    let Some(registered) = registered else {
+        return preview_http_response(404, "text/plain", b"no preview registered".to_vec());
+    };
+    let mut segments = request_path.trim_start_matches('/').splitn(2, '/');
+    let token = segments.next().unwrap_or("");
+    // Constant-shape comparison is unnecessary here (the token gates a
+    // local-only, user-chosen folder), but never serve without a match.
+    if token.is_empty() || token != registered.token {
+        return preview_http_response(404, "text/plain", b"unknown preview token".to_vec());
+    }
+    let rel = percent_decode_path(segments.next().unwrap_or(""));
+    let rel = rel.trim_matches('/');
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+
+    if rel == "index.html" {
+        let entry = registered.root.join("index.html");
+        return match fs::read_to_string(&entry) {
+            Ok(html) => {
+                let html = inline_static_assets(html, &registered.root);
+                preview_http_response(200, "text/html; charset=utf-8", html.into_bytes())
+            }
+            Err(_) => preview_http_response(404, "text/plain", b"index.html not found".to_vec()),
+        };
+    }
+
+    // Subresources (images, extra pages, media the inliner does not embed):
+    // asset_path re-uses the inliner's validation — relative-only references,
+    // canonicalized, and required to stay under the registered root.
+    let Some(path) = asset_path(&registered.root, &registered.root, rel) else {
+        return preview_http_response(404, "text/plain", b"not found".to_vec());
+    };
+    let size = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(u64::MAX);
+    if size > PREVIEW_ASSET_MAX_BYTES {
+        return preview_http_response(413, "text/plain", b"file too large for preview".to_vec());
+    }
+    match fs::read(&path) {
+        Ok(bytes) => preview_http_response(200, preview_content_type(rel), bytes),
+        Err(_) => preview_http_response(404, "text/plain", b"not found".to_vec()),
+    }
+}
+
+#[tauri::command]
+async fn get_static_preview(
+    app: tauri::AppHandle,
+    cwd: Option<String>,
+) -> Result<StaticPreview, String> {
+    // Touches the filesystem — off the main thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<PreviewState>();
+        get_static_preview_blocking(cwd, &state)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn get_static_preview_blocking(
+    cwd: Option<String>,
+    state: &PreviewState,
+) -> Result<StaticPreview, String> {
     let root = preview_root(cwd);
     let files = project_files(&root);
     let entry = root.join("index.html");
@@ -1026,29 +1189,50 @@ fn get_static_preview_blocking(cwd: Option<String>) -> Result<StaticPreview, Str
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
 
+    let unavailable = |detail: String, files: Vec<StaticPreviewFile>| StaticPreview {
+        available: false,
+        root: root.to_string_lossy().to_string(),
+        entry_path: entry.to_string_lossy().to_string(),
+        preview_url: String::new(),
+        files,
+        detail,
+        updated_at: now,
+    };
+
     if !entry.is_file() {
-        return Ok(StaticPreview {
-            available: false,
-            root: root.to_string_lossy().to_string(),
-            entry_path: entry.to_string_lossy().to_string(),
-            html: String::new(),
+        return Ok(unavailable(
+            "Create index.html in the selected project to enable preview.".to_string(),
             files,
-            detail: "Create index.html in the selected project to enable preview.".to_string(),
-            updated_at: now,
-        });
+        ));
     }
 
-    let html = fs::read_to_string(&entry)
-        .map_err(|error| format!("Could not read static preview entry: {error}"))?;
-    let html = inline_static_assets(html, &root);
+    let Ok(canonical_root) = root.canonicalize() else {
+        return Ok(unavailable(
+            "Could not resolve the project folder for preview.".to_string(),
+            files,
+        ));
+    };
+
+    // Register the root + a fresh token; the previous URL stops working,
+    // which also makes every refresh a guaranteed iframe reload.
+    let token = uuid::Uuid::now_v7().simple().to_string();
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = Some(RegisteredPreview {
+            token: token.clone(),
+            root: canonical_root,
+        });
+    } else {
+        return Ok(unavailable("Preview registry is unavailable.".to_string(), files));
+    }
 
     Ok(StaticPreview {
         available: true,
         root: root.to_string_lossy().to_string(),
         entry_path: entry.to_string_lossy().to_string(),
-        html,
+        preview_url: preview_scheme_url(&token),
         files,
-        detail: "Rendering index.html with local CSS and JavaScript inlined.".to_string(),
+        detail: "Rendering index.html in an isolated preview origin with local assets inlined."
+            .to_string(),
         updated_at: now,
     })
 }
@@ -2041,6 +2225,20 @@ fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(PreviewState::default())
+        // The static-site preview iframe loads from this scheme instead of
+        // srcdoc: the served document carries its own (permissive) CSP, so
+        // the app CSP can stay strict (script-src 'self') without breaking
+        // the preview. Requests are token-gated and path-validated against
+        // the single registered preview root.
+        .register_uri_scheme_protocol(PREVIEW_SCHEME, |ctx, request| {
+            let state = ctx.app_handle().state::<PreviewState>();
+            let guard = state
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            preview_scheme_response(guard.as_ref(), request.uri().path())
+        })
         .setup(|app| {
             let app_handle = app.handle().clone();
             let resource_dir = app
@@ -2297,5 +2495,135 @@ mod tests {
         assert!(out.contains("too large to inline"), "must append truncation marker");
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    fn temp_preview_root() -> PathBuf {
+        let root = env::temp_dir().join(format!("grok-preview-scheme-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&root).expect("create temp preview root");
+        root
+    }
+
+    fn registered(root: &Path) -> RegisteredPreview {
+        RegisteredPreview {
+            token: "testtoken".to_string(),
+            root: root.canonicalize().expect("canonicalize temp root"),
+        }
+    }
+
+    fn header<'a>(response: &'a tauri::http::Response<Vec<u8>>, name: &str) -> Option<&'a str> {
+        response.headers().get(name).and_then(|value| value.to_str().ok())
+    }
+
+    #[test]
+    fn preview_scheme_rejects_when_nothing_registered() {
+        let response = preview_scheme_response(None, "/anytoken/index.html");
+        assert_eq!(response.status(), 404);
+    }
+
+    #[test]
+    fn preview_scheme_rejects_wrong_token() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        let reg = registered(&root);
+        let response = preview_scheme_response(Some(&reg), "/wrongtoken/index.html");
+        assert_eq!(response.status(), 404);
+        let response = preview_scheme_response(Some(&reg), "/index.html");
+        assert_eq!(response.status(), 404, "missing token segment must not serve");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_serves_inlined_index_with_own_csp() {
+        let root = temp_preview_root();
+        fs::write(root.join("app.js"), "console.log('inlined');").expect("write app.js");
+        fs::write(
+            root.join("index.html"),
+            r#"<html><body><script src="app.js"></script></body></html>"#,
+        )
+        .expect("write index");
+        let reg = registered(&root);
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/index.html");
+        assert_eq!(response.status(), 200);
+        assert_eq!(header(&response, "Content-Type"), Some("text/html; charset=utf-8"));
+        let csp = header(&response, "Content-Security-Policy").expect("preview CSP header");
+        assert!(csp.contains("object-src 'none'"), "preview CSP must pin object-src");
+        let body = String::from_utf8_lossy(response.body());
+        assert!(body.contains("console.log('inlined');"), "local JS must be inlined");
+
+        // Bare /{token}/ and /{token} must also resolve to index.html.
+        let response = preview_scheme_response(Some(&reg), "/testtoken/");
+        assert_eq!(response.status(), 200);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_blocks_path_traversal() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        let outside = root
+            .parent()
+            .expect("temp root parent")
+            .join(format!("grok-preview-outside-{}", uuid::Uuid::now_v7()));
+        fs::write(&outside, "secret").expect("write outside file");
+        let reg = registered(&root);
+
+        let outside_name = outside.file_name().unwrap().to_string_lossy();
+        for path in [
+            format!("/testtoken/../{outside_name}"),
+            // URL-encoded traversal must decode and then still be rejected.
+            format!("/testtoken/%2e%2e/{outside_name}"),
+            "/testtoken//etc/hosts".to_string(),
+            "/testtoken/..%5c..%5cwindows".to_string(),
+        ] {
+            let response = preview_scheme_response(Some(&reg), &path);
+            assert_eq!(response.status(), 404, "must reject {path}");
+            assert!(
+                !String::from_utf8_lossy(response.body()).contains("secret"),
+                "must not leak file content for {path}"
+            );
+        }
+
+        fs::remove_file(&outside).ok();
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_serves_assets_inside_root_only() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        fs::create_dir_all(root.join("img")).expect("create img dir");
+        fs::write(root.join("img/logo.svg"), "<svg></svg>").expect("write svg");
+        fs::write(
+            root.join("big.bin"),
+            vec![0_u8; (PREVIEW_ASSET_MAX_BYTES + 1) as usize],
+        )
+        .expect("write big.bin");
+        let reg = registered(&root);
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/img/logo.svg");
+        assert_eq!(response.status(), 200);
+        assert_eq!(header(&response, "Content-Type"), Some("image/svg+xml"));
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/big.bin");
+        assert_eq!(response.status(), 413, "oversized files must be refused");
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/missing.png");
+        assert_eq!(response.status(), 404);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_url_embeds_token() {
+        let url = preview_scheme_url("abc123");
+        assert!(url.contains("/abc123/index.html"), "url must carry the token: {url}");
+    }
+
+    #[test]
+    fn percent_decode_path_decodes_and_tolerates_junk() {
+        assert_eq!(percent_decode_path("a%20b"), "a b");
+        assert_eq!(percent_decode_path("%2e%2e"), "..");
+        assert_eq!(percent_decode_path("100%"), "100%");
+        assert_eq!(percent_decode_path("%zz"), "%zz");
     }
 }
