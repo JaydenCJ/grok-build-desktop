@@ -19,7 +19,6 @@ import type { ComposerHandle } from "./components/Composer";
 import { StatusBar } from "./components/StatusBar";
 import { QueueDock } from "./components/QueueDock";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
-import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { InspectorDrawer } from "./components/InspectorDrawer";
@@ -31,6 +30,7 @@ import { Toolbelt } from "./components/Toolbelt";
 import { WorkspaceStatusBar } from "./components/WorkspaceStatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { ComposerSection } from "./components/ComposerSection";
+import { SettingsHost } from "./components/SettingsHost";
 import { useActiveRun } from "./hooks/useActiveRun";
 import { useGrokRunners } from "./hooks/useGrokRunners";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
@@ -42,24 +42,14 @@ import { useHistoryOrganization } from "./hooks/useHistoryOrganization";
 import {
   isDockPosition,
   isInspectorTab,
-  type ActionPolicy,
   type ChatMessageStatus,
   type DockPosition,
-  type EffortLevel,
-  type GrokModelId,
   type InspectorTab,
   type Mode,
-  type PermissionMode,
-  type ReasoningEffort,
 } from "./app/types";
 import {
-  actionPolicies,
   codingPresets,
   defaultDrafts,
-  effortLevels,
-  grokModelPresets,
-  permissionModes,
-  reasoningEfforts,
   storageKeys,
 } from "./app/constants";
 import {
@@ -233,28 +223,15 @@ function App() {
   // CLI-verified options, coding auto-snap) lives in hooks/useModelConfig.ts.
   const modelConfig = useModelConfig({ mode, availableModels });
   const {
-    modelPreset,
-    customModel,
-    setCustomModel,
     effortLevel,
-    setEffortLevel,
     reasoningEffort,
-    setReasoningEffort,
     permissionMode,
-    setPermissionMode,
     bestOfN,
-    setBestOfN,
     experimentalMemory,
-    setExperimentalMemory,
     webSearchEnabled,
-    setWebSearchEnabled,
     subagentsEnabled,
-    setSubagentsEnabled,
     selfCheck,
-    setSelfCheck,
     activeModel,
-    changeModelPreset,
-    modelOptions,
     modelIsVerified,
   } = modelConfig;
   function clearRunHistory() {
@@ -605,7 +582,7 @@ function App() {
         actions={allPaletteActions}
         onClose={() => setPaletteOpen(false)}
       />
-      <SettingsPage
+      <SettingsHost
         open={settingsOpen}
         section={settingsSection}
         onSection={setSettingsSection}
@@ -619,55 +596,12 @@ function App() {
         }}
         sidebarCollapsed={sidebarCollapsed}
         setSidebarCollapsed={setSidebarCollapsed}
-        modelOptions={modelOptions.map((id) => ({
-          value: id,
-          label: grokModelPresets[id as GrokModelId]?.label ?? id,
-        }))}
-        modelPreset={modelPreset}
-        onModelPreset={(id) => changeModelPreset(id as GrokModelId)}
-        customModel={customModel}
-        setCustomModel={setCustomModel}
-        activeModel={activeModel}
-        effortOptions={(Object.keys(effortLevels) as EffortLevel[]).map((k) => ({
-          value: k,
-          label: effortLevels[k].label,
-        }))}
-        effortLevel={effortLevel}
-        setEffortLevel={(v) => setEffortLevel(v as EffortLevel)}
-        reasoningOptions={(Object.keys(reasoningEfforts) as ReasoningEffort[]).map((k) => ({
-          value: k,
-          label: reasoningEfforts[k].label,
-        }))}
-        reasoningEffort={reasoningEffort}
-        setReasoningEffort={(v) => setReasoningEffort(v as ReasoningEffort)}
-        bestOfN={bestOfN}
-        setBestOfN={setBestOfN}
-        experimentalMemory={experimentalMemory}
-        setExperimentalMemory={setExperimentalMemory}
-        actionPolicyOptions={(Object.keys(actionPolicies) as ActionPolicy[]).map((k) => ({
-          value: k,
-          label: actionPolicies[k].label,
-          detail: actionPolicies[k].detail,
-          risk: actionPolicies[k].risk,
-        }))}
+        modelConfig={modelConfig}
         actionPolicy={actionPolicy}
-        setActionPolicy={(v) => setActionPolicy(v as ActionPolicy)}
-        permissionOptions={(Object.keys(permissionModes) as PermissionMode[]).map((k) => ({
-          value: k,
-          label: permissionModes[k].label,
-        }))}
-        permissionMode={permissionMode}
-        setPermissionMode={(v) => setPermissionMode(v as PermissionMode)}
-        webSearchEnabled={webSearchEnabled}
-        setWebSearchEnabled={setWebSearchEnabled}
-        subagentsEnabled={subagentsEnabled}
-        setSubagentsEnabled={setSubagentsEnabled}
-        selfCheck={selfCheck}
-        setSelfCheck={setSelfCheck}
+        setActionPolicy={setActionPolicy}
         codingCwd={codingCwd}
         setCodingCwd={setCodingCwd}
         onPickFolder={() => void pickFolder()}
-        appVersion="0.4.0"
         grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} cwd={codingCwd} />
