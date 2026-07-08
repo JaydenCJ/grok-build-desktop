@@ -11,6 +11,7 @@ import { hasTauriRuntime } from "../lib/runtime";
 import type { GrokAuthStatus, Runner, StaticPreview, ToolStatus } from "../app/types";
 import { defaultStatuses } from "../app/constants";
 import { nativeUnavailable, parseAvailableModels } from "../app/format";
+import { t } from "../i18n";
 
 export interface GrokRunnerDeps {
   codingCwd: string;
@@ -282,7 +283,7 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
 
   async function pickFolder() {
     if (!hasTauriRuntime()) {
-      setSessionNotice("Folder picker is only available in the Tauri desktop window.");
+      setSessionNotice(t("notices.folderPickerUnavailable"));
       return;
     }
     setFolderPickerBusy(true);
@@ -292,11 +293,11 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
       });
       if (next) {
         setCodingCwd(next);
-        setSessionNotice(`Repo set to ${next}.`);
+        setSessionNotice(t("notices.repoSet", { path: next }));
       }
     } catch (error) {
       setSessionNotice(
-        `Folder picker failed: ${error instanceof Error ? error.message : String(error)}`,
+        t("notices.folderPickerFailed", { error: error instanceof Error ? error.message : String(error) }),
       );
     } finally {
       setFolderPickerBusy(false);

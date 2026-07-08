@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 import type { PaletteAction } from "../components/CommandPalette";
 import { streamStore } from "../lib/streamStore";
 import type { InspectorTab, Mode, ThemeMode } from "../app/types";
+import { t } from "../i18n";
 
 export interface AppShortcutsDeps {
   paletteOpen: boolean;
@@ -77,76 +78,76 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
     return [
       {
         id: "new-session",
-        label: "New session",
-        hint: "Empty messages, fresh cwd",
+        label: t("palette.action.newSession"),
+        hint: t("palette.action.newSessionHint"),
         shortcut: "⌘N",
-        group: "Session",
+        group: t("palette.group.session"),
         run: () => handleTabCreate(),
       },
       {
         id: "clear-conversation",
-        label: "Clear current conversation",
-        hint: "Wipes messages + run history",
-        group: "Session",
+        label: t("palette.action.clearConversation"),
+        hint: t("palette.action.clearConversationHint"),
+        group: t("palette.group.session"),
         run: () => clearRunHistory(),
       },
       {
         id: "focus-composer",
-        label: "Focus composer",
+        label: t("palette.action.focusComposer"),
         shortcut: "/",
-        group: "Navigation",
+        group: t("palette.group.navigation"),
         run: () => focusComposer(),
       },
       {
         id: "search-history",
-        label: "Search recent prompts",
+        label: t("palette.action.searchHistory"),
         shortcut: "⌘F",
-        group: "Navigation",
+        group: t("palette.group.navigation"),
         run: () => focusHistorySearch(),
       },
       {
         id: "toggle-sidebar",
-        label: sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar",
+        label: sidebarCollapsed ? t("palette.action.expandSidebar") : t("palette.action.collapseSidebar"),
         shortcut: "⌘B",
-        group: "View",
+        group: t("palette.group.view"),
         run: () => setSidebarCollapsed((v) => !v),
       },
       {
         id: "open-tools",
-        label: "Open Tools & MCP",
-        group: "View",
+        label: t("palette.action.openTools"),
+        group: t("palette.group.view"),
         run: () => setToolsPageOpen(true),
       },
       {
         id: "toggle-preview",
-        label: previewOpen ? "Close Preview" : "Open Preview",
-        group: "View",
+        label: previewOpen ? t("palette.action.closePreview") : t("palette.action.openPreview"),
+        group: t("palette.group.view"),
         run: () => togglePanel("preview"),
       },
       {
         id: "toggle-context",
-        label: contextOpen ? "Close Context inspector" : "Open Context inspector",
-        group: "View",
+        label: contextOpen ? t("palette.action.closeContext") : t("palette.action.openContext"),
+        group: t("palette.group.view"),
         run: () => togglePanel("context"),
       },
       {
         id: "toggle-terminal",
-        label: terminalOpen ? "Close Terminal panel" : "Open Terminal panel",
-        group: "View",
+        label: terminalOpen ? t("palette.action.closeTerminal") : t("palette.action.openTerminal"),
+        group: t("palette.group.view"),
         run: () => togglePanel("terminal"),
       },
       {
         id: "toggle-theme",
-        label: themeMode === "dark" ? "Switch to light theme" : "Switch to dark theme",
+        label: themeMode === "dark" ? t("titleBar.toLight") : t("titleBar.toDark"),
         shortcut: "⌘⇧L",
-        group: "Theme",
+        group: t("palette.group.theme"),
         run: () => setThemeMode(themeMode === "dark" ? "light" : "dark"),
       },
       {
         id: "open-desktop-bridge",
-        label: "Open Desktop bridge",
-        hint: "Mac app context queries",
-        group: "View",
+        label: t("palette.action.openDesktopBridge"),
+        hint: t("palette.action.openDesktopBridgeHint"),
+        group: t("palette.group.view"),
         run: () => {
           // The inspector drawer is gated on contextOpen (not toolsOpen) —
           // open it exclusively, then select the Desktop tab.
@@ -159,15 +160,15 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
       },
       {
         id: "open-settings",
-        label: "Open Settings",
+        label: t("palette.action.openSettings"),
         shortcut: "⌘,",
-        group: "View",
+        group: t("palette.group.view"),
         run: () => setSettingsOpen(true),
       },
       {
         id: "cancel-run",
-        label: "Cancel current run",
-        group: "Run",
+        label: t("palette.action.cancelRun"),
+        group: t("palette.group.run"),
         run: () => {
           // Read activeRunId via streamStore at action-fire time — the value
           // declared further down the component isn't in scope here yet, and

@@ -52,6 +52,7 @@ import {
   defaultDrafts,
   storageKeys,
 } from "./app/constants";
+import { t } from "./i18n";
 import {
   formatOutput,
   makeId,
@@ -179,7 +180,7 @@ function App() {
   // streaming.
   function stopRun(runId: string) {
     cancelRun(runId).catch((error) => {
-      setSessionNotice(`Stop failed: ${error instanceof Error ? error.message : String(error)}`);
+      setSessionNotice(t("notices.stopFailed", { error: error instanceof Error ? error.message : String(error) }));
     });
   }
 
@@ -241,7 +242,7 @@ function App() {
     setTerminalLines([]);
     setTotalRuns(0);
     window.localStorage.setItem("grok-desktop-run-count-total", "0");
-    setSessionNotice("Cleared conversation, run history, and terminal.");
+    setSessionNotice(t("notices.cleared"));
   }
 
   // Write the streamed assistant text back into `messages` when a run reaches
@@ -417,9 +418,9 @@ function App() {
     ensureStreamListenersAttached().catch((error) => {
       if (cancelled) return;
       setSessionNotice(
-        `Live run updates unavailable: ${
-          error instanceof Error ? error.message : String(error)
-        }. Runs may not display output — restart the app to reconnect.`,
+        t("notices.liveUpdatesUnavailable", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     });
     return () => {
@@ -731,7 +732,7 @@ function App() {
               const next = (drafts[mode] ?? "") + text;
               setDrafts((current) => ({ ...current, [mode]: next }));
               composerRef.current?.setValue(next);
-              setSessionNotice("Desktop context appended to your draft.");
+              setSessionNotice(t("notices.desktopContextAppended"));
             }}
           />
         </section>
