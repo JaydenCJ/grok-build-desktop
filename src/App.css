@@ -5134,3 +5134,15 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
     scroll-behavior: auto !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Keyboard focus (accessibility). The stylesheet strips native outlines in
+ * many places for mouse aesthetics, which left Tab-navigation with no focus
+ * indicator at all. :focus-visible only engages for keyboard-driven focus,
+ * so pointer interactions stay clean while keyboard users always see where
+ * they are. !important intentionally beats the scattered `outline: none`.
+ * ────────────────────────────────────────────────────────────────────────── */
+:is(button, a, input, textarea, select, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}

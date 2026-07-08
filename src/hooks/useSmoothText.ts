@@ -20,21 +20,29 @@ export function useSmoothText(runId: string | null | undefined): {
     snap?.state === 'done' || snap?.state === 'failed' || snap?.state === 'cancelled';
 
   const [shown, setShown] = useState(full.length);
-  // Refs so the single rAF loop reads the latest values without restarting.
+  // Refs so the rAF loop reads the latest values without restarting mid-frame.
+  const shownRef = useRef(shown);
   const fullLenRef = useRef(full.length);
   fullLenRef.current = full.length;
   const endedRef = useRef(ended);
   endedRef.current = ended;
 
   useEffect(() => {
+    // Demand-driven loop: only run frames while there is text left to reveal
+    // (or a clamp to apply). A settled message costs zero rAF work — with a
+    // long conversation on screen, an always-on per-message loop burned CPU
+    // at 60fps doing nothing. The effect re-runs whenever the source text
+    // grows (full.length) or the run settles (ended), restarting the loop.
+    if (shownRef.current === fullLenRef.current) return;
     let raf = 0;
     const tick = () => {
-      setShown((cur) => {
-        const target = fullLenRef.current;
-        // Run ended → reveal everything at once. Also, if the cursor somehow
-        // sits ahead (text shrank / new run), clamp down.
-        if (cur > target) return target; // text shrank / new run → clamp down
-        if (cur >= target) return cur; // idle: no re-render (React bails)
+      const target = fullLenRef.current;
+      const cur = shownRef.current;
+      if (cur === target) return; // caught up → stop until the text grows again
+      let next: number;
+      if (cur > target) {
+        next = target; // text shrank / new run → clamp down
+      } else {
         const remaining = target - cur;
         // Two cadences, both gentle:
         //  • While the run is live: a calm ~1-3 chars/frame (≈60-180 cps). On a
@@ -47,13 +55,15 @@ export function useSmoothText(runId: string | null | undefined): {
         const step = endedRef.current
           ? Math.min(Math.max(4, Math.ceil(remaining / 20)), 120)
           : Math.min(Math.max(1, Math.ceil(remaining / 60)), 3);
-        return cur + step;
-      });
+        next = cur + step;
+      }
+      shownRef.current = next;
+      setShown(next);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [full.length, ended]);
 
   const text = full.slice(0, shown);
   // Caret shows whenever we're still revealing — including the brief post-end
