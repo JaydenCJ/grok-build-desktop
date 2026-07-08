@@ -32,17 +32,16 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite 7.
     App.tsx                 # the app: state, grok arg builder, history, render (~3k lines)
     App.css                 # all styles + design tokens (v0.4.0 "mono graphite")
     main.tsx                # entry + AppErrorBoundary
-    overlay.tsx             # the G2 agent-overlay window entry
     components/             # MessageList, MessageItem, StatusBar, QueueDock, Composer,
                             #   CommandPalette, ContextMenu, SettingsPage, ToolsPage,
-                            #   DesktopPanel, AgentOverlay(+Driver), TraceTimeline, FilePicker
+                            #   DesktopPanel, TraceTimeline, FilePicker
     hooks/                  # useActiveRun, useQueue, useRunSnapshot, useElapsed,
                             #   useSmoothText, usePendingSubmit
     lib/                    # streamStore.ts, markdown.worker.ts, grok.ts, mcp.ts,
-                            #   skills.ts, prompts.ts, tabs.ts, desktop.ts, overlay.ts
+                            #   skills.ts, prompts.ts, tabs.ts, desktop.ts
   src-tauri/                # Rust backend
     src/lib.rs              # Tauri commands, grok arg/prompt builders, session state,
-                            #   skills, MCP, inspect, folder picker, overlay (~2k lines)
+                            #   skills, MCP, inspect, folder picker (~2k lines)
     src/runs/               # db.rs, event.rs, parser.rs, process.rs, queue.rs (the run engine)
     src/prompts/mod.rs      # prompt-library SQLite store
     tauri.conf.json         # bundle config, icons, window
@@ -227,7 +226,6 @@ in `recentPrompts` so they remain searchable via the ⌘K palette.
 | Prompt library | App.tsx (`savePromptToLibrary`, inline UI) + `lib/prompts.ts` + `prompts/mod.rs` |
 | Command palette (⌘K) + search | `components/CommandPalette.tsx` (history rows searchable, IME-safe) |
 | Capability inspector | App.tsx context panel + `grok inspect` parsing |
-| Agent overlay (G2) | `overlay.tsx`, `AgentOverlay(+Driver)`, `set_agent_overlay`/`set_agent_cursor` |
 | macOS desktop bridge | `lib/desktop.ts` + `desktop_*` Tauri commands + `DesktopPanel` |
 
 ### Skills hub (new) — `lib/skills.ts` + ToolsPage `[MCP servers][Skills]` tabs

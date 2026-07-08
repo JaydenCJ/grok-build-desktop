@@ -191,42 +191,17 @@ assert.ok(libRs.includes("pub mod prompts"),
 assert.ok(libRs.includes("PromptStore::open_at"),
   "lib.rs must open prompts.sqlite on setup");
 
-// v0.3.0: G2 agent overlay
-assert.ok(existsSync(join(root, "overlay.html")),
-  "overlay.html entry point missing");
-assert.ok(existsSync(join(root, "src/overlay.tsx")),
-  "src/overlay.tsx entry point missing");
-assert.ok(existsSync(join(root, "src/components/AgentOverlay.tsx")),
-  "AgentOverlay component missing");
-assert.ok(existsSync(join(root, "src/components/AgentOverlayDriver.tsx")),
-  "AgentOverlayDriver missing");
-assert.ok(existsSync(join(root, "src/lib/overlay.ts")),
-  "overlay TS wrapper missing");
-for (const cmd of ["set_agent_overlay", "set_agent_cursor"]) {
-  assert.ok(libRs.includes(cmd), `missing Tauri command for overlay: ${cmd}`);
-}
+// The G2 agent overlay was removed: it depended on an "agent-overlay" window
+// that was never created (the static window config was dropped for a macOS
+// fullscreen-transparency bug and never replaced programmatically), so every
+// code path was dead. Guard against it creeping back half-wired.
 const tauriConf = JSON.parse(read("src-tauri/tauri.conf.json"));
-// G2 agent-overlay window: declared statically with `fullscreen: true` had a
-// macOS bug — fullscreen mode does not honor transparent, producing an opaque
-// white block over a whole display. Until G2 is rewritten to create the
-// overlay window programmatically (WebviewWindowBuilder + set_position +
-// set_size, no fullscreen flag), the static window config is intentionally
-// absent. The set_agent_overlay command stays available; calling it when no
-// "agent-overlay" window exists returns an error that AgentOverlayDriver
-// catches silently.
-const overlayWindow = (tauriConf.app?.windows ?? []).find((w) => w.label === "agent-overlay");
-if (overlayWindow) {
-  assert.notEqual(overlayWindow.fullscreen, true,
-    "agent-overlay must NOT use fullscreen: true — macOS fullscreen mode is opaque");
-  assert.equal(overlayWindow.transparent, true, "agent-overlay window must be transparent");
-  assert.equal(overlayWindow.alwaysOnTop, true, "agent-overlay window must be alwaysOnTop");
-  assert.equal(overlayWindow.decorations, false, "agent-overlay window must hide decorations");
-}
-
-// Vite multi-entry build for overlay.
-const viteConfig = read("vite.config.ts");
-assert.ok(viteConfig.includes("overlay.html"),
-  "vite.config.ts must include overlay.html as a build entry");
+assert.ok(!existsSync(join(root, "overlay.html")),
+  "dead agent-overlay entry point must stay removed");
+assert.ok(!libRs.includes("set_agent_overlay"),
+  "dead set_agent_overlay command must stay removed");
+assert.ok(!(tauriConf.app?.windows ?? []).some((w) => w.label === "agent-overlay"),
+  "agent-overlay window must not be declared statically (macOS fullscreen+transparent bug)");
 
 // v0.3.0: Grok-themed CSS tokens
 assert.ok(css.includes("--grok-bg-0"),

@@ -53,7 +53,6 @@ Grok is the only model path exposed in the UI. The model selector reflects exact
 - **Coding workflows + action policy** — Analyze / Implement / Review / Debug / Tests / Refactor starters, with an action policy (Review only / Patch ready / Autopilot) that maps to real Grok permission behaviour. Effort, reasoning effort, and best-of-N are one glance below the chat box.
 - **Settings** — a Claude-Desktop-style modal (General / Model & reasoning / Permissions / Workspace / About).
 - **Prompt library** — reusable prompt templates in SQLite with search-as-you-type and one-click insert.
-- **Agent overlay** — a click-through, full-display edge border + animated cursor sprite that makes it obvious when Grok is acting. Strictly visual — no OS input synthesis.
 - **Capability inspector** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions, combining `grok inspect` with managed `grok mcp` / `grok plugin` / `grok sessions`.
 
 ### Requirements
