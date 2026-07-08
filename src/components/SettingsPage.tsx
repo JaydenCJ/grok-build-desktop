@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 type ThemeMode = 'dark' | 'light';
 type DockPosition = 'right' | 'bottom';
@@ -124,14 +125,7 @@ export function SettingsPage(props: SettingsPageProps) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
 
-  // aria-modal promises the background is inert, so focus must actually move
-  // into the dialog on open — and return to the invoker on close.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    return () => previous?.focus();
-  }, [open]);
+  useModalFocus(open, closeRef);
 
   if (!open) return null;
 

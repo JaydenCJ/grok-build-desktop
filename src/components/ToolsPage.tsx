@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
 import {
   FOLDER_PLACEHOLDER,
   MCP_CATALOG,
@@ -40,14 +41,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
   const [query, setQuery] = useState('');
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
-  // aria-modal promises the background is inert, so focus must actually move
-  // into the dialog on open — and return to the invoker on close.
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    return () => previous?.focus();
-  }, [open]);
+  useModalFocus(open, closeRef);
 
   const refresh = async () => {
     const run = await listMcpServers();
@@ -149,13 +143,9 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
       // currently selected project.
       let args = entry.args;
       if (args.includes(FOLDER_PLACEHOLDER)) {
-        let folder: string | null = null;
-        try {
-          folder = await pickExposedFolder(cwd);
-        } catch (e) {
-          setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
-          return;
-        }
+        // A picker rejection (e.g. non-mac dev build) propagates to the outer
+        // catch, which surfaces it as the same error notice.
+        const folder = await pickExposedFolder(cwd);
         if (!folder) {
           setNotice({
             kind: 'err',
