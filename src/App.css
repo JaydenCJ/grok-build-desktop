@@ -4318,6 +4318,70 @@ button.history-section-head.toggle:hover { color: var(--text-2); }
 .set-row-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
 .set-row-hint { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
 .set-row-control { flex-shrink: 0; }
+
+/* Confirmation dialog (ConfirmDialog.tsx) — replaces window.confirm, which
+   WKWebView answers with a silent false. Reuses the settings-overlay backdrop;
+   sits above it (z-index) so a confirm can stack on Settings/Prompt Library. */
+.confirm-overlay { z-index: 320; }
+.confirm-dialog {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop, 0 24px 60px -12px rgba(0,0,0,0.6));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+  min-width: 340px;
+  padding: 18px;
+}
+.confirm-dialog h3 {
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.confirm-dialog p {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.confirm-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.confirm-cancel,
+.confirm-accept {
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  transition: filter 120ms ease;
+}
+.confirm-cancel {
+  background: transparent;
+  color: var(--text-2);
+}
+.confirm-cancel:hover { background: var(--bg-3); color: var(--text-1); }
+.confirm-accept {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.confirm-accept.is-danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+.confirm-accept:hover { filter: brightness(1.08); }
+
 .set-row-control select,
 .set-row-control input {
   background: var(--bg-3);

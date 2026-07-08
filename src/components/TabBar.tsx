@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { requestConfirm } from '../lib/confirm';
 import type { Tab } from '../lib/tabs';
 
 interface Props {
@@ -69,12 +70,21 @@ export function TabBar({ tabs, activeId, onSelect, onCreate, onClose, onRename }
                     aria-label={`Close ${tab.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const ok =
-                        tab.messages.length === 0 ||
-                        window.confirm(
-                          `Close "${tab.name}"? This clears ${tab.messages.length} message${tab.messages.length === 1 ? '' : 's'} for this session.`,
-                        );
-                      if (ok) onClose(tab.id);
+                      // In-app confirm — window.confirm always returns false
+                      // inside WKWebView, so tabs with messages could never
+                      // actually be closed.
+                      if (tab.messages.length === 0) {
+                        onClose(tab.id);
+                        return;
+                      }
+                      void requestConfirm({
+                        title: 'Close session?',
+                        message: `Close "${tab.name}"? This clears ${tab.messages.length} message${tab.messages.length === 1 ? '' : 's'} for this session.`,
+                        confirmLabel: 'Close session',
+                        danger: true,
+                      }).then((ok) => {
+                        if (ok) onClose(tab.id);
+                      });
                     }}
                   >
                     ×
