@@ -64,6 +64,8 @@ import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { PromptLibrary } from "./components/PromptLibrary";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { isConfirmOpen, requestConfirm } from "./lib/confirm";
 import { useActiveRunKey } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
@@ -1044,6 +1046,21 @@ function App() {
     setSessionNotice("Cleared conversation, run history, and terminal.");
   }
 
+  // Both "Clear conversation" entry points (conversation context menu and the
+  // status-bar Clear button) route through here: the wipe is irreversible, so
+  // it gets the same in-app confirmation as deleting a conversation.
+  function requestClearRunHistory() {
+    void requestConfirm({
+      title: "Clear conversation?",
+      message:
+        "This clears the conversation, run history, and terminal for this session. It can't be undone.",
+      confirmLabel: "Clear",
+      danger: true,
+    }).then((ok) => {
+      if (ok) clearRunHistory();
+    });
+  }
+
   // ── Multi-session tabs ───────────────────────────────────────────────────
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
   // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
@@ -1348,10 +1365,16 @@ function App() {
         separator: true,
         onClick: () => {
           // Deleting is irreversible (messages + metadata + persistence), so
-          // confirm first — same guard the Prompt Library uses for deletes.
-          if (window.confirm(`Delete "${item.title}"? This can't be undone.`)) {
-            deleteSession(id);
-          }
+          // confirm first — via the in-app dialog, since window.confirm is a
+          // silent no-op in WKWebView (always returns false).
+          void requestConfirm({
+            title: "Delete conversation?",
+            message: `Delete "${item.title}"? This can't be undone.`,
+            confirmLabel: "Delete",
+            danger: true,
+          }).then((ok) => {
+            if (ok) deleteSession(id);
+          });
         },
       },
     ];
@@ -1382,7 +1405,7 @@ function App() {
       {
         label: "Clear conversation",
         disabled: messages.length === 0,
-        onClick: () => clearRunHistory(),
+        onClick: () => requestClearRunHistory(),
       },
       ...(grokIsRunning && activeRunId
         ? [{ label: "Stop current run", danger: true, onClick: () => void cancelRun(activeRunId) }]
@@ -2291,7 +2314,7 @@ function App() {
         const editable =
           tag === "textarea" || tag === "input" || Boolean(el?.isContentEditable);
         const modalOpen =
-          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen;
+          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen || isConfirmOpen();
         if (!editable && !modalOpen) {
           e.preventDefault();
           setSidebarCollapsed(false);
@@ -2303,10 +2326,16 @@ function App() {
       } else if (!meta && !e.altKey && e.key === "/") {
         // "/" focuses the composer (also advertised in the palette). Only
         // when focus isn't already in an editable field, so typing a slash
-        // in the composer or an input stays a slash.
+        // in the composer or an input stays a slash — and never while a
+        // modal surface is open (same guard as ⌘F above), so a slash can't
+        // yank focus out from under the palette/Settings/confirm dialog.
         const el = document.activeElement as HTMLElement | null;
         const tag = (el?.tagName ?? "").toLowerCase();
-        if (tag !== "textarea" && tag !== "input" && !el?.isContentEditable) {
+        const editable =
+          tag === "textarea" || tag === "input" || Boolean(el?.isContentEditable);
+        const modalOpen =
+          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen || isConfirmOpen();
+        if (!editable && !modalOpen) {
           e.preventDefault();
           composerRef.current?.focus();
         }
@@ -2933,6 +2962,7 @@ function App() {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog />
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
       <aside className="app-sidebar">
         <div className="brand">
@@ -4190,7 +4220,7 @@ function App() {
             <button
               className="status-clear"
               disabled={messages.length === 0 && history.length === 0}
-              onClick={clearRunHistory}
+              onClick={requestClearRunHistory}
               type="button"
               title="Clear conversation, run history, and terminal"
             >
