@@ -10,11 +10,14 @@ import { getPendingConfirm, resolveConfirm, subscribeConfirm } from '../lib/conf
 export function ConfirmDialog() {
   const pending = useSyncExternalStore(subscribeConfirm, getPendingConfirm, getPendingConfirm);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const acceptRef = useRef<HTMLButtonElement | null>(null);
 
   // Focus lands on Cancel — destructive actions shouldn't be one stray
-  // Enter away. Esc cancels; both listeners are capture-phase so the App's
-  // global keyboard router (Esc closes panels, "/" focuses composer) never
-  // sees keys meant for the dialog.
+  // Enter away. Esc cancels; Tab / Shift+Tab are trapped to cycle between
+  // Cancel and Confirm so the keyboard can't walk out of the modal into the
+  // background UI. The listener is capture-phase so the App's global
+  // keyboard router (Esc closes panels, "/" focuses composer) never sees
+  // keys meant for the dialog.
   useEffect(() => {
     if (!pending) return;
     cancelRef.current?.focus();
@@ -23,6 +26,15 @@ export function ConfirmDialog() {
         e.preventDefault();
         e.stopPropagation();
         resolveConfirm(false);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        // Only two focusables — Tab and Shift+Tab both mean "the other one".
+        // If focus somehow ended up outside the dialog, pull it back to
+        // Cancel (the safe default).
+        const next =
+          document.activeElement === cancelRef.current ? acceptRef.current : cancelRef.current;
+        next?.focus();
       }
     };
     window.addEventListener('keydown', onKey, { capture: true });
@@ -52,6 +64,7 @@ export function ConfirmDialog() {
             {pending.cancelLabel ?? 'Cancel'}
           </button>
           <button
+            ref={acceptRef}
             type="button"
             className={`confirm-accept${pending.danger ? ' is-danger' : ''}`}
             onClick={() => resolveConfirm(true)}
