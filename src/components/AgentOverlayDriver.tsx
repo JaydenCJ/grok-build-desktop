@@ -11,6 +11,10 @@ import { setAgentOverlay } from "../lib/overlay";
 export function AgentOverlayDriver() {
   const active = useActiveRun();
   const lastVisibleRef = useRef<boolean>(false);
+  // Last payload actually sent over IPC. Every stream token produces a fresh
+  // `active` snapshot, so without payload-level dedupe this effect fired a
+  // Tauri invoke (an OS-window manipulation) dozens of times per second.
+  const lastSentRef = useRef<string>('');
   const [enabled, setEnabled] = useState(true);
 
   // Respect a user toggle persisted in localStorage so anyone irritated
@@ -25,6 +29,7 @@ export function AgentOverlayDriver() {
       // Force-hide if user disabled it.
       if (lastVisibleRef.current) {
         lastVisibleRef.current = false;
+        lastSentRef.current = '';
         setAgentOverlay({ visible: false }).catch(() => {});
       }
       return;
@@ -41,6 +46,11 @@ export function AgentOverlayDriver() {
           ? "writing…"
           : "running…"
       : "";
+
+    // Skip the invoke when neither visibility nor the action label changed.
+    const payloadKey = `${shouldShow}|${stateText}`;
+    if (payloadKey === lastSentRef.current) return;
+    lastSentRef.current = payloadKey;
 
     setAgentOverlay({
       visible: shouldShow,

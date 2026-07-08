@@ -55,8 +55,14 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
         e.preventDefault();
         setHighlight((h) => Math.max(h - 1, 0));
       } else if (e.key === 'Enter' || e.key === 'Tab') {
-        if (entries.length === 0) return;
         e.preventDefault();
+        if (entries.length === 0) {
+          // Nothing to insert — dismiss instead of letting the keypress fall
+          // through as a stray newline the Composer's mention guard blocks
+          // from submitting.
+          onCancel();
+          return;
+        }
         const pick = entries[highlight] ?? entries[0];
         if (pick) onSelect(pick);
       } else if (e.key === 'Escape') {

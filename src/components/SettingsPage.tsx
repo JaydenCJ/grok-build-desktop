@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 type ThemeMode = 'dark' | 'light';
 type DockPosition = 'right' | 'bottom';
@@ -110,6 +110,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
  */
 export function SettingsPage(props: SettingsPageProps) {
   const { open, section, onSection, onClose } = props;
+  const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -122,6 +123,15 @@ export function SettingsPage(props: SettingsPageProps) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
+
+  // aria-modal promises the background is inert, so focus must actually move
+  // into the dialog on open — and return to the invoker on close.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previous?.focus();
+  }, [open]);
 
   if (!open) return null;
 
@@ -143,7 +153,7 @@ export function SettingsPage(props: SettingsPageProps) {
         </aside>
 
         <div className="settings-content">
-          <button type="button" className="settings-close" aria-label="Close settings" onClick={onClose}>
+          <button ref={closeRef} type="button" className="settings-close" aria-label="Close settings" onClick={onClose}>
             ✕
           </button>
 
@@ -169,7 +179,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 </div>
               </Row>
               <Row title="Dock position" hint="Where the Tools / Terminal docks attach.">
-                <select value={props.dockPosition} onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}>
+                <select aria-label="Dock position" value={props.dockPosition} onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}>
                   <option value="right">Right</option>
                   <option value="bottom">Bottom</option>
                 </select>
@@ -184,7 +194,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <section className="settings-section">
               <h2>Model &amp; reasoning</h2>
               <Row title="Model" hint={`Active engine: ${props.activeModel}`}>
-                <select value={props.modelPreset} onChange={(e) => props.onModelPreset(e.currentTarget.value)}>
+                <select aria-label="Model" value={props.modelPreset} onChange={(e) => props.onModelPreset(e.currentTarget.value)}>
                   {props.modelOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -195,6 +205,7 @@ export function SettingsPage(props: SettingsPageProps) {
               {props.modelPreset === 'custom' ? (
                 <Row title="Custom model id" hint="Any model id your Grok CLI accepts.">
                   <input
+                    aria-label="Custom model id"
                     value={props.customModel}
                     placeholder="e.g. grok-4.3-latest"
                     onChange={(e) => props.setCustomModel(e.currentTarget.value)}
@@ -202,7 +213,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 </Row>
               ) : null}
               <Row title="Effort" hint="How hard Grok works per turn.">
-                <select value={props.effortLevel} onChange={(e) => props.setEffortLevel(e.currentTarget.value)}>
+                <select aria-label="Effort" value={props.effortLevel} onChange={(e) => props.setEffortLevel(e.currentTarget.value)}>
                   {props.effortOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -211,7 +222,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 </select>
               </Row>
               <Row title="Reasoning effort" hint="Extra thinking budget on hard code paths.">
-                <select value={props.reasoningEffort} onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}>
+                <select aria-label="Reasoning effort" value={props.reasoningEffort} onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}>
                   {props.reasoningOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -221,6 +232,7 @@ export function SettingsPage(props: SettingsPageProps) {
               </Row>
               <Row title="Best-of-N" hint="Run the task N ways in parallel and keep the best (headless).">
                 <input
+                  aria-label="Best-of-N"
                   type="number"
                   min={1}
                   max={5}
@@ -238,7 +250,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <section className="settings-section">
               <h2>Permissions &amp; policy</h2>
               <Row title="Action policy" hint="How much Grok is allowed to do on its own.">
-                <select value={props.actionPolicy} onChange={(e) => props.setActionPolicy(e.currentTarget.value)}>
+                <select aria-label="Action policy" value={props.actionPolicy} onChange={(e) => props.setActionPolicy(e.currentTarget.value)}>
                   {props.actionPolicyOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -257,7 +269,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 );
               })()}
               <Row title="Permission mode" hint="Advanced: maps to grok --permission-mode (Plan/Autopilot override this).">
-                <select value={props.permissionMode} onChange={(e) => props.setPermissionMode(e.currentTarget.value)}>
+                <select aria-label="Permission mode" value={props.permissionMode} onChange={(e) => props.setPermissionMode(e.currentTarget.value)}>
                   {props.permissionOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -283,6 +295,7 @@ export function SettingsPage(props: SettingsPageProps) {
               <Row title="Project folder" hint="Working directory Grok runs in (coding mode).">
                 <div className="set-inline">
                   <input
+                    aria-label="Project folder"
                     value={props.codingCwd}
                     placeholder="/path/to/your/project"
                     onChange={(e) => props.setCodingCwd(e.currentTarget.value)}

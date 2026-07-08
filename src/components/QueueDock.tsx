@@ -62,7 +62,12 @@ export function QueueDock() {
         </div>
       ) : null}
 
-      <div className="queue-summary" onClick={() => setExpanded((v) => !v)}>
+      <button
+        type="button"
+        className="queue-summary"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
         {active ? (
           <span className="queue-active">▶ Running {elapsed != null ? formatElapsed(elapsed) : '0s'}</span>
         ) : (
@@ -72,7 +77,7 @@ export function QueueDock() {
           <span className="queue-count">+ {queue.items.length} queued</span>
         ) : null}
         <span className="queue-expand">{expanded ? '⤒ collapse' : '⤓ expand'}</span>
-      </div>
+      </button>
 
       {expanded && queue.items.length > 0 ? (
         <ul className="queue-list">

@@ -53,17 +53,18 @@ export async function readFileSafe(
 }
 
 /**
- * Parse `@path/to/file.ext` tokens out of a prompt body. The path token ends
- * at whitespace or end of string. Returns each unique path once, in order of
- * first appearance.
+ * Parse `@path/to/file.ext` tokens out of a prompt body. A bare token ends at
+ * whitespace; paths containing spaces can be quoted as `@"My Dir/file.md"`
+ * (the FilePicker inserts that form automatically). Returns each unique path
+ * once, in order of first appearance.
  */
 export function extractFileMentions(text: string): string[] {
-  const re = /(?:^|\s)@([^\s]+)/g;
+  const re = /(?:^|\s)@(?:"([^"]+)"|([^\s]+))/g;
   const out: string[] = [];
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    const path = m[1];
+    const path = m[1] ?? m[2];
     if (!path || seen.has(path)) continue;
     seen.add(path);
     out.push(path);

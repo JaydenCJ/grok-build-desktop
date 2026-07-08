@@ -27,6 +27,14 @@ function ensureWorker(): Worker | null {
       worker.addEventListener('error', (err) => {
         console.warn('markdown.worker error, disabling worker fast path', err);
         worker = null;
+        // The dead worker will never pump the queues: clear the in-flight
+        // marks (otherwise those runIds are stuck raw forever) and re-drive
+        // any stashed texts through a fresh worker. postParse returns
+        // harmlessly if construction keeps failing.
+        inflight.clear();
+        const pending = Array.from(latestByRun.entries());
+        latestByRun.clear();
+        for (const [id, text] of pending) postParse(id, text);
       });
     } catch (err) {
       console.warn('failed to construct markdown worker', err);

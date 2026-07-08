@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FOLDER_PLACEHOLDER,
   MCP_CATALOG,
@@ -38,10 +38,22 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [query, setQuery] = useState('');
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+
+  // aria-modal promises the background is inert, so focus must actually move
+  // into the dialog on open — and return to the invoker on close.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previous?.focus();
+  }, [open]);
 
   const refresh = async () => {
     const run = await listMcpServers();
-    if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    // Match against stdout only — stderr warnings mentioning e.g. "fetch"
+    // must not flip catalog cards to Connected.
+    if (run) setListOutput(run.output);
   };
   const refreshSkills = async () => {
     setInstalledSkills(new Set(await listInstalledSkills()));
@@ -61,10 +73,18 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
 
-  // Which catalog ids already appear in `grok mcp list` output.
+  // Which catalog ids already appear in `grok mcp list` output. Match ids as
+  // whole tokens, not substrings — the catalog has both 'git' and 'github',
+  // so a plain includes() marked Git "Connected" whenever GitHub was (and the
+  // only offered action, Remove, then targeted a server that never existed).
   const connectedIds = useMemo(() => {
     const lower = listOutput.toLowerCase();
-    return new Set(MCP_CATALOG.filter((e) => lower.includes(e.id.toLowerCase())).map((e) => e.id));
+    return new Set(
+      MCP_CATALOG.filter((e) => {
+        const escaped = e.id.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^a-z0-9_-])${escaped}([^a-z0-9_-]|$)`).test(lower);
+      }).map((e) => e.id),
+    );
   }, [listOutput]);
 
   const filtered = useMemo(() => {
@@ -157,6 +177,8 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
         setNotice({ kind: 'err', text: run?.stderr || run?.output || 'grok mcp add failed' });
       }
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -170,6 +192,8 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
       if (run?.ok) setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
       else setNotice({ kind: 'err', text: run?.stderr || 'grok mcp remove failed' });
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -197,7 +221,7 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
               )}
             </p>
           </div>
-          <button type="button" className="settings-close" aria-label="Close" onClick={onClose}>
+          <button ref={closeRef} type="button" className="settings-close" aria-label="Close" onClick={onClose}>
             ✕
           </button>
         </div>

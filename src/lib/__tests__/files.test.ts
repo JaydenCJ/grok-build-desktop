@@ -33,4 +33,16 @@ describe('extractFileMentions', () => {
       'second/file.ts',
     ]);
   });
+
+  it('parses quoted mentions with spaces in the path', () => {
+    expect(extractFileMentions('review @"My Project/notes.md" please')).toEqual([
+      'My Project/notes.md',
+    ]);
+  });
+
+  it('mixes quoted and bare mentions', () => {
+    expect(
+      extractFileMentions('@"a dir/x.ts" and @plain/y.ts together'),
+    ).toEqual(['a dir/x.ts', 'plain/y.ts']);
+  });
 });

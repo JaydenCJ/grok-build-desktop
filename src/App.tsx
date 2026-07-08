@@ -5,6 +5,7 @@ import {
   useState,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
   Archive,
@@ -498,7 +499,8 @@ function isInspectorTab(value: unknown): value is InspectorTab {
     value === "agents" ||
     value === "plugins" ||
     value === "hooks" ||
-    value === "permissions"
+    value === "permissions" ||
+    value === "desktop"
   );
 }
 
@@ -576,6 +578,36 @@ function storedMessages() {
   return readJsonStorage<unknown[]>(storageKeys.messages, [])
     .filter(isChatMessage)
     .slice(-120);
+}
+
+// Multi-session tab storage. Hoisted to module scope so boot-time hydration
+// helpers below can read the same keys the App component persists to.
+const tabsStorageKey = "grok-desktop-tabs-v1";
+const tabsActiveKey = "grok-desktop-tabs-active-v1";
+
+/**
+ * Boot hydration: read the active tab's messages from the tabs store. The tabs
+ * store persists immediately on every change while the flat
+ * `grok-desktop-messages-v1` key is written on a 300ms debounce with no flush
+ * on quit — so after a quick tab-switch-and-quit the flat key can hold ANOTHER
+ * conversation's messages. Making tabs authoritative at boot prevents the
+ * mount-time tab-mirror effect from merging two conversations. Returns null
+ * when no tabs are stored (legacy/first run) so callers can fall back to the
+ * flat key.
+ */
+function storedActiveTabMessages(): ChatMessage[] | null {
+  try {
+    const raw = window.localStorage.getItem(tabsStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const activeId = window.localStorage.getItem(tabsActiveKey);
+    const active = parsed.find((t) => t && t.id === activeId) ?? parsed[0];
+    if (!active || !Array.isArray(active.messages)) return null;
+    return (active.messages as unknown[]).filter(isChatMessage).slice(-120);
+  } catch {
+    return null;
+  }
 }
 
 function makeId(prefix: string) {
@@ -840,13 +872,14 @@ function App() {
     if (Number.isFinite(stored) && stored >= 0) return stored;
     return storedRunHistory().length;
   });
-  const [messages, setMessages] = useState<ChatMessage[]>(() => storedMessages());
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    () => storedActiveTabMessages() ?? storedMessages(),
+  );
   // Multi-session tabs. The "active" tab's cwd and messages are mirrored back
   // into the existing flat state above so the rest of App.tsx (model picker,
   // mode dock, status bar, etc.) keeps working unchanged. Tabs are a thin
-  // facade — see comment in lib/tabs.ts for the design rationale.
-  const tabsStorageKey = "grok-desktop-tabs-v1";
-  const tabsActiveKey = "grok-desktop-tabs-active-v1";
+  // facade — see comment in lib/tabs.ts for the design rationale. Storage keys
+  // live at module scope (near storedActiveTabMessages).
   const [tabs, setTabs] = useState<Tab[]>(() => {
     try {
       const raw = window.localStorage.getItem(tabsStorageKey);
@@ -924,6 +957,15 @@ function App() {
   );
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  // Session notices (folder pick, restore/save failures, …) show as a
+  // transient toast over the conversation — previously they rendered only
+  // inside the collapsed Terminal dock, where nobody saw them. Auto-dismiss
+  // like the history toast, with a longer window so errors are readable.
+  useEffect(() => {
+    if (!sessionNotice) return;
+    const t = window.setTimeout(() => setSessionNotice(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [sessionNotice]);
 
   const statusMap = useMemo(
     () => Object.fromEntries(statuses.map((status) => [status.id, status])),
@@ -966,17 +1008,33 @@ function App() {
   // ── Multi-session tabs ───────────────────────────────────────────────────
   // Tabs are a *facade* — the active tab's cwd/messages mirror to the flat
   // state above, so the rest of App.tsx is unaware. See lib/tabs.ts.
+  // Always-fresh mirror of the session state handleTabCreate needs. It is
+  // invoked from stale closures (the ⌘N keydown listener and the ⌘K palette
+  // memo, whose dep arrays don't include messages/tabs), so reading the
+  // render-scope variables there could act on state that is many turns old.
+  const sessionStateRef = useRef({ activeTabId, messages, tabs });
+  sessionStateRef.current = { activeTabId, messages, tabs };
   function handleTabCreate() {
-    // Persist current tab first.
-    setTabs((current) => {
-      const snapshotted = current.map((t) =>
-        t.id === activeTabId
-          ? { ...t, cwd: codingCwd, messages: messages as unknown as TabMessage[] }
-          : t,
-      );
-      const next = makeTab("", [], defaultTabName("", snapshotted.length));
-      return [...snapshotted, next];
-    });
+    const current = sessionStateRef.current;
+    // Already on a clean slate? Reuse it instead of stacking another empty
+    // "New conversation" row into HISTORY on every ⌘N / New Session click.
+    const currentTab = current.tabs.find((t) => t.id === current.activeTabId);
+    if (currentTab && currentTab.messages.length === 0 && current.messages.length === 0) {
+      setDrafts({ standard: "", coding: "" });
+      composerRef.current?.setValue("");
+      setSessionNotice(null);
+      setLastRun(null);
+      composerRef.current?.focus();
+      return;
+    }
+    // No pre-create snapshot of the active tab here: the sync effect below
+    // already mirrors codingCwd/messages into it on every change, and a
+    // snapshot taken from a stale closure (⌘N/⌘K) would overwrite that fresh
+    // mirror with old messages and truncate the conversation's history.
+    setTabs((existing) => [
+      ...existing,
+      makeTab("", [], defaultTabName("", existing.length)),
+    ]);
     // The new tab id is generated inside the setter; pull it out via a
     // microtask so the state update has committed.
     queueMicrotask(() => {
@@ -1025,6 +1083,34 @@ function App() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codingCwd, messages]);
+
+  // Write the streamed assistant text back into `messages` when a run reaches
+  // a terminal state. Live rendering reads the in-memory streamStore snapshot
+  // directly (MessageItem), but that store is not persisted — without this
+  // write-back every persistence layer (localStorage, the tabs mirror,
+  // session_state.json) stores assistant messages with content:"" and restored
+  // conversations lose all replies after a restart.
+  useEffect(() => {
+    const finalizeEndedRuns = () => {
+      setMessages((current) => {
+        let changed = false;
+        const next = current.map((message) => {
+          if (message.role !== "assistant" || !message.runId || message.status !== "streaming") {
+            return message;
+          }
+          const snap = streamStore.getRunSnapshot(message.runId);
+          if (!snap || snap.state === "queued" || snap.state === "running") return message;
+          changed = true;
+          const status: ChatMessageStatus =
+            snap.state === "done" ? "done" : snap.state === "cancelled" ? "stopped" : "error";
+          return { ...message, content: snap.text || message.content, status };
+        });
+        return changed ? next : current;
+      });
+    };
+    finalizeEndedRuns();
+    return streamStore.subscribe(finalizeEndedRuns);
+  }, []);
 
   function updatePrompt(value: string) {
     setComposerValue(value);
@@ -1962,6 +2048,28 @@ function App() {
     refreshGrokModels();
   }, []);
 
+  // Open external links in the system browser. Assistant markdown renders raw
+  // <a href> tags; in a Tauri webview a plain click would navigate the app
+  // window itself to the remote site, replacing the whole UI with no way back.
+  // Delegate at document level (capture) so every injected anchor is covered.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      const anchor = target?.closest("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") ?? "";
+      if (!/^https?:\/\//i.test(href)) return;
+      e.preventDefault();
+      if (hasTauriRuntime()) {
+        void openUrl(href).catch(() => {});
+      } else {
+        window.open(href, "_blank", "noopener");
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
+
   useEffect(() => {
     window.localStorage.setItem(storageKeys.mode, mode);
   }, [mode]);
@@ -2046,12 +2154,6 @@ function App() {
         run: () => setToolsPageOpen(true),
       },
       {
-        id: "toggle-inspector",
-        label: toolsOpen ? "Close Context inspector" : "Open Context inspector (advanced)",
-        group: "View",
-        run: () => togglePanel("tools"),
-      },
-      {
         id: "toggle-preview",
         label: previewOpen ? "Close Preview" : "Open Preview",
         group: "View",
@@ -2082,7 +2184,12 @@ function App() {
         hint: "Mac app context queries",
         group: "View",
         run: () => {
-          setToolsOpen(true);
+          // The inspector drawer is gated on contextOpen (not toolsOpen) —
+          // open it exclusively, then select the Desktop tab.
+          setPreviewOpen(false);
+          setTerminalOpen(false);
+          setToolsOpen(false);
+          setContextOpen(true);
           setInspectorTab("desktop");
         },
       },
@@ -2135,6 +2242,19 @@ function App() {
           e.preventDefault();
           handleTabCreate();
         }
+      } else if (meta && e.key.toLowerCase() === "f" && !e.shiftKey) {
+        // ⌘F — search recent conversations (advertised in the ⌘K palette).
+        e.preventDefault();
+        historySearchInputRef.current?.focus();
+        historySearchInputRef.current?.select();
+      } else if (e.key === "/" && !meta && !e.altKey) {
+        // "/" — focus the composer (advertised in the ⌘K palette), but never
+        // while the user is typing in another field.
+        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+        if (tag !== "textarea" && tag !== "input") {
+          e.preventDefault();
+          composerRef.current?.focus();
+        }
       } else if (e.key === "Escape") {
         // Esc closes whatever transient surface is open: palette first, then
         // any open dock panel (Preview / Context / Terminal / Tools). Without
@@ -2165,7 +2285,10 @@ function App() {
       void refreshStaticPreview();
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [codingCwd, lastRun?.duration_ms]);
+    // Key on the lastRun object, not duration_ms — two runs with equal
+    // durations must still trigger a refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codingCwd, lastRun]);
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.shellCommand, shellCommand);
@@ -2523,7 +2646,16 @@ function App() {
     if (modelOptions.includes(modelPreset)) return;
     const fallback = modelOptions[0];
     if (!fallback) return;
-    if (isGrokModelId(fallback)) changeModelPreset(fallback);
+    if (isGrokModelId(fallback)) {
+      changeModelPreset(fallback);
+    } else {
+      // The CLI reported ids outside the hardcoded preset union (e.g. a new
+      // model generation). Route through "custom" so the <select> value and
+      // the --model arg stay in sync — otherwise the dropdown displays the
+      // first CLI model while runs silently send the stale preset.
+      setModelPreset("custom");
+      setCustomModel(fallback);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, availableModels, modelOptions, modelPreset]);
 
@@ -2570,6 +2702,17 @@ function App() {
   const activeRun = useActiveRun();
   const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
   const activeRunId = activeRun?.id ?? null;
+
+  // Refresh the static preview when a streaming grok run finishes. The main
+  // chat path (enqueue_run) never touches lastRun, so keying only on it left
+  // the Preview panel stale after exactly the runs it exists to showcase
+  // ("ask Grok to create index.html…"). Watch the running→not-running edge.
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !grokIsRunning) void refreshStaticPreview();
+    wasRunningRef.current = grokIsRunning;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grokIsRunning]);
 
   const messageRefs: MessageRef[] = useMemo(
     () =>
@@ -3007,6 +3150,10 @@ function App() {
               )}
             </div>
 
+            {sessionNotice ? (
+              <div className="session-toast" role="status">{sessionNotice}</div>
+            ) : null}
+
             <AgentOverlayDriver />
             <QueueDock />
             <StatusBar />
@@ -3044,6 +3191,7 @@ function App() {
                   setDrafts((current) => ({ ...current, [mode]: text }));
                 }}
                 onEnqueued={handleEnqueued}
+                onError={(message) => setSessionNotice(`Send failed: ${message}`)}
               />
               <div className="composer-footer">
                 <select
@@ -3150,7 +3298,7 @@ function App() {
                   ))}
                 </select>
                 <span className="composer-hint" aria-hidden="true">
-                  ↵ Send · ⇧↵ Newline · ⌘↵ Force
+                  ↵ Send · ⇧↵ Newline
                 </span>
                 {grokIsRunning && activeRunId ? (
                   <button
@@ -3265,7 +3413,7 @@ function App() {
               </button>
               <button
                 aria-label="Close inspector"
-                onClick={() => setToolsOpen(false)}
+                onClick={() => setContextOpen(false)}
                 title="Close (⌘B clears panels)"
                 type="button"
               >

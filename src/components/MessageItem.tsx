@@ -55,6 +55,17 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
           {smooth.caretVisible ? <span className="stream-caret">▋</span> : null}
         </pre>
       )}
+      {/* A failed/cancelled run must say so in the message area — the only
+          other surface (StatusBar suffix) resets to "idle" as soon as the
+          queue moves on, leaving a silent empty bubble. */}
+      {snap.state === 'failed' ? (
+        <div className="message-error" role="alert">
+          Run failed{snap.error ? `: ${snap.error}` : ''}
+        </div>
+      ) : null}
+      {snap.state === 'cancelled' ? (
+        <div className="message-error message-cancelled">Stopped by you.</div>
+      ) : null}
     </>
   );
 }
