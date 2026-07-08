@@ -7,29 +7,15 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
-  Bot,
   ChevronDown,
-  CheckCircle2,
-  CircleAlert,
-  FileText,
-  FolderDown,
   FolderGit2,
   Globe2,
-  History,
   Loader2,
   Moon,
   PanelRight,
-  Play,
   Sun,
-  RefreshCcw,
-  ShieldCheck,
-  Sparkles,
-  SquareTerminal,
   TerminalSquare,
-  Trash2,
-  Wrench,
   X,
-  Zap,
 } from "lucide-react";
 import "./App.css";
 import { cancelRun, ensureStreamListenersAttached } from "./lib/grok";
@@ -45,6 +31,11 @@ import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { InspectorDrawer } from "./components/InspectorDrawer";
 import { Sidebar } from "./components/Sidebar";
+import { EmptyState } from "./components/EmptyState";
+import { PreviewPanel } from "./components/PreviewPanel";
+import { TerminalDock } from "./components/TerminalDock";
+import { Toolbelt } from "./components/Toolbelt";
+import { WorkspaceStatusBar } from "./components/WorkspaceStatusBar";
 import { useActiveRun } from "./hooks/useActiveRun";
 import { useGrokRunners } from "./hooks/useGrokRunners";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
@@ -80,9 +71,6 @@ import {
 import {
   formatOutput,
   makeId,
-  terminalClass,
-  terminalPrefix,
-  terminalText,
 } from "./app/format";
 import { buildGrokArgs } from "./app/grokArgs";
 
@@ -234,18 +222,10 @@ function App() {
     busyRunner,
     terminalLines,
     setTerminalLines,
-    browserTask,
-    setBrowserTask,
-    repoPath,
-    setRepoPath,
-    copyText,
-    setCopyText,
     folderPickerBusy,
     refreshStatuses,
     refreshStaticPreview,
     runShell,
-    runBrowser,
-    runAbsorbRepo,
     runDoctor,
     pickFolder,
   } = runners;
@@ -741,11 +721,6 @@ function App() {
       ? "Login needed"
       : "Connect needed";
   const workspacePath = codingCwd.trim() || "No project selected";
-  const previewFiles = staticPreview?.files ?? [];
-  const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
-  const previewEntry = staticPreview?.entryPath
-    ? staticPreview.entryPath.split("/").pop() || "index.html"
-    : "index.html";
   const terminalDisplay = terminalLines.length > 0
     ? terminalLines
     : formatOutput(lastRun)
@@ -965,56 +940,10 @@ function App() {
                 this div only provides the flex sizing for it. */}
             <div className="conversation-scroll">
               {messages.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-head">
-                    <div className="empty-state-avatar"><Bot size={22} /></div>
-                    <h2 className="empty-state-title">How can Grok help today?</h2>
-                    <p className="empty-state-subtitle">
-                      Code with you across this repository · {activeModel}
-                    </p>
-                  </div>
-                  <div className="starter-grid">
-                    {[
-                      {
-                        title: "Review this repository",
-                        body: "Surface the highest-impact risks and gaps you can verify in 30 seconds.",
-                        prompt:
-                          "Review this repository like a senior engineer. Surface the top 3 risks or gaps you can verify in under a minute, with one exact command per finding.",
-                      },
-                      {
-                        title: "Explain this codebase",
-                        body: "Give me a tight architecture tour so I can start contributing today.",
-                        prompt:
-                          "Give me a 5-bullet architecture tour of this repository: entry point, key modules, build/run command, test command, and one gotcha. Be concrete.",
-                      },
-                      {
-                        title: "Add a failing test",
-                        body: "Pick a real bug or gap and write a failing test that pins it down.",
-                        prompt:
-                          "Find one real bug, edge case, or gap in this repository. Write a failing test that pins it down. Tell me the file path and the exact command to run just that test.",
-                      },
-                      {
-                        title: "Suggest the next change",
-                        body: "What is the single most useful next code action right now?",
-                        prompt:
-                          "What is the single most useful next code action in this repository right now? Show the proposed diff and the verification command. Be specific.",
-                      },
-                    ].map((card) => (
-                      <button
-                        key={card.title}
-                        className="starter-card"
-                        onClick={() => updatePrompt(card.prompt)}
-                        type="button"
-                      >
-                        <strong>{card.title}</strong>
-                        <span>{card.body}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="empty-state-hint">
-                    Press <kbd>↵</kbd> to send · <kbd>⇧↵</kbd> newline · <kbd>⌘1</kbd>/<kbd>⌘2</kbd> to switch modes
-                  </p>
-                </div>
+                <EmptyState
+                  activeModel={activeModel}
+                  onPickStarter={(prompt) => updatePrompt(prompt)}
+                />
               ) : (
                 <MessageList messages={messageRefs} />
               )}
@@ -1182,64 +1111,13 @@ function App() {
             </div>
           </div>
 
-          <aside
-            aria-hidden={!previewOpen}
-            className={`preview-panel preview-drawer ${previewOpen ? "open" : ""}`}
-            aria-label="Generated preview"
-          >
-            <div className="preview-head">
-              <div>
-                <Globe2 size={16} />
-                <strong>Preview</strong>
-                <span>{previewReady ? previewEntry : "waiting for index.html"}</span>
-              </div>
-              <div className="preview-actions">
-                <button
-                  aria-label="Refresh preview"
-                  disabled={previewBusy}
-                  onClick={() => refreshStaticPreview()}
-                  type="button"
-                >
-                  {previewBusy ? <Loader2 className="spin" size={15} /> : <RefreshCcw size={15} />}
-                </button>
-                <button aria-label="Close preview" onClick={() => setPreviewOpen(false)} type="button">
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-            <div className="preview-frame-wrap">
-              {previewReady ? (
-                <iframe
-                  sandbox="allow-forms allow-popups allow-scripts"
-                  srcDoc={staticPreview?.html}
-                  title="Generated static site preview"
-                />
-              ) : (
-                <div className="preview-empty">
-                  <FileText size={22} />
-                  <strong>No static preview yet</strong>
-                  <span>{staticPreview?.detail ?? "Ask Grok to create index.html, then the result appears here."}</span>
-                </div>
-              )}
-            </div>
-            <div className="preview-files">
-              {previewFiles.length > 0 ? (
-                previewFiles.slice(0, 6).map((file) => (
-                  <span key={file.path}>
-                    <FileText size={13} />
-                    <span>{file.name}</span>
-                    <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
-                  </span>
-                ))
-              ) : (
-                <span>
-                  <FileText size={13} />
-                  <span>No files in project root</span>
-                </span>
-              )}
-            </div>
-          </aside>
-
+          <PreviewPanel
+            open={previewOpen}
+            onClose={() => setPreviewOpen(false)}
+            staticPreview={staticPreview}
+            previewBusy={previewBusy}
+            onRefresh={() => refreshStaticPreview()}
+          />
           <InspectorDrawer
             open={contextOpen}
             onOpenPanel={() => togglePanel("context")}
@@ -1271,211 +1149,47 @@ function App() {
           />
         </section>
 
-        <details
-          className="terminal-dock"
-          onToggle={(event) => {
-            if (event.currentTarget.open && !terminalOpen) togglePanel("terminal");
-            else if (!event.currentTarget.open && terminalOpen) setTerminalOpen(false);
-          }}
+        <TerminalDock
           open={terminalOpen}
-        >
-          <summary className="terminal-summary">
-            <span>
-              <SquareTerminal size={16} />
-              <strong>Terminal</strong>
-              <small className={busyRunner ? "running" : ""}>{busyRunner ? "Running" : "Idle"}</small>
-            </span>
-            <span>
-              <button
-                aria-label="Dock terminal right"
-                className={dockPosition === "right" ? "dock-dot active" : "dock-dot"}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setDockPosition("right");
-                }}
-                type="button"
-              >
-                Right
-              </button>
-              <button
-                aria-label="Dock terminal bottom"
-                className={dockPosition === "bottom" ? "dock-dot active" : "dock-dot"}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setDockPosition("bottom");
-                }}
-                type="button"
-              >
-                Bottom
-              </button>
-              <small>{terminalDisplay.length} lines</small>
-            </span>
-          </summary>
-          <div className="terminal-head">
-            <div>
-              <SquareTerminal size={17} />
-              <strong>Terminal</strong>
-              <span className={busyRunner ? "running" : ""}>{busyRunner ? "Running" : "Idle"}</span>
-            </div>
-            <div className="terminal-actions">
-              <label>
-                <TerminalSquare size={15} />
-                <input
-                  aria-label="Shell command"
-                  onChange={(event) => setShellCommand(event.currentTarget.value)}
-                  value={shellCommand}
-                />
-              </label>
-              <button
-                disabled={busyRunner !== null || shellCommand.trim().length === 0}
-                onClick={runShell}
-                type="button"
-              >
-                {busyRunner === "shell" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-                Run
-              </button>
-            </div>
-          </div>
-          {sessionNotice ? <p className="session-note">{sessionNotice}</p> : null}
-          <div className="terminal-view" role="log" aria-live="polite">
-            {terminalDisplay.map((line, index) => (
-              <div className={terminalClass(line)} key={`${line}-${index}`}>
-                <span className="terminal-prefix">{terminalPrefix(line)}</span>
-                <span>{terminalText(line)}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-
-        <details
-          className="toolbelt"
-          aria-label="Developer tools"
-          onToggle={(event) => setToolbeltOpen(event.currentTarget.open)}
+          onOpenPanel={() => togglePanel("terminal")}
+          onClose={() => setTerminalOpen(false)}
+          dockPosition={dockPosition}
+          setDockPosition={setDockPosition}
+          busyRunner={busyRunner}
+          shellCommand={shellCommand}
+          setShellCommand={setShellCommand}
+          runShell={runShell}
+          sessionNotice={sessionNotice}
+          terminalDisplay={terminalDisplay}
+        />
+        <Toolbelt
           open={toolbeltOpen}
-        >
-          <summary>
-            <span><Wrench size={16} /> Developer utilities</span>
-            <small>Browser, Absorb Repo</small>
-          </summary>
-          <div className="toolbelt-grid">
-          <div className="tool-card">
-            <div className="tool-title">
-              <Globe2 size={17} />
-              <span>Browser</span>
-            </div>
-            <input
-              aria-label="Browser task"
-              onChange={(event) => setBrowserTask(event.currentTarget.value)}
-              value={browserTask}
-            />
-            <button disabled={busyRunner !== null || browserTask.trim().length === 0} onClick={runBrowser} type="button">
-              {busyRunner === "browser" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-              Run
-            </button>
-          </div>
-
-          <div className="tool-card">
-            <div className="tool-title">
-              <FolderDown size={17} />
-              <span>Absorb Repo</span>
-            </div>
-            <input
-              aria-label="Repository path"
-              onChange={(event) => setRepoPath(event.currentTarget.value)}
-              placeholder="/path/to/repo"
-              value={repoPath}
-            />
-            <label className="checkline">
-              <input
-                checked={copyText}
-                onChange={(event) => setCopyText(event.currentTarget.checked)}
-                type="checkbox"
-              />
-              <span>copy text</span>
-            </label>
-            <button disabled={busyRunner !== null || repoPath.trim().length === 0} onClick={runAbsorbRepo} type="button">
-              {busyRunner === "absorb" ? <Loader2 className="spin" size={16} /> : <Wrench size={16} />}
-              Absorb
-            </button>
-          </div>
-          </div>
-        </details>
-
-        <footer className="workspace-statusbar" aria-label="Workspace status">
-          {/* These chips looked like controls but were dead text. Now they're
-              real buttons: project → folder picker, model → Model settings,
-              policy → Permissions settings. */}
-          <button
-            type="button"
-            className="status-cluster status-action"
-            onClick={pickFolder}
-            disabled={folderPickerBusy}
-            title="Pick the project folder Grok runs in"
-          >
-            <FolderGit2 size={13} />
-            <span className="status-cwd" title={workspacePath}>{workspacePath}</span>
-          </button>
-          <button
-            type="button"
-            className="status-cluster status-action"
-            onClick={() => {
-              setSettingsSection("model");
-              setSettingsOpen(true);
-            }}
-            title="Change model & reasoning"
-          >
-            <Sparkles size={13} />
-            <span>{activeModel}</span>
-            {!modelIsVerified ? <span className="status-warn">unverified</span> : null}
-          </button>
-          <button
-            type="button"
-            className="status-cluster status-action"
-            onClick={() => {
-              setSettingsSection("permissions");
-              setSettingsOpen(true);
-            }}
-            title="Change action policy & permissions"
-          >
-            <ShieldCheck size={13} />
-            <span>{actionPolicies[actionPolicy].label}</span>
-          </button>
-          <div className="status-cluster">
-            {/* Only report a "last run" once a real run has actually happened
-                (totalRuns > 0). Otherwise a default/unavailable lastRun would
-                falsely scream "Last run failed · 0.0s" on a fresh launch. */}
-            {grokIsRunning ? (
-              <Loader2 className="spin" size={13} />
-            ) : lastRun && totalRuns > 0 ? (
-              lastRun.ok ? <CheckCircle2 size={13} /> : <CircleAlert size={13} />
-            ) : (
-              <Zap size={13} />
-            )}
-            <span>
-              {grokIsRunning
-                ? "Running"
-                : lastRun && totalRuns > 0
-                  ? `${lastRun.ok ? "Last run ok" : "Last run failed"} · ${(lastRun.duration_ms / 1000).toFixed(1)}s`
-                  : isGrokReady
-                    ? "Idle · ready"
-                    : "Ready"}
-            </span>
-          </div>
-          <div className="status-cluster status-right">
-            <History size={13} />
-            <span>{totalRuns} runs</span>
-            <button
-              className="status-clear"
-              disabled={messages.length === 0 && history.length === 0}
-              onClick={clearRunHistory}
-              type="button"
-              title="Clear conversation, run history, and terminal"
-            >
-              <Trash2 size={12} />
-              <span>Clear</span>
-            </button>
-          </div>
-        </footer>
+          onToggle={setToolbeltOpen}
+          runners={runners}
+        />
+        <WorkspaceStatusBar
+          workspacePath={workspacePath}
+          folderPickerBusy={folderPickerBusy}
+          pickFolder={pickFolder}
+          activeModel={activeModel}
+          modelIsVerified={modelIsVerified}
+          actionPolicy={actionPolicy}
+          openModelSettings={() => {
+            setSettingsSection("model");
+            setSettingsOpen(true);
+          }}
+          openPermissionSettings={() => {
+            setSettingsSection("permissions");
+            setSettingsOpen(true);
+          }}
+          grokIsRunning={grokIsRunning}
+          lastRun={lastRun}
+          totalRuns={totalRuns}
+          isGrokReady={isGrokReady}
+          messagesCount={messages.length}
+          historyCount={history.length}
+          clearRunHistory={clearRunHistory}
+        />
       </section>
     </main>
   );
