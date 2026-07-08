@@ -1,15 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { ensureStreamListenersAttached } from "./lib/grok";
 
 const STORAGE_KEY_PREFIX = "grok-desktop-";
 
-// Wire up Tauri event listeners for the run queue + stream events.
-// Fire-and-forget; failures leave the store empty rather than blocking startup.
-void ensureStreamListenersAttached().catch((e) => {
-  console.warn("[grok-desktop] failed to attach Tauri stream listeners", e);
-});
+// Tauri event listeners for the run queue + stream events are attached from
+// App's mount effect (with bounded retry + a visible notice on failure) — see
+// ensureStreamListenersAttached in lib/grok.ts.
 
 // Suppress the WebView's native context menu (Reload / Inspect Element /
 // Services) — it looks unfinished in a shipped desktop app. Keep it on real

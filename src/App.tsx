@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { upsertPrompt } from "./lib/prompts";
 import "./App.css";
-import { cancelRun, type ToolRun } from "./lib/grok";
+import { cancelRun, ensureStreamListenersAttached, type ToolRun } from "./lib/grok";
 import { hasTauriRuntime } from "./lib/runtime";
 import { streamStore } from "./lib/streamStore";
 import { MessageList, type MessageRef } from "./components/MessageList";
@@ -2051,6 +2051,26 @@ function App() {
     refreshGrokAuthStatus();
     refreshStaticPreview();
     refreshGrokModels();
+  }, []);
+
+  // Subscribe to the run-event / run-state / queue Tauri events. Retries with
+  // backoff inside ensureStreamListenersAttached; if every attempt fails the
+  // app would look alive but never render a streamed reply, so tell the user
+  // instead of logging into the void.
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    let cancelled = false;
+    ensureStreamListenersAttached().catch((error) => {
+      if (cancelled) return;
+      setSessionNotice(
+        `Live run updates unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }. Runs may not display output — restart the app to reconnect.`,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Open external links in the system browser. Assistant markdown renders raw
