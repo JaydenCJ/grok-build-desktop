@@ -11,6 +11,29 @@ void ensureStreamListenersAttached().catch((e) => {
   console.warn("[grok-desktop] failed to attach Tauri stream listeners", e);
 });
 
+// External links (markdown answers routinely contain them) must open in the
+// system browser. Left alone, a click navigates the WebView itself away from
+// the app — the whole UI is replaced by the target page with no way back.
+window.addEventListener(
+  "click",
+  (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    const anchor = target?.closest("a[href]");
+    if (!anchor) return;
+    const href = anchor.getAttribute("href") ?? "";
+    if (!/^https?:\/\//i.test(href)) return;
+    e.preventDefault();
+    if ("__TAURI_INTERNALS__" in window) {
+      void import("@tauri-apps/plugin-opener")
+        .then(({ openUrl }) => openUrl(href))
+        .catch(() => window.open(href, "_blank", "noopener,noreferrer"));
+    } else {
+      window.open(href, "_blank", "noopener,noreferrer");
+    }
+  },
+  { capture: true },
+);
+
 // Suppress the WebView's native context menu (Reload / Inspect Element /
 // Services) — it looks unfinished in a shipped desktop app. Keep it on real
 // editable fields so right-click → Paste still works in the composer/inputs.
