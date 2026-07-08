@@ -27,6 +27,13 @@ function ensureWorker(): Worker | null {
       worker.addEventListener('error', (err) => {
         console.warn('markdown.worker error, disabling worker fast path', err);
         worker = null;
+        // Drop the bookkeeping for the dead worker. Without this, any run
+        // whose parse was in flight stayed in `inflight` forever, so every
+        // later scheduleMarkdownParse for it parked in `latestByRun` and was
+        // never posted — markdown rendering for that run deadlocked even
+        // after a fresh worker spun up.
+        inflight.clear();
+        latestByRun.clear();
       });
     } catch (err) {
       console.warn('failed to construct markdown worker', err);
