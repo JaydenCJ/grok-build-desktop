@@ -137,9 +137,7 @@ end try"#
   tell current session of current tab of current window to return variable named "session.path"
 end tell"#
         }
-        "mail_unread_count" => {
-            r#"tell application "Mail" to return unread count of inbox"#
-        }
+        "mail_unread_count" => r#"tell application "Mail" to return unread count of inbox"#,
         _ => return Err(format!("unsupported desktop action: {action}")),
     };
     let result = run_script(script)?;

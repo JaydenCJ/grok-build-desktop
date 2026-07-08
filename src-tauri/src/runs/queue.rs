@@ -195,7 +195,10 @@ impl RunQueue {
 
     pub async fn snapshot(&self) -> (Option<String>, Vec<RunRecord>) {
         let inner = self.inner.lock().await;
-        (inner.active.clone(), inner.waiting.iter().cloned().collect())
+        (
+            inner.active.clone(),
+            inner.waiting.iter().cloned().collect(),
+        )
     }
 
     pub async fn pending_count(&self) -> usize {
@@ -238,8 +241,12 @@ impl RunQueue {
                     return Some(rec);
                 }
             }
-            self.finalize(&skipped_id, RunState::Cancelled, Some("user cancelled".into()))
-                .await;
+            self.finalize(
+                &skipped_id,
+                RunState::Cancelled,
+                Some("user cancelled".into()),
+            )
+            .await;
         }
     }
 
@@ -247,7 +254,14 @@ impl RunQueue {
         let started_at = chrono::Utc::now().timestamp_millis();
         let _ = self
             .db
-            .update_state(&rec.id, RunState::Running, Some(started_at), None, None, None)
+            .update_state(
+                &rec.id,
+                RunState::Running,
+                Some(started_at),
+                None,
+                None,
+                None,
+            )
             .await;
         // Emit QueueChanged BEFORE StateChanged so the frontend's queue.active
         // flips from None → Some(rec.id) before any text events arrive. The
@@ -275,8 +289,12 @@ impl RunQueue {
         let spawn_result = process::spawn(&grok_path, &args, &cwd);
         match spawn_result {
             Err(e) => {
-                self.finalize(&rec.id, RunState::Failed, Some(format!("spawn failed: {e}")))
-                    .await;
+                self.finalize(
+                    &rec.id,
+                    RunState::Failed,
+                    Some(format!("spawn failed: {e}")),
+                )
+                .await;
             }
             Ok(mut spawned) => {
                 let cancel_requested = {
@@ -352,8 +370,11 @@ impl RunQueue {
                 loop {
                     line.clear();
                     let read_fut = reader.read_line(&mut line);
-                    let outcome =
-                        tokio::time::timeout(std::time::Duration::from_secs(no_output_secs), read_fut).await;
+                    let outcome = tokio::time::timeout(
+                        std::time::Duration::from_secs(no_output_secs),
+                        read_fut,
+                    )
+                    .await;
                     match outcome {
                         Err(_) => {
                             // N seconds with zero output and not exited → wedged.
@@ -384,8 +405,7 @@ impl RunQueue {
                             // frontend can introspect tool/subagent events
                             // without us touching Rust for every new type).
                             let raw_value: serde_json::Value =
-                                serde_json::from_str(&trimmed)
-                                    .unwrap_or(serde_json::Value::Null);
+                                serde_json::from_str(&trimmed).unwrap_or(serde_json::Value::Null);
                             match parse_line(&trimmed) {
                                 Ok(ev) => {
                                     consecutive_fail = 0;
@@ -485,14 +505,19 @@ impl RunQueue {
                                         })
                                 })
                                 .map(|l| format!(" — {l}"))
-                                .unwrap_or_else(|| " — likely a grok CLI crash, try again".to_string());
+                                .unwrap_or_else(|| {
+                                    " — likely a grok CLI crash, try again".to_string()
+                                });
                             let msg = match s.code() {
                                 Some(c) => format!("grok exited with code {c}{detail}"),
                                 None => format!("grok was terminated by a signal{detail}"),
                             };
                             (RunState::Failed, Some(msg))
                         }
-                        Err(e) => (RunState::Failed, Some(format!("could not wait on grok: {e}"))),
+                        Err(e) => (
+                            RunState::Failed,
+                            Some(format!("could not wait on grok: {e}")),
+                        ),
                     }
                 };
                 self.finalize(&rec.id, final_state, fail_err).await;

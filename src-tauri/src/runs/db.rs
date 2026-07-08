@@ -167,12 +167,16 @@ impl Db {
         sqlx::query(
             "UPDATE runs SET state = ?, started_at = COALESCE(?, started_at),
              ended_at = COALESCE(?, ended_at), stop_reason = COALESCE(?, stop_reason),
-             error = COALESCE(?, error) WHERE id = ?"
+             error = COALESCE(?, error) WHERE id = ?",
         )
         .bind(state.as_str())
-        .bind(started_at).bind(ended_at).bind(stop_reason).bind(error)
+        .bind(started_at)
+        .bind(ended_at)
+        .bind(stop_reason)
+        .bind(error)
         .bind(id)
-        .execute(&self.pool).await?;
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -212,10 +216,12 @@ impl Db {
     pub async fn cancel_orphans(&self, reason: &str) -> Result<u64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp_millis();
         let result = sqlx::query(
-            "UPDATE runs SET state = 'Cancelled', ended_at = ?, error = ? WHERE state = 'Running'"
+            "UPDATE runs SET state = 'Cancelled', ended_at = ?, error = ? WHERE state = 'Running'",
         )
-        .bind(now).bind(reason)
-        .execute(&self.pool).await?;
+        .bind(now)
+        .bind(reason)
+        .execute(&self.pool)
+        .await?;
         Ok(result.rows_affected())
     }
 }
