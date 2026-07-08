@@ -4,7 +4,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   Archive,
@@ -1093,14 +1093,26 @@ function App() {
     // un-debounced JSON.stringify of every conversation's full contents ran
     // synchronously on each send.
     const timer = window.setTimeout(() => {
-      try {
-        safeSetItem(tabsStorageKey, JSON.stringify(tabs));
-      } catch {
-        // quota or serialization error — non-fatal; in-memory state survives.
-      }
+      safeSetItem(tabsStorageKey, JSON.stringify(tabs));
     }, 300);
     return () => window.clearTimeout(timer);
   }, [tabs]);
+  // Always-fresh mirror so the pagehide flush below writes the newest tabs
+  // without re-registering per change.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  // Flush the debounced persistence synchronously when the window goes away —
+  // otherwise quitting inside the 300ms window after a send would lose the
+  // newest message from tab/message storage.
+  useEffect(() => {
+    const flush = () => {
+      safeSetItem(tabsStorageKey, JSON.stringify(tabsRef.current));
+      safeSetItem(storageKeys.messages, JSON.stringify(messagesRef.current));
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (activeTabId) safeSetItem(tabsActiveKey, activeTabId);
   }, [activeTabId]);
@@ -2150,8 +2162,12 @@ function App() {
         shortcut: "⌘F",
         group: "Navigation",
         run: () => {
-          historySearchInputRef.current?.focus();
-          historySearchInputRef.current?.select();
+          // Expand a collapsed sidebar first, or the input isn't focusable.
+          setSidebarCollapsed(false);
+          requestAnimationFrame(() => {
+            historySearchInputRef.current?.focus();
+            historySearchInputRef.current?.select();
+          });
         },
       },
       {
@@ -2266,14 +2282,24 @@ function App() {
         }
       } else if (meta && !e.shiftKey && e.key.toLowerCase() === "f") {
         // ⌘F — advertised by the palette's "Search recent prompts" action but
-        // previously bound nowhere. Expand the sidebar if needed so the
-        // search box is actually focusable.
-        e.preventDefault();
-        setSidebarCollapsed(false);
-        requestAnimationFrame(() => {
-          historySearchInputRef.current?.focus();
-          historySearchInputRef.current?.select();
-        });
+        // previously bound nowhere. Guarded like the ⌘N and "/" branches:
+        // never hijack Find / the Ctrl-F caret binding inside an editable
+        // field, and never steal focus out from under an open modal surface
+        // (palette, Settings, Tools, Prompt Library).
+        const el = document.activeElement as HTMLElement | null;
+        const tag = (el?.tagName ?? "").toLowerCase();
+        const editable =
+          tag === "textarea" || tag === "input" || Boolean(el?.isContentEditable);
+        const modalOpen =
+          paletteOpen || promptLibraryOpen || settingsOpen || toolsPageOpen;
+        if (!editable && !modalOpen) {
+          e.preventDefault();
+          setSidebarCollapsed(false);
+          requestAnimationFrame(() => {
+            historySearchInputRef.current?.focus();
+            historySearchInputRef.current?.select();
+          });
+        }
       } else if (!meta && !e.altKey && e.key === "/") {
         // "/" focuses the composer (also advertised in the palette). Only
         // when focus isn't already in an editable field, so typing a slash
@@ -2306,7 +2332,7 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paletteOpen, promptLibraryOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
+  }, [paletteOpen, promptLibraryOpen, settingsOpen, toolsPageOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
     safeSetItem(storageKeys.codingCwd, codingCwd);
@@ -2731,6 +2757,16 @@ function App() {
   const visibleRuns = history.length > 0 ? history : lastRun ? [lastRun] : [];
   const previewFiles = staticPreview?.files ?? [];
   const previewReady = Boolean(staticPreview?.available && staticPreview.html.trim());
+  // Load the preview from the preview:// protocol (its response carries its
+  // own permissive CSP) instead of srcdoc — about:srcdoc inherits the app
+  // document's strict CSP and can't carry nonces, so generated-site scripts
+  // would all be refused. convertFileSrc yields the platform-correct URL
+  // (preview://localhost/… on macOS/Linux, http://preview.localhost/… on
+  // Windows); updatedAt busts the iframe cache on each refresh.
+  const previewSrc =
+    previewReady && hasTauriRuntime()
+      ? `${convertFileSrc("index.html", "preview")}?v=${staticPreview?.updatedAt ?? 0}`
+      : null;
   const previewEntry = staticPreview?.entryPath
     ? staticPreview.entryPath.split("/").pop() || "index.html"
     : "index.html";
@@ -3455,7 +3491,17 @@ function App() {
               </div>
             </div>
             <div className="preview-frame-wrap">
-              {previewReady ? (
+              {previewReady && previewSrc ? (
+                // sandbox (no allow-same-origin) stays the isolation boundary:
+                // opaque origin, no IPC, no access to the app document.
+                <iframe
+                  sandbox="allow-forms allow-popups allow-scripts"
+                  src={previewSrc}
+                  title="Generated static site preview"
+                />
+              ) : previewReady ? (
+                // Vite browser preview (no Tauri protocol registry): srcdoc
+                // fallback — the dev server ships no CSP, so scripts still run.
                 <iframe
                   sandbox="allow-forms allow-popups allow-scripts"
                   srcDoc={staticPreview?.html}

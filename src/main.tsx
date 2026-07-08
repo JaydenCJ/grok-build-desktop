@@ -21,7 +21,14 @@ window.addEventListener(
     const anchor = target?.closest("a[href]");
     if (!anchor) return;
     const href = anchor.getAttribute("href") ?? "";
-    if (!/^https?:\/\//i.test(href)) {
+    // Protocol-relative URLs (//host/path) are external too — left alone
+    // they navigate the WebView exactly like an absolute http(s) URL would.
+    const external = /^https?:\/\//i.test(href)
+      ? href
+      : /^\/\//.test(href)
+        ? `https:${href}`
+        : null;
+    if (!external) {
       // Block script-ish URL schemes outright — rendered markdown is
       // untrusted output, and a javascript:/data: anchor must never execute
       // in or navigate the WebView.
@@ -31,10 +38,10 @@ window.addEventListener(
     e.preventDefault();
     if ("__TAURI_INTERNALS__" in window) {
       void import("@tauri-apps/plugin-opener")
-        .then(({ openUrl }) => openUrl(href))
-        .catch(() => window.open(href, "_blank", "noopener,noreferrer"));
+        .then(({ openUrl }) => openUrl(external))
+        .catch(() => window.open(external, "_blank", "noopener,noreferrer"));
     } else {
-      window.open(href, "_blank", "noopener,noreferrer");
+      window.open(external, "_blank", "noopener,noreferrer");
     }
   },
   { capture: true },

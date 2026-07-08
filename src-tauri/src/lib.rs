@@ -242,22 +242,24 @@ fn command_path() -> String {
 /// report a clear not-found error).
 fn resolve_grok_binary() -> PathBuf {
     let configured = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
+    // An explicit path (contains a separator) is honored literally — even if
+    // it doesn't exist right now. Falling back to a PATH search here would
+    // silently substitute a DIFFERENT grok than the one the user configured;
+    // better that spawn reports a clear not-found for the configured path.
+    if configured.contains('/') {
+        return PathBuf::from(configured);
+    }
     let candidate = PathBuf::from(&configured);
-    // Absolute/relative path that exists → use as-is.
     if candidate.exists() {
         return candidate;
     }
-    // Bare command name (or a missing path): search the augmented PATH for
-    // an executable file with that name.
-    let name = candidate
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or(configured);
+    // Bare command name: search the augmented PATH (the same one every
+    // status/one-shot command uses) for an executable file with that name.
     for dir in command_path().split(':') {
         if dir.is_empty() {
             continue;
         }
-        let full = Path::new(dir).join(&name);
+        let full = Path::new(dir).join(&configured);
         if full.is_file() {
             return full;
         }
@@ -884,11 +886,59 @@ fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
 }
 
 #[tauri::command]
-async fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
+async fn get_static_preview(
+    app: tauri::AppHandle,
+    cwd: Option<String>,
+) -> Result<StaticPreview, String> {
     // Directory walk + asset inlining, re-invoked after cwd/run changes.
-    tauri::async_runtime::spawn_blocking(move || get_static_preview_blocking(cwd))
+    let preview = tauri::async_runtime::spawn_blocking(move || get_static_preview_blocking(cwd))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+    // Publish the document for the preview:// protocol. The iframe loads it
+    // from there (with the response's own permissive CSP) instead of srcdoc,
+    // which would inherit the app document's strict CSP and refuse every
+    // script in the generated site.
+    if let Some(doc) = app.try_state::<PreviewDoc>() {
+        if let Ok(mut slot) = doc.0.lock() {
+            *slot = if preview.available {
+                preview.html.clone()
+            } else {
+                String::new()
+            };
+        }
+    }
+    Ok(preview)
+}
+
+/// Latest preview document, served by the `preview://` custom protocol.
+pub struct PreviewDoc(pub Mutex<String>);
+
+/// CSP attached to preview:// responses. Deliberately permissive — this is
+/// the generated site's own document, and before the app gained a strict CSP
+/// it ran with no policy at all. Isolation comes from the iframe sandbox
+/// (no allow-same-origin → opaque origin, no IPC, no parent access), not
+/// from this header.
+const PREVIEW_DOC_CSP: &str =
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:";
+
+/// Build the HTTP response for a preview:// request. Split out from the
+/// protocol closure so header behavior is unit-testable without a GUI.
+pub fn preview_protocol_response(html: Option<String>) -> tauri::http::Response<Vec<u8>> {
+    match html.filter(|value| !value.trim().is_empty()) {
+        Some(html) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("Content-Security-Policy", PREVIEW_DOC_CSP)
+            .header("Cache-Control", "no-store")
+            .body(html.into_bytes())
+            .unwrap_or_default(),
+        None => tauri::http::Response::builder()
+            .status(404)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .header("Cache-Control", "no-store")
+            .body(b"No preview document. Open the Preview panel to generate one.".to_vec())
+            .unwrap_or_default(),
+    }
 }
 
 fn get_static_preview_blocking(cwd: Option<String>) -> Result<StaticPreview, String> {
@@ -1845,6 +1895,20 @@ fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Serves the generated-site preview document with its OWN (permissive)
+        // CSP header. The Preview iframe points here instead of using srcdoc:
+        // about:srcdoc inherits the embedding document's strict CSP and cannot
+        // carry nonces, so every inline/CDN script in a generated preview was
+        // refused once the app shipped a real CSP. The iframe keeps
+        // sandbox="allow-forms allow-popups allow-scripts" (no
+        // allow-same-origin) as the actual isolation boundary.
+        .register_uri_scheme_protocol("preview", |ctx, _request| {
+            let html = ctx
+                .app_handle()
+                .try_state::<PreviewDoc>()
+                .and_then(|doc| doc.0.lock().ok().map(|slot| slot.clone()));
+            preview_protocol_response(html)
+        })
         .setup(|app| {
             let app_handle = app.handle().clone();
             // Fall back to a temp location rather than panicking pre-WebView
@@ -2020,6 +2084,8 @@ pub fn run() {
                 app_handle.manage(prompts);
 
                 app_handle.manage(queue);
+                // Preview document slot for the preview:// protocol.
+                app_handle.manage(PreviewDoc(Mutex::new(String::new())));
             });
 
             Ok(())
