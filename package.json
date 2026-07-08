@@ -13,6 +13,7 @@
     "test": "node scripts/smoke_test.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "bench:markdown": "vitest run --config vitest.bench.config.ts --reporter=verbose",
     "mac:build": "tauri build --bundles app",
     "mac:build:dmg": "tauri build --bundles dmg",
     "mac:dev": "tauri dev",
