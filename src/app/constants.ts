@@ -1,4 +1,5 @@
 // Shared app-level constants: UI copy, presets, storage keys.
+import { t } from "../i18n";
 import type {
   ActionPolicy,
   EffortLevel,
@@ -11,19 +12,21 @@ import type {
   ToolStatus,
 } from "./types";
 
+// The `defaultPrompt` bodies are model-facing prompt text (seeded into the
+// composer), not UI chrome — they stay hardcoded by design.
 export const modeCopy = {
   standard: {
-    title: "Grok Chat",
-    subtitle: "quick questions and product thinking",
+    title: t("mode.standard.title"),
+    subtitle: t("mode.standard.subtitle"),
     shortcut: "⌘1",
-    placeholder: "Ask Grok for product thinking, research, or an engineering explanation...",
+    placeholder: t("mode.standard.placeholder"),
     defaultPrompt: "Answer clearly, keep the response practical, and suggest when this should move into Coding Mode.",
   },
   coding: {
-    title: "Grok Code",
-    subtitle: "repository, terminal, reviews, implementation",
+    title: t("mode.coding.title"),
+    subtitle: t("mode.coding.subtitle"),
     shortcut: "⌘2",
-    placeholder: "Review this repo, implement a narrow fix, debug a test, refactor a module...",
+    placeholder: t("mode.coding.placeholder"),
     defaultPrompt: "Inspect the current repository like a senior engineer. Identify the most useful next code action and include exact commands to verify it.",
   },
 } satisfies Record<Mode, ModeMeta>;
@@ -68,46 +71,47 @@ export const defaultDrafts: Record<Mode, string> = {
   coding: modeCopy.coding.defaultPrompt,
 };
 
+// Preset `prompt` bodies are model-facing prompt text — hardcoded by design.
 export const codingPresets = [
   {
     id: "analyze",
-    label: "Analyze",
-    description: "Architecture, risks, next moves",
+    label: t("preset.analyze"),
+    description: t("preset.analyzeDesc"),
     prompt:
       "Analyze this project as a senior engineer. Summarize the architecture, identify the most important correctness and maintainability risks, and recommend the smallest high-leverage next steps. Do not edit files yet.",
   },
   {
     id: "implement",
-    label: "Implement",
-    description: "Small focused code change",
+    label: t("preset.implement"),
+    description: t("preset.implementDesc"),
     prompt:
       "Find one focused improvement in this project, explain why it matters, make the smallest safe code change, and include verification commands.",
   },
   {
     id: "review",
-    label: "Review",
-    description: "Bug-first code review",
+    label: t("preset.review"),
+    description: t("preset.reviewDesc"),
     prompt:
       "Review the current repository or recent changes like a strict senior reviewer. Lead with bugs, regressions, missing tests, security risks, and maintainability issues. Include file paths and concrete fixes.",
   },
   {
     id: "debug",
-    label: "Debug",
-    description: "Root cause and fix",
+    label: t("preset.debug"),
+    description: t("preset.debugDesc"),
     prompt:
       "Investigate the reported issue. Read relevant files first, separate evidence from hypothesis, identify the root cause, then propose or apply the smallest fix with verification.",
   },
   {
     id: "tests",
-    label: "Tests",
-    description: "Coverage and verification",
+    label: t("preset.tests"),
+    description: t("preset.testsDesc"),
     prompt:
       "Inspect the test setup, identify the most valuable missing or failing test, add or propose the smallest useful test change, and include commands to run it.",
   },
   {
     id: "refactor",
-    label: "Refactor",
-    description: "Behavior-preserving cleanup",
+    label: t("preset.refactor"),
+    description: t("preset.refactorDesc"),
     prompt:
       "Inspect the current code for a small refactor that improves maintainability without changing behavior. Keep the change narrow and include verification steps.",
   },
@@ -118,117 +122,119 @@ export const actionPolicies: Record<
   { label: string; detail: string; risk: "none" | "low" | "high" }
 > = {
   review: {
-    label: "Review only",
-    detail: "Read, reason, propose. No file edits unless asked.",
+    label: t("policy.review"),
+    detail: t("policy.reviewDetail"),
     risk: "none",
   },
   patch: {
-    label: "Patch ready",
-    detail: "Produce exact changes and apply narrow safe edits with normal approvals.",
+    label: t("policy.patch"),
+    detail: t("policy.patchDetail"),
     risk: "low",
   },
   autopilot: {
-    label: "Autopilot",
-    detail: "Auto-approves every tool call (--always-approve). Grok can edit files and run commands without asking. Use only in a sandbox or disposable checkout.",
+    label: t("policy.autopilot"),
+    detail: t("policy.autopilotDetail"),
     risk: "high",
   },
 };
 
 export const effortLevels: Record<EffortLevel, { label: string; detail: string }> = {
-  low: { label: "Low", detail: "Fast triage and small answers" },
-  medium: { label: "Medium", detail: "Balanced repo reasoning" },
-  high: { label: "High", detail: "Default coding depth" },
-  xhigh: { label: "XHigh", detail: "Deep plans and refactors" },
-  max: { label: "Max", detail: "Most thorough Grok pass" },
+  low: { label: t("effort.low"), detail: t("effort.lowDetail") },
+  medium: { label: t("effort.medium"), detail: t("effort.mediumDetail") },
+  high: { label: t("effort.high"), detail: t("effort.highDetail") },
+  xhigh: { label: t("effort.xhigh"), detail: t("effort.xhighDetail") },
+  max: { label: t("effort.max"), detail: t("effort.maxDetail") },
 };
 
 export const reasoningEfforts: Record<ReasoningEffort, { label: string; detail: string }> = {
-  off: { label: "Auto", detail: "Let Grok choose reasoning depth" },
-  low: { label: "Low", detail: "Fast reasoning pass" },
-  medium: { label: "Medium", detail: "Balanced reasoning" },
-  high: { label: "High", detail: "Harder code paths" },
-  xhigh: { label: "XHigh", detail: "Architecture and debugging" },
-  max: { label: "Max", detail: "Maximum reasoning budget" },
+  off: { label: t("reasoning.off"), detail: t("reasoning.offDetail") },
+  low: { label: t("effort.low"), detail: t("reasoning.lowDetail") },
+  medium: { label: t("effort.medium"), detail: t("reasoning.mediumDetail") },
+  high: { label: t("effort.high"), detail: t("reasoning.highDetail") },
+  xhigh: { label: t("effort.xhigh"), detail: t("reasoning.xhighDetail") },
+  max: { label: t("effort.max"), detail: t("reasoning.maxDetail") },
 };
 
 export const grokModelPresets: Record<GrokModelId, { label: string; detail: string; defaultReasoning: ReasoningEffort }> = {
+  // Preset labels are literal model ids (not translatable copy); the details
+  // are UI copy and live in the i18n catalog.
   "grok-build": {
     label: "grok-build",
-    detail: "Recommended Grok Build CLI coding agent",
+    detail: t("model.grokBuildDetail"),
     defaultReasoning: "off",
   },
   "grok-build-0.1": {
     label: "grok-build-0.1",
-    detail: "Pinned Grok Build API model",
+    detail: t("model.grokBuildPinnedDetail"),
     defaultReasoning: "off",
   },
   "grok-4.3": {
     label: "grok-4.3",
-    detail: "Flagship reasoning model for complex implementation",
+    detail: t("model.grok43Detail"),
     defaultReasoning: "high",
   },
   "grok-4.3-latest": {
     label: "grok-4.3-latest",
-    detail: "Latest Grok 4.3 alias when the CLI supports it",
+    detail: t("model.grok43LatestDetail"),
     defaultReasoning: "high",
   },
   "grok-latest": {
     label: "grok-latest",
-    detail: "Follow the current xAI default alias",
+    detail: t("model.grokLatestDetail"),
     defaultReasoning: "medium",
   },
   "grok-4-fast-reasoning": {
     label: "grok-4-fast-reasoning",
-    detail: "Fast reasoning for iterative coding loops",
+    detail: t("model.grokFastReasoningDetail"),
     defaultReasoning: "medium",
   },
   "grok-4-fast-non-reasoning": {
     label: "grok-4-fast-non-reasoning",
-    detail: "Fast edits and simple command work",
+    detail: t("model.grokFastNonReasoningDetail"),
     defaultReasoning: "off",
   },
   custom: {
-    label: "Custom",
-    detail: "Use any model ID accepted by your Grok CLI",
+    label: t("model.custom"),
+    detail: t("model.customDetail"),
     defaultReasoning: "off",
   },
 };
 
 export const permissionModes: Record<PermissionMode, { label: string; detail: string }> = {
-  default: { label: "Default", detail: "Use Grok CLI configured prompts and approvals" },
-  acceptEdits: { label: "Accept edits", detail: "Prefer quick edit approval for trusted changes" },
-  auto: { label: "Auto", detail: "Let Grok proceed through low-risk tool steps" },
-  dontAsk: { label: "Don't ask", detail: "Reduce prompts while keeping Grok Desktop safety context visible" },
-  plan: { label: "Plan", detail: "Plan-first behavior for larger or uncertain work" },
+  default: { label: t("permission.default"), detail: t("permission.defaultDetail") },
+  acceptEdits: { label: t("permission.acceptEdits"), detail: t("permission.acceptEditsDetail") },
+  auto: { label: t("permission.auto"), detail: t("permission.autoDetail") },
+  dontAsk: { label: t("permission.dontAsk"), detail: t("permission.dontAskDetail") },
+  plan: { label: t("permission.plan"), detail: t("permission.planDetail") },
 };
 
 export const inspectorTabs: { id: InspectorTab; label: string }[] = [
-  { id: "context", label: "Context" },
-  { id: "skills", label: "Skills" },
-  { id: "mcp", label: "MCP" },
-  { id: "agents", label: "Agents" },
-  { id: "plugins", label: "Plugins" },
-  { id: "hooks", label: "Hooks" },
-  { id: "permissions", label: "Perms" },
-  { id: "desktop", label: "Desktop" },
+  { id: "context", label: t("inspectorTab.context") },
+  { id: "skills", label: t("inspectorTab.skills") },
+  { id: "mcp", label: t("inspectorTab.mcp") },
+  { id: "agents", label: t("inspectorTab.agents") },
+  { id: "plugins", label: t("inspectorTab.plugins") },
+  { id: "hooks", label: t("inspectorTab.hooks") },
+  { id: "permissions", label: t("inspectorTab.permissions") },
+  { id: "desktop", label: t("inspectorTab.desktop") },
 ];
 
 export const defaultStatuses: ToolStatus[] = [
   {
     id: "grok",
-    label: "Grok Build",
+    label: t("toolStatus.grokBuild"),
     command: "grok",
     installed: false,
-    detail: "Not checked",
+    detail: t("toolStatus.notChecked"),
   },
 ];
 
 export const primaryNavItems = [
-  { label: "New Session", meta: "Start fresh" },
-  { label: "Search", meta: "Find work" },
-  { label: "Tools", meta: "Skills and MCP" },
-  { label: "Settings", meta: "Preferences" },
-];
+  { id: "new-session", label: t("nav.newSession"), meta: t("nav.newSessionMeta") },
+  { id: "search", label: t("nav.search"), meta: t("nav.searchMeta") },
+  { id: "tools", label: t("nav.tools"), meta: t("nav.toolsMeta") },
+  { id: "settings", label: t("nav.settings"), meta: t("nav.settingsMeta") },
+] as const;
 
 export const contextFiles = [
   "README.md",
@@ -239,11 +245,11 @@ export const contextFiles = [
 ];
 
 export const grokOptimizationRules = [
-  "Default to grok-build for agentic repository work",
-  "Use reasoning effort only when the selected model benefits from it",
-  "Keep web search available for version-sensitive docs",
-  "Expose Best-of-N, Memory, and Subagents as explicit engine controls",
-  "Send repo path, workflow, approvals, ecosystem, and verification contract",
+  t("rules.defaultModel"),
+  t("rules.reasoningEffort"),
+  t("rules.webSearch"),
+  t("rules.engineControls"),
+  t("rules.verificationContract"),
 ];
 
 // Multi-session tab storage. Hoisted to module scope so boot-time hydration

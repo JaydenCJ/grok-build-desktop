@@ -9,6 +9,7 @@ import type { ChatMessage, HistoryRow } from "../app/types";
 import { storageKeys } from "../app/constants";
 import { loadIdMap, loadIdSet } from "../app/storage";
 import { timeLabel } from "../app/format";
+import { t } from "../i18n";
 
 export interface HistoryOrganizationDeps {
   tabs: Tab[];
@@ -119,9 +120,9 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
     const name = (promptLabels[id] ?? text.split("\n").find(Boolean) ?? "Saved prompt").slice(0, 60);
     try {
       await upsertPrompt({ name, body: text, category: "History" });
-      setHistoryNote("Saved to Prompt Library");
+      setHistoryNote(t("notices.savedToLibrary"));
     } catch {
-      setHistoryNote("Couldn't save — Prompt Library unavailable");
+      setHistoryNote(t("notices.librarySaveFailed"));
     }
   }
 

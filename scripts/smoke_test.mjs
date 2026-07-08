@@ -11,9 +11,10 @@ for (const scriptName of ["build", "check", "test", "doctor", "mac:build", "mac:
   assert.ok(packageJson.scripts?.[scriptName], `missing package script: ${scriptName}`);
 }
 
-// App.tsx was split into focused modules (src/app/* + components/ + hooks/).
-// Guards that assert on "the app source" search the combined text so the
-// intent (feature X exists and is wired) survives mechanical extraction.
+// App.tsx was split into focused modules (src/app/* + components/ + hooks/),
+// and user-facing copy was extracted into src/i18n/en.ts. Guards that assert
+// on "the app source" search the combined text so the intent (feature X
+// exists and is wired) survives mechanical extraction.
 const appModules = [
   "src/App.tsx",
   ...readdirSync(join(root, "src/app"))
@@ -25,6 +26,9 @@ const appModules = [
   ...readdirSync(join(root, "src/components"))
     .filter((f) => f.endsWith(".tsx"))
     .map((f) => `src/components/${f}`),
+  ...readdirSync(join(root, "src/i18n"))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .map((f) => `src/i18n/${f}`),
 ];
 const app = appModules.map(read).join("\n");
 for (const label of [
@@ -232,8 +236,8 @@ assert.ok(app.includes("autopilot-warning"),
 assert.ok(existsSync(join(root, "src/components/SettingsPage.tsx")),
   "SettingsPage component missing");
 const settingsSrc = read("src/components/SettingsPage.tsx");
-assert.ok(settingsSrc.includes("Dark") && settingsSrc.includes("Light"),
-  "SettingsPage must host the Dark/Light theme control");
+assert.ok(settingsSrc.includes("common.dark") && settingsSrc.includes("common.light"),
+  "SettingsPage must host the Dark/Light theme control (via i18n keys)");
 assert.ok(app.includes("<SettingsPage"), "App must render SettingsPage");
 
 // v0.4.0: Tools = MCP integration hub
@@ -321,7 +325,7 @@ assert.ok(read("src/lib/mcp.ts").includes("--args=${a}"),
   "MCP command preview must mirror the --args= form the backend runs");
 // 9) Run config (effort/reasoning/permission/best-of-n) lives in the composer
 //    footer, one glance below the chat box.
-assert.ok(app.includes('aria-label="Agent effort"') && app.includes('className="run-select"'),
+assert.ok(app.includes("composerSection.agentEffort") && app.includes('className="run-select"'),
   "run-config selects must be in the composer footer (below the chat box)");
 // 10) Top bar: day/night theme toggle + a panels menu (Preview/Context/Terminal/Tools).
 assert.ok(app.includes('titlebar-icon-btn theme-toggle') && app.includes("<Moon size"),
@@ -338,8 +342,8 @@ assert.ok(app.includes('item.active ? " active"') || app.includes("active ? \" a
   "the open conversation must be marked active in the sidebar");
 // 12) Live phase must be spelled out (thinking…/writing…/working…), not just a
 //     token counter — the user asked to always see what Grok is doing now.
-assert.ok(read("src/components/StatusBar.tsx").includes("writing…") &&
-  read("src/components/StatusBar.tsx").includes("working…"),
+assert.ok(read("src/components/StatusBar.tsx").includes("statusBar.writing") &&
+  read("src/components/StatusBar.tsx").includes("statusBar.working"),
   "StatusBar must surface the live phase (writing…/working…)");
 // 13) Best-of-N defaulting to 1 is behavior-tested in useModelConfig.test.tsx.
 // 14) grok-build adaptation: durable guidance goes through --rules (system

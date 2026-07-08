@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ToolRun } from "../lib/grok";
 import { hasTauriRuntime } from "../lib/runtime";
+import { t } from "../i18n";
 import {
   isActionPolicy,
   isChatMessage,
@@ -178,18 +179,25 @@ export function useSessionPersistence({
 
           const effectiveMessageCount = Math.max(restoredMessages.length, storedMessages().length);
           if (restoredHistory.length > 0 || restoredLastRun || effectiveMessageCount > 0) {
-            const runWord = restoredHistory.length === 1 ? "run" : "runs";
+            const runWord = restoredHistory.length === 1 ? t("notices.runWordOne") : t("notices.runWordMany");
             const messagePart =
               effectiveMessageCount > 0
-                ? `, ${effectiveMessageCount} chat message${effectiveMessageCount === 1 ? "" : "s"}`
+                ? t(
+                    effectiveMessageCount === 1
+                      ? "notices.restoredMessagesOne"
+                      : "notices.restoredMessagesMany",
+                    { count: effectiveMessageCount },
+                  )
                 : "";
-            setSessionNotice(`Restored ${restoredHistory.length} recent ${runWord}${messagePart}.`);
+            setSessionNotice(
+              t("notices.restored", { count: restoredHistory.length, runWord, messagePart }),
+            );
           }
         }
       } catch (error) {
         if (!cancelled) {
           setSessionNotice(
-            `Session restore failed: ${error instanceof Error ? error.message : String(error)}`,
+            t("notices.restoreFailed", { error: error instanceof Error ? error.message : String(error) }),
           );
         }
       } finally {
@@ -296,7 +304,7 @@ export function useSessionPersistence({
 
       invoke<void>("save_session_state", { state }).catch((error) => {
         setSessionNotice(
-          `Session save failed: ${error instanceof Error ? error.message : String(error)}`,
+          t("notices.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
         );
       });
     }, 300);
