@@ -1,6 +1,7 @@
 //! Prompt library — SQLite-backed reusable prompt templates.
 //! Stored next to runs.sqlite in the app data dir.
 
+use crate::runs::db::run_schema;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
@@ -36,19 +37,6 @@ CREATE TABLE IF NOT EXISTS prompts (
 CREATE INDEX IF NOT EXISTS idx_prompts_category ON prompts(category);
 CREATE INDEX IF NOT EXISTS idx_prompts_updated_at ON prompts(updated_at DESC);
 "#;
-
-/// Run each `;`-separated DDL statement individually — sqlx::query only
-/// prepares one statement at a time, so the CREATE INDEX bodies in SCHEMA
-/// would be silently ignored if we pass the whole blob to a single query().
-async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
-    for stmt in schema.split(';') {
-        let trimmed = stmt.trim();
-        if !trimmed.is_empty() {
-            sqlx::query(trimmed).execute(pool).await?;
-        }
-    }
-    Ok(())
-}
 
 impl PromptStore {
     pub async fn open_at(path: &Path) -> Result<Self, sqlx::Error> {

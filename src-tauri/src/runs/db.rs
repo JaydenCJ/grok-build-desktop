@@ -73,8 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_runs_enqueued_at ON runs(enqueued_at);
 /// Execute every `;`-delimited DDL statement in `schema` against the given
 /// pool. sqlx::query() prepares a single statement at a time, so the CREATE
 /// INDEX bodies in a multi-line SCHEMA string would silently be ignored if
-/// passed to a single query(). This helper avoids that footgun.
-async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
+/// passed to a single query(). This helper avoids that footgun. Shared with
+/// the prompt-library store (prompts/mod.rs), which bootstraps the same way.
+pub(crate) async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
     for stmt in schema.split(';') {
         let trimmed = stmt.trim();
         if !trimmed.is_empty() {

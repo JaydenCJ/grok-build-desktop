@@ -3,6 +3,7 @@
 // triggers an action the Rust side doesn't recognize, we surface the error
 // instead of silently failing.
 import { invoke } from '@tauri-apps/api/core';
+import { hasTauriRuntime as hasTauri } from './runtime';
 
 export interface DesktopApp {
   name: string;
@@ -16,10 +17,6 @@ interface RawDesktopApp {
   bundle_id: string;
   running: boolean;
   capabilities: string[];
-}
-
-function hasTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
 export async function listDesktopApps(): Promise<DesktopApp[]> {

@@ -1,6 +1,7 @@
 // Frontend wrapper around the Rust @file commands. Keep the surface area
 // minimal so the Composer doesn't need to know about Tauri internals.
 import { invoke } from '@tauri-apps/api/core';
+import { hasTauriRuntime as hasTauri } from './runtime';
 
 export interface FileEntry {
   path: string; // relative to cwd
@@ -12,11 +13,6 @@ interface RawFileEntry {
   path: string;
   display_name: string;
   size_bytes: number;
-}
-
-function hasTauri(): boolean {
-  // streamStore.ts and other call-sites already use this same check.
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
 export async function globFiles(cwd: string, query: string, limit = 25): Promise<FileEntry[]> {

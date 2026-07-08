@@ -6,10 +6,7 @@
 // catalog of high-value coding skills the user can install with one click —
 // install just writes the SKILL.md; grok picks it up on its next run.
 import { invoke } from '@tauri-apps/api/core';
-
-function hasTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
+import { hasTauriRuntime as hasTauri } from './runtime';
 
 export interface SkillCatalogEntry {
   slug: string;

@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { classifyEvent, type TraceEvent } from './traceParser';
+import { hasTauriRuntime } from './runtime';
 
 export type GrokEvent =
   | { type: 'thought'; data: string }
@@ -211,11 +212,6 @@ export function notePendingSubmitEnd(): void {
 let unlistenFns: UnlistenFn[] = [];
 let attachInflight: Promise<void> | null = null;
 let attachUnavailable = false;
-
-function hasTauriRuntime(): boolean {
-  // Tauri 2 injects __TAURI_INTERNALS__ on window.
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
 
 export async function attachTauriListeners(): Promise<void> {
   if (unlistenFns.length > 0 || attachUnavailable) return;
