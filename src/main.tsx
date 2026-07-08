@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/jetbrains-mono";
 import App from "./App";
+import { I18nProvider } from "./i18n";
 
 const STORAGE_KEY_PREFIX = "grok-desktop-";
 
@@ -160,7 +161,9 @@ rootCache.main = root;
 root.render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <App />
+      <I18nProvider>
+        <App />
+      </I18nProvider>
     </AppErrorBoundary>
   </React.StrictMode>,
 );
