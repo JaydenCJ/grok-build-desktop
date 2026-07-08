@@ -1126,6 +1126,21 @@ fn preview_http_response(
         .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }
 
+/// Constant-time byte comparison for the preview token. XOR-accumulates over
+/// every byte so a mismatch early in the string costs the same as one at the
+/// end — the comparison itself leaks nothing about how much of the token
+/// matched. Length is compared first; the token's length is not a secret.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Serve one request on the preview scheme. Expected path shape:
 /// `/{token}/{relative/path}` where an empty relative path means index.html.
 /// Everything is validated against the single registered preview root:
@@ -1140,9 +1155,7 @@ fn preview_scheme_response(
     };
     let mut segments = request_path.trim_start_matches('/').splitn(2, '/');
     let token = segments.next().unwrap_or("");
-    // Constant-shape comparison is unnecessary here (the token gates a
-    // local-only, user-chosen folder), but never serve without a match.
-    if token.is_empty() || token != registered.token {
+    if token.is_empty() || !constant_time_eq(token.as_bytes(), registered.token.as_bytes()) {
         return preview_http_response(404, "text/plain", b"unknown preview token".to_vec());
     }
     let rel = percent_decode_path(segments.next().unwrap_or(""));
