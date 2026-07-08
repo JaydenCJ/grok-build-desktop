@@ -64,7 +64,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { PromptLibrary } from "./components/PromptLibrary";
-import { useActiveRun } from "./hooks/useActiveRun";
+import { useActiveRunKey } from "./hooks/useActiveRun";
 
 type Mode = "standard" | "coding";
 type Runner =
@@ -1024,11 +1024,18 @@ function App() {
   // Persist tabs (and the active id) whenever the array changes. This is the
   // single source of truth across reloads; localStorage hydrates on next boot.
   useEffect(() => {
-    try {
-      window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
-    } catch {
-      // quota or serialization error — non-fatal; in-memory state survives.
-    }
+    // Debounced like the messages/history persistence effects below — the
+    // tab mirror rewrites this array on every message append, and an
+    // un-debounced JSON.stringify of every conversation's full contents ran
+    // synchronously on each send.
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
+      } catch {
+        // quota or serialization error — non-fatal; in-memory state survives.
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [tabs]);
   useEffect(() => {
     if (activeTabId) window.localStorage.setItem(tabsActiveKey, activeTabId);
@@ -2655,9 +2662,14 @@ function App() {
     [inspectOutput],
   );
   const { skillItems, agentItems, pluginItems, mcpItems, hookItems, permissionsSource } = inspectSummary;
-  const activeRun = useActiveRun();
-  const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
-  const activeRunId = activeRun?.id ?? null;
+  // Narrow subscription: App only needs the active run's id + state, not the
+  // full snapshot (which is replaced on every streamed token and would
+  // re-render this entire ~4k-line component many times per second).
+  const activeRunKey = useActiveRunKey();
+  const runKeySplit = activeRunKey.lastIndexOf(":");
+  const activeRunId = runKeySplit > 0 ? activeRunKey.slice(0, runKeySplit) : null;
+  const grokIsRunning =
+    runKeySplit > 0 && activeRunKey.slice(runKeySplit + 1) === "running";
 
   const messageRefs: MessageRef[] = useMemo(
     () =>
