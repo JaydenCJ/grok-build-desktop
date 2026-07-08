@@ -17,8 +17,14 @@ async fn enqueue_runs_serial_and_emits_events() {
     let q = Arc::new(q);
     q.clone().spawn_worker();
 
-    let (_id1, pos1) = q.enqueue("p1".into(), "/tmp".into(), vec!["--ok".into()]).await.unwrap();
-    let (_id2, pos2) = q.enqueue("p2".into(), "/tmp".into(), vec!["--ok".into()]).await.unwrap();
+    let (_id1, pos1) = q
+        .enqueue("p1".into(), "/tmp".into(), vec!["--ok".into()])
+        .await
+        .unwrap();
+    let (_id2, pos2) = q
+        .enqueue("p2".into(), "/tmp".into(), vec!["--ok".into()])
+        .await
+        .unwrap();
     assert_eq!(pos1, 0);
     assert_eq!(pos2, 1);
 
@@ -77,7 +83,10 @@ async fn cancel_queued_marks_cancelled_without_running() {
     let q = Arc::new(q);
     // Do NOT spawn worker — we want to inspect waiting queue state directly.
 
-    let (id, _) = q.enqueue("p".into(), "/tmp".into(), vec!["--ok".into()]).await.unwrap();
+    let (id, _) = q
+        .enqueue("p".into(), "/tmp".into(), vec!["--ok".into()])
+        .await
+        .unwrap();
     let cancelled = q.cancel(&id).await.unwrap();
     assert!(cancelled);
 

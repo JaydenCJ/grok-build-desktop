@@ -72,14 +72,16 @@ impl PromptStore {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(id, name, category, body, created_at, updated_at)| Prompt {
-                id,
-                name,
-                category,
-                body,
-                created_at,
-                updated_at,
-            })
+            .map(
+                |(id, name, category, body, created_at, updated_at)| Prompt {
+                    id,
+                    name,
+                    category,
+                    body,
+                    created_at,
+                    updated_at,
+                },
+            )
             .collect())
     }
 

@@ -1,5 +1,5 @@
-use grok_desktop_lib::runs::db::{Db, RunRecord, RunState};
 use chrono::Utc;
+use grok_desktop_lib::runs::db::{Db, RunRecord, RunState};
 
 #[tokio::test]
 async fn insert_and_fetch_run() {
@@ -36,13 +36,23 @@ async fn update_state_persists() {
         args_json: "[]".into(),
         state: RunState::Queued,
         enqueued_at: Utc::now().timestamp_millis(),
-        started_at: None, ended_at: None, stop_reason: None, error: None,
+        started_at: None,
+        ended_at: None,
+        stop_reason: None,
+        error: None,
     };
     db.insert_run(&rec).await.unwrap();
 
-    db.update_state(&id, RunState::Running, Some(Utc::now().timestamp_millis()), None, None, None)
-        .await
-        .unwrap();
+    db.update_state(
+        &id,
+        RunState::Running,
+        Some(Utc::now().timestamp_millis()),
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let got = db.fetch_run(&id).await.unwrap().unwrap();
     assert!(matches!(got.state, RunState::Running));
@@ -58,10 +68,19 @@ async fn vacuum_drops_old_finished_runs() {
 
     for (id, ended) in [("old", old), ("new", new)] {
         db.insert_run(&RunRecord {
-            id: id.into(), prompt: "p".into(), cwd: "/tmp".into(), args_json: "[]".into(),
-            state: RunState::Done, enqueued_at: ended, started_at: Some(ended), ended_at: Some(ended),
-            stop_reason: Some("EndTurn".into()), error: None,
-        }).await.unwrap();
+            id: id.into(),
+            prompt: "p".into(),
+            cwd: "/tmp".into(),
+            args_json: "[]".into(),
+            state: RunState::Done,
+            enqueued_at: ended,
+            started_at: Some(ended),
+            ended_at: Some(ended),
+            stop_reason: Some("EndTurn".into()),
+            error: None,
+        })
+        .await
+        .unwrap();
     }
 
     let removed = db.vacuum(week_ms).await.unwrap();

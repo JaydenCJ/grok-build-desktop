@@ -29,7 +29,11 @@ pub mod desktop {
 pub mod prompts;
 pub mod runs;
 
+use crate::runs::db::Db;
+use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::{
     collections::HashSet,
     env, fs,
@@ -40,11 +44,7 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 use tauri::Manager;
-use crate::runs::db::Db;
-use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
 
 #[derive(Serialize)]
 struct ToolStatus {
@@ -382,11 +382,17 @@ fn terminate_pid_tree(pid: u32) {
     #[cfg(unix)]
     {
         let process_group = format!("-{pid}");
-        let _ = Command::new("kill").args(["-TERM", &process_group]).status();
+        let _ = Command::new("kill")
+            .args(["-TERM", &process_group])
+            .status();
 
         let mut processes = HashSet::new();
         collect_process_tree(pid, &mut processes);
-        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+        for child_pid in processes
+            .iter()
+            .copied()
+            .filter(|child_pid| *child_pid != pid)
+        {
             let _ = Command::new("kill")
                 .args(["-TERM", &child_pid.to_string()])
                 .status();
@@ -394,8 +400,14 @@ fn terminate_pid_tree(pid: u32) {
 
         thread::sleep(Duration::from_millis(250));
 
-        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
-        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+        let _ = Command::new("kill")
+            .args(["-KILL", &process_group])
+            .status();
+        for child_pid in processes
+            .iter()
+            .copied()
+            .filter(|child_pid| *child_pid != pid)
+        {
             let _ = Command::new("kill")
                 .args(["-KILL", &child_pid.to_string()])
                 .status();
@@ -417,7 +429,6 @@ fn terminate_child_tree(child: &mut Child) {
     terminate_pid_tree(child.id());
     let _ = child.kill();
 }
-
 
 fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -709,7 +720,9 @@ fn safe_skill_slug(slug: &str) -> Result<String, String> {
         || s.contains('/')
         || s.contains('\\')
         || s.contains("..")
-        || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err("invalid skill name".into());
     }
@@ -719,7 +732,10 @@ fn safe_skill_slug(slug: &str) -> Result<String, String> {
 #[tauri::command]
 fn list_grok_skills() -> Vec<String> {
     let mut out = Vec::new();
-    for base in [grok_skills_dir(), grok_home_dir().with_file_name(".claude").join("skills")] {
+    for base in [
+        grok_skills_dir(),
+        grok_home_dir().with_file_name(".claude").join("skills"),
+    ] {
         if let Ok(rd) = fs::read_dir(&base) {
             for entry in rd.flatten() {
                 if entry.path().join("SKILL.md").exists() {
@@ -827,8 +843,8 @@ fn html_attr_value(tag: &str, attr: &str) -> Option<String> {
         // a bare find() would match `src` inside `data-src` or inside another
         // attribute's value — and be immediately followed by (optional
         // whitespace and) '='.
-        let preceded_by_space = attr_pos > 0
-            && lower.as_bytes()[attr_pos - 1].is_ascii_whitespace();
+        let preceded_by_space =
+            attr_pos > 0 && lower.as_bytes()[attr_pos - 1].is_ascii_whitespace();
         if !preceded_by_space {
             continue;
         }
@@ -853,11 +869,7 @@ fn html_attr_value(tag: &str, attr: &str) -> Option<String> {
 }
 
 fn asset_path(root: &Path, canonical_root: &Path, reference: &str) -> Option<PathBuf> {
-    let clean = reference
-        .split(['?', '#'])
-        .next()
-        .unwrap_or("")
-        .trim();
+    let clean = reference.split(['?', '#']).next().unwrap_or("").trim();
     if clean.is_empty()
         || clean.starts_with('/')
         || clean.starts_with("http:")
@@ -972,7 +984,10 @@ fn inline_scripts(
             cursor = close_end;
             continue;
         };
-        let replacement = format!("<script>\n{}\n</script>", script.replace("</script", "<\\/script"));
+        let replacement = format!(
+            "<script>\n{}\n</script>",
+            script.replace("</script", "<\\/script")
+        );
         html.replace_range(start..close_end, &replacement);
         cursor = start + replacement.len();
     }
@@ -1151,7 +1166,9 @@ fn preview_scheme_response(
     let Some(path) = asset_path(&registered.root, &registered.root, rel) else {
         return preview_http_response(404, "text/plain", b"not found".to_vec());
     };
-    let size = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(u64::MAX);
+    let size = fs::metadata(&path)
+        .map(|meta| meta.len())
+        .unwrap_or(u64::MAX);
     if size > PREVIEW_ASSET_MAX_BYTES {
         return preview_http_response(413, "text/plain", b"file too large for preview".to_vec());
     }
@@ -1220,7 +1237,10 @@ fn get_static_preview_blocking(
             root: canonical_root,
         });
     } else {
-        return Ok(unavailable("Preview registry is unavailable.".to_string(), files));
+        return Ok(unavailable(
+            "Preview registry is unavailable.".to_string(),
+            files,
+        ));
     }
 
     Ok(StaticPreview {
@@ -1557,7 +1577,10 @@ async fn get_grok_auth_status() -> GrokAuthStatus {
 
 #[tauri::command]
 async fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
-    run_blocking_tool("grok login", move || start_grok_login_blocking(device_auth, cwd)).await
+    run_blocking_tool("grok login", move || {
+        start_grok_login_blocking(device_auth, cwd)
+    })
+    .await
 }
 
 fn start_grok_login_blocking(device_auth: bool, cwd: Option<String>) -> ToolRun {
@@ -1966,7 +1989,10 @@ fn pick_project_folder_blocking(initial: Option<String>) -> Result<Option<String
         });
 
     let default_clause = match starting_dir {
-        Some(path) => format!(" default location (POSIX file {})", applescript_quote(&path)),
+        Some(path) => format!(
+            " default location (POSIX file {})",
+            applescript_quote(&path)
+        ),
         None => String::new(),
     };
 
@@ -2036,9 +2062,7 @@ async fn get_queue(
 }
 
 #[tauri::command]
-async fn clear_queue(
-    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
-) -> Result<u64, String> {
+async fn clear_queue(queue: tauri::State<'_, std::sync::Arc<RunQueue>>) -> Result<u64, String> {
     queue.clear_waiting().await.map_err(|e| e.to_string())
 }
 
@@ -2120,8 +2144,8 @@ async fn delete_prompt(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
-    pub path: String,           // path relative to cwd
-    pub display_name: String,   // basename for the picker UI
+    pub path: String,         // path relative to cwd
+    pub display_name: String, // basename for the picker UI
     pub size_bytes: u64,
 }
 
@@ -2168,7 +2192,9 @@ fn glob_files_blocking(cwd: String, query: String, limit: usize) -> Result<Vec<F
             continue;
         }
         let abs = entry.path();
-        let Ok(rel) = abs.strip_prefix(&root) else { continue };
+        let Ok(rel) = abs.strip_prefix(&root) else {
+            continue;
+        };
         let rel_str = rel.to_string_lossy().to_string();
         let base = abs
             .file_name()
@@ -2209,13 +2235,21 @@ fn glob_files_blocking(cwd: String, query: String, limit: usize) -> Result<Vec<F
 /// Read a file as UTF-8 text, with a hard size cap so a 100MB file doesn't
 /// blow up the IPC channel. Returns `None` if the file is binary or oversized.
 #[tauri::command]
-async fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+async fn read_file_safe(
+    cwd: String,
+    path: String,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || read_file_safe_blocking(cwd, path, max_bytes))
         .await
         .map_err(|error| error.to_string())?
 }
 
-fn read_file_safe_blocking(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+fn read_file_safe_blocking(
+    cwd: String,
+    path: String,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
     let root = std::path::PathBuf::from(&cwd);
     let candidate = root.join(&path);
     // Path traversal guard: canonicalize and verify it's still under root.
@@ -2250,33 +2284,47 @@ fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
     use tauri::Emitter as _;
     match &msg.kind {
         QueueMessageKind::Event { event, raw } => {
-            let _ = app.emit("grok-desktop://run-event", serde_json::json!({
-                "runId": msg.run_id,
-                "event": event,
-                "raw": raw,
-            }));
+            let _ = app.emit(
+                "grok-desktop://run-event",
+                serde_json::json!({
+                    "runId": msg.run_id,
+                    "event": event,
+                    "raw": raw,
+                }),
+            );
         }
-        QueueMessageKind::StateChanged { state, started_at, ended_at, error } => {
-            let _ = app.emit("grok-desktop://run-state-changed", serde_json::json!({
-                "runId": msg.run_id,
-                "state": state,
-                "startedAt": started_at,
-                "endedAt": ended_at,
-                "error": error,
-            }));
+        QueueMessageKind::StateChanged {
+            state,
+            started_at,
+            ended_at,
+            error,
+        } => {
+            let _ = app.emit(
+                "grok-desktop://run-state-changed",
+                serde_json::json!({
+                    "runId": msg.run_id,
+                    "state": state,
+                    "startedAt": started_at,
+                    "endedAt": ended_at,
+                    "error": error,
+                }),
+            );
         }
         QueueMessageKind::QueueChanged => {
             let q = app.state::<std::sync::Arc<RunQueue>>().inner().clone();
             let app_cloned = app.clone();
             tauri::async_runtime::spawn(async move {
                 let (active, waiting) = q.snapshot().await;
-                let _ = app_cloned.emit("grok-desktop://queue-changed", serde_json::json!({
-                    "active": active,
-                    "queue": waiting.iter().map(|r| serde_json::json!({
-                        "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
-                        "state": r.state, "enqueuedAt": r.enqueued_at,
-                    })).collect::<Vec<_>>(),
-                }));
+                let _ = app_cloned.emit(
+                    "grok-desktop://queue-changed",
+                    serde_json::json!({
+                        "active": active,
+                        "queue": waiting.iter().map(|r| serde_json::json!({
+                            "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
+                            "state": r.state, "enqueuedAt": r.enqueued_at,
+                        })).collect::<Vec<_>>(),
+                    }),
+                );
             });
         }
     }
@@ -2506,7 +2554,11 @@ mod tests {
 
     #[test]
     fn command_line_keeps_ordinary_args() {
-        let args = vec!["models".to_string(), "--cwd".to_string(), "/tmp/x".to_string()];
+        let args = vec![
+            "models".to_string(),
+            "--cwd".to_string(),
+            "/tmp/x".to_string(),
+        ];
         assert_eq!(command_line("grok", &args), "grok models --cwd /tmp/x");
     }
 
@@ -2551,9 +2603,18 @@ mod tests {
         .to_string();
         let out = inline_static_assets(html, &root);
 
-        assert!(out.contains("console.log('ok');"), "small asset must inline");
-        assert!(out.contains(r#"src="big.js""#), "oversized asset must keep its tag");
-        assert!(out.contains("too large to inline"), "must append truncation marker");
+        assert!(
+            out.contains("console.log('ok');"),
+            "small asset must inline"
+        );
+        assert!(
+            out.contains(r#"src="big.js""#),
+            "oversized asset must keep its tag"
+        );
+        assert!(
+            out.contains("too large to inline"),
+            "must append truncation marker"
+        );
 
         fs::remove_dir_all(&root).ok();
     }
@@ -2572,7 +2633,10 @@ mod tests {
     }
 
     fn header<'a>(response: &'a tauri::http::Response<Vec<u8>>, name: &str) -> Option<&'a str> {
-        response.headers().get(name).and_then(|value| value.to_str().ok())
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
     }
 
     #[test]
@@ -2589,7 +2653,11 @@ mod tests {
         let response = preview_scheme_response(Some(&reg), "/wrongtoken/index.html");
         assert_eq!(response.status(), 404);
         let response = preview_scheme_response(Some(&reg), "/index.html");
-        assert_eq!(response.status(), 404, "missing token segment must not serve");
+        assert_eq!(
+            response.status(),
+            404,
+            "missing token segment must not serve"
+        );
         fs::remove_dir_all(&root).ok();
     }
 
@@ -2606,11 +2674,20 @@ mod tests {
 
         let response = preview_scheme_response(Some(&reg), "/testtoken/index.html");
         assert_eq!(response.status(), 200);
-        assert_eq!(header(&response, "Content-Type"), Some("text/html; charset=utf-8"));
+        assert_eq!(
+            header(&response, "Content-Type"),
+            Some("text/html; charset=utf-8")
+        );
         let csp = header(&response, "Content-Security-Policy").expect("preview CSP header");
-        assert!(csp.contains("object-src 'none'"), "preview CSP must pin object-src");
+        assert!(
+            csp.contains("object-src 'none'"),
+            "preview CSP must pin object-src"
+        );
         let body = String::from_utf8_lossy(response.body());
-        assert!(body.contains("console.log('inlined');"), "local JS must be inlined");
+        assert!(
+            body.contains("console.log('inlined');"),
+            "local JS must be inlined"
+        );
 
         // Bare /{token}/ and /{token} must also resolve to index.html.
         let response = preview_scheme_response(Some(&reg), "/testtoken/");
@@ -2679,7 +2756,10 @@ mod tests {
         let missing = env::temp_dir().join(format!("grok-shell-missing-{}", uuid::Uuid::now_v7()));
         let error = shell_cwd(Some(missing.to_string_lossy().to_string()))
             .expect_err("nonexistent cwd must be rejected");
-        assert!(error.contains("does not exist"), "unexpected error: {error}");
+        assert!(
+            error.contains("does not exist"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -2694,7 +2774,10 @@ mod tests {
     #[test]
     fn preview_scheme_url_embeds_token() {
         let url = preview_scheme_url("abc123");
-        assert!(url.contains("/abc123/index.html"), "url must carry the token: {url}");
+        assert!(
+            url.contains("/abc123/index.html"),
+            "url must carry the token: {url}"
+        );
     }
 
     #[test]
