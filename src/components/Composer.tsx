@@ -236,7 +236,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       ) : null}
       <textarea
         ref={ref}
-        disabled={submitting}
+        // readOnly, not disabled — disabling a focused textarea blurs it, so
+        // every send dumped keyboard focus and the user had to click back in
+        // before typing the next prompt. readOnly blocks input just the same
+        // but keeps focus; Enter is already guarded by `submitting`.
+        readOnly={submitting}
         placeholder={
           submitting
             ? 'Queuing your prompt…'
