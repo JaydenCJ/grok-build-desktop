@@ -3,11 +3,11 @@
 // hydrated from localStorage at boot, mirrored back on change, and synced
 // with the Rust-side session_state.json (load once, save debounced).
 // Extracted from App.tsx unchanged.
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { ToolRun } from "../lib/grok";
-import { hasTauriRuntime } from "../lib/runtime";
-import { t } from "../i18n";
+import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { ToolRun } from '../lib/grok';
+import { hasTauriRuntime } from '../lib/runtime';
+import { t } from '../i18n';
 import {
   isActionPolicy,
   isChatMessage,
@@ -20,14 +20,14 @@ import {
   type Mode,
   type SessionState,
   type ThemeMode,
-} from "../app/types";
-import { defaultDrafts, storageKeys } from "../app/constants";
+} from '../app/types';
+import { defaultDrafts, storageKeys } from '../app/constants';
 import {
   storedActiveTabMessages,
   storedLastRun,
   storedMessages,
   storedRunHistory,
-} from "../app/storage";
+} from '../app/storage';
 
 export interface SessionPersistenceDeps {
   setComposerValue: (value: string) => void;
@@ -40,50 +40,50 @@ export function useSessionPersistence({
 }: SessionPersistenceDeps) {
   const [mode, setMode] = useState<Mode>(() => {
     const stored = window.localStorage.getItem(storageKeys.mode);
-    return stored === "coding" || stored === "standard" ? stored : "coding";
+    return stored === 'coding' || stored === 'standard' ? stored : 'coding';
   });
   const [drafts, setDrafts] = useState<Record<Mode, string>>(() => {
     try {
       return {
         ...defaultDrafts,
-        ...JSON.parse(window.localStorage.getItem(storageKeys.drafts) ?? "{}"),
+        ...JSON.parse(window.localStorage.getItem(storageKeys.drafts) ?? '{}'),
       };
     } catch {
       return defaultDrafts;
     }
   });
   const [codingCwd, setCodingCwd] = useState(
-    () => window.localStorage.getItem(storageKeys.codingCwd) ?? "",
+    () => window.localStorage.getItem(storageKeys.codingCwd) ?? '',
   );
-  const [shellCommand, setShellCommand] = useState(
-    () => {
-      const stored = window.localStorage.getItem(storageKeys.shellCommand);
-      return stored &&
-        stored !== "pwd && git status --short && ls" &&
-        stored !== "pwd; git status --short || true; ls"
-        ? stored
-        : "pwd; git status --short 2>/dev/null || true; ls";
-    },
-  );
+  const [shellCommand, setShellCommand] = useState(() => {
+    const stored = window.localStorage.getItem(storageKeys.shellCommand);
+    return stored &&
+      stored !== 'pwd && git status --short && ls' &&
+      stored !== 'pwd; git status --short || true; ls'
+      ? stored
+      : 'pwd; git status --short 2>/dev/null || true; ls';
+  });
   const [actionPolicy, setActionPolicy] = useState<ActionPolicy>(() => {
     const stored = window.localStorage.getItem(storageKeys.actionPolicy);
-    return stored === "review" || stored === "patch" || stored === "autopilot"
-      ? stored
-      : "patch";
+    return stored === 'review' || stored === 'patch' || stored === 'autopilot' ? stored : 'patch';
   });
   const [codingWorkflow, setCodingWorkflow] = useState(
-    () => window.localStorage.getItem(storageKeys.codingWorkflow) ?? "analyze",
+    () => window.localStorage.getItem(storageKeys.codingWorkflow) ?? 'analyze',
   );
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = window.localStorage.getItem(storageKeys.themeMode);
-    const cleanLayoutMigrated = window.localStorage.getItem(storageKeys.cleanLayoutTheme) === "true";
-    if (!cleanLayoutMigrated) return "dark";
-    return isThemeMode(stored) ? stored : "dark";
+    const cleanLayoutMigrated =
+      window.localStorage.getItem(storageKeys.cleanLayoutTheme) === 'true';
+    if (!cleanLayoutMigrated) return 'dark';
+    return isThemeMode(stored) ? stored : 'dark';
   });
   const [lastRun, setLastRun] = useState<ToolRun | null>(() => storedLastRun());
   const [history, setHistory] = useState<ToolRun[]>(() => storedRunHistory());
   const [totalRuns, setTotalRuns] = useState<number>(() => {
-    const stored = Number.parseInt(window.localStorage.getItem("grok-desktop-run-count-total") ?? "", 10);
+    const stored = Number.parseInt(
+      window.localStorage.getItem('grok-desktop-run-count-total') ?? '',
+      10,
+    );
     if (Number.isFinite(stored) && stored >= 0) return stored;
     return storedRunHistory().length;
   });
@@ -97,7 +97,7 @@ export function useSessionPersistence({
     setHistory((current) => [run, ...current].slice(0, 6));
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      window.localStorage.setItem('grok-desktop-run-count-total', String(next));
       return next;
     });
   }
@@ -116,7 +116,7 @@ export function useSessionPersistence({
       }
 
       try {
-        const restored = await invoke<SessionState | null>("load_session_state");
+        const restored = await invoke<SessionState | null>('load_session_state');
         if (cancelled) return;
 
         if (restored) {
@@ -130,10 +130,10 @@ export function useSessionPersistence({
             : [];
           const restoredLastRun = isToolRun(restored.lastRun)
             ? restored.lastRun
-            : restoredHistory[0] ?? null;
+            : (restoredHistory[0] ?? null);
           const shouldClearRestoredPrompt = Boolean(restoredLastRun);
           const nextDrafts = shouldClearRestoredPrompt
-            ? { ...restoredDrafts, [restoredMode]: "" }
+            ? { ...restoredDrafts, [restoredMode]: '' }
             : restoredDrafts;
 
           setDrafts(nextDrafts);
@@ -148,13 +148,13 @@ export function useSessionPersistence({
           // tab-hydrated conversation when the app quit inside the debounce
           // window, and the tab-mirror effect then persisted the wrong
           // messages into the active tab.
-          if (typeof restored.codingCwd === "string") {
+          if (typeof restored.codingCwd === 'string') {
             const restoredCwd = restored.codingCwd;
             setCodingCwd((current) => current || restoredCwd);
           }
-          if (typeof restored.shellCommand === "string") setShellCommand(restored.shellCommand);
+          if (typeof restored.shellCommand === 'string') setShellCommand(restored.shellCommand);
           if (isActionPolicy(restored.actionPolicy)) setActionPolicy(restored.actionPolicy);
-          if (typeof restored.codingWorkflow === "string") {
+          if (typeof restored.codingWorkflow === 'string') {
             setCodingWorkflow(restored.codingWorkflow);
           }
           if (isThemeMode(restored.themeMode)) {
@@ -168,8 +168,8 @@ export function useSessionPersistence({
             : [];
           if (restoredMessages.length > 0) {
             const cleaned = restoredMessages.map((message) =>
-              message.role === "assistant" && message.status === "streaming"
-                ? { ...message, status: "stopped" as ChatMessageStatus }
+              message.role === 'assistant' && message.status === 'streaming'
+                ? { ...message, status: 'stopped' as ChatMessageStatus }
                 : message,
             );
             // Same staleness rule as codingCwd above: only adopt the file's
@@ -179,25 +179,28 @@ export function useSessionPersistence({
 
           const effectiveMessageCount = Math.max(restoredMessages.length, storedMessages().length);
           if (restoredHistory.length > 0 || restoredLastRun || effectiveMessageCount > 0) {
-            const runWord = restoredHistory.length === 1 ? t("notices.runWordOne") : t("notices.runWordMany");
+            const runWord =
+              restoredHistory.length === 1 ? t('notices.runWordOne') : t('notices.runWordMany');
             const messagePart =
               effectiveMessageCount > 0
                 ? t(
                     effectiveMessageCount === 1
-                      ? "notices.restoredMessagesOne"
-                      : "notices.restoredMessagesMany",
+                      ? 'notices.restoredMessagesOne'
+                      : 'notices.restoredMessagesMany',
                     { count: effectiveMessageCount },
                   )
-                : "";
+                : '';
             setSessionNotice(
-              t("notices.restored", { count: restoredHistory.length, runWord, messagePart }),
+              t('notices.restored', { count: restoredHistory.length, runWord, messagePart }),
             );
           }
         }
       } catch (error) {
         if (!cancelled) {
           setSessionNotice(
-            t("notices.restoreFailed", { error: error instanceof Error ? error.message : String(error) }),
+            t('notices.restoreFailed', {
+              error: error instanceof Error ? error.message : String(error),
+            }),
           );
         }
       } finally {
@@ -227,7 +230,7 @@ export function useSessionPersistence({
 
   useEffect(() => {
     window.localStorage.setItem(storageKeys.themeMode, themeMode);
-    window.localStorage.setItem(storageKeys.cleanLayoutTheme, "true");
+    window.localStorage.setItem(storageKeys.cleanLayoutTheme, 'true');
     // CRITICAL: drive the `data-theme` attribute, not just the `theme-*`
     // className. The legacy palette (--app-bg, --panel, …) flips via the
     // `.app-shell.theme-light` class, but the v0.4.0 mono tokens
@@ -235,7 +238,7 @@ export function useSessionPersistence({
     // TraceTimeline) flip via the `[data-theme="light"]` attribute selector.
     // Without this line the new components stay dark in light mode — that's
     // what produced the black block behind the tab strip.
-    document.documentElement.setAttribute("data-theme", themeMode);
+    document.documentElement.setAttribute('data-theme', themeMode);
   }, [themeMode]);
 
   useEffect(() => {
@@ -255,15 +258,15 @@ export function useSessionPersistence({
   }, [codingWorkflow]);
 
   useEffect(() => {
-    const cleanComposerMigrated = window.localStorage.getItem(storageKeys.cleanComposer) === "true";
+    const cleanComposerMigrated = window.localStorage.getItem(storageKeys.cleanComposer) === 'true';
     if (!cleanComposerMigrated && lastRun) {
-      const clearedDrafts = { ...drafts, [mode]: "" };
+      const clearedDrafts = { ...drafts, [mode]: '' };
       setDrafts(clearedDrafts);
-      setComposerValue("");
+      setComposerValue('');
       window.localStorage.setItem(storageKeys.drafts, JSON.stringify(clearedDrafts));
     }
-    window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
-    window.localStorage.setItem(storageKeys.cleanComposer, "true");
+    window.localStorage.setItem(storageKeys.safeRuntimeDefaults, 'true');
+    window.localStorage.setItem(storageKeys.cleanComposer, 'true');
   }, [drafts, lastRun, mode, setComposerValue]);
 
   useEffect(() => {
@@ -305,9 +308,11 @@ export function useSessionPersistence({
         messages,
       };
 
-      invoke<void>("save_session_state", { state }).catch((error) => {
+      invoke<void>('save_session_state', { state }).catch((error) => {
         setSessionNotice(
-          t("notices.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
+          t('notices.saveFailed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
         );
       });
     }, 300);

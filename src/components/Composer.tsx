@@ -1,16 +1,7 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { enqueueRun } from '../lib/grok';
 import { useHasInflight } from '../hooks/useActiveRun';
-import {
-  notePendingSubmitEnd,
-  notePendingSubmitStart,
-} from '../lib/streamStore';
+import { notePendingSubmitEnd, notePendingSubmitStart } from '../lib/streamStore';
 import { extractFileMentions, readFileSafe, type FileEntry } from '../lib/files';
 import { FilePicker } from './FilePicker';
 import { t } from '../i18n';
@@ -30,12 +21,7 @@ interface Props {
   /** Initial seed value (e.g. restored from session_state drafts). Only applied once on mount. */
   initialValue?: string;
   placeholder?: string;
-  onEnqueued?: (info: {
-    runId: string;
-    position: number;
-    prompt: string;
-    rawText: string;
-  }) => void;
+  onEnqueued?: (info: { runId: string; position: number; prompt: string; rawText: string }) => void;
   /** Called when enqueueing the prompt fails, with a human-readable message.
    *  The host surfaces it (session notice) — a silent console.error left the
    *  user staring at a composer that "ate" their prompt. */
@@ -77,15 +63,7 @@ function detectActiveMention(text: string, caret: number): { start: number; quer
 }
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
-  {
-    cwd,
-    argsBuilder,
-    initialValue,
-    placeholder,
-    onEnqueued,
-    onError,
-    onTextChange,
-  }: Props,
+  { cwd, argsBuilder, initialValue, placeholder, onEnqueued, onError, onTextChange }: Props,
   outerRef,
 ) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -241,8 +219,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         placeholder={
           submitting
             ? t('composer.placeholderQueuing')
-            : placeholder ??
-              (hasInflight ? t('composer.placeholderQueueAnother') : t('composer.placeholderAsk'))
+            : (placeholder ??
+              (hasInflight ? t('composer.placeholderQueueAnother') : t('composer.placeholderAsk')))
         }
         onCompositionStart={() => {
           composingRef.current = true;
@@ -293,24 +271,19 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           //   4. keyCode 229 — some browsers fire Enter as 229 mid-composition
           // Any one means "do not submit".
           const native = e.nativeEvent as KeyboardEvent;
-          if (
-            composingRef.current ||
-            isComposing ||
-            native.isComposing ||
-            native.keyCode === 229
-          ) {
+          if (composingRef.current || isComposing || native.isComposing || native.keyCode === 229) {
             return;
           }
           e.preventDefault();
           void submit();
         }}
       />
-      <button
-        className="composer-send"
-        disabled={submitting}
-        onClick={() => void submit()}
-      >
-        {submitting ? t('composer.sendQueuing') : hasInflight ? t('composer.sendEnqueue') : t('composer.send')}
+      <button className="composer-send" disabled={submitting} onClick={() => void submit()}>
+        {submitting
+          ? t('composer.sendQueuing')
+          : hasInflight
+            ? t('composer.sendEnqueue')
+            : t('composer.send')}
       </button>
     </div>
   );

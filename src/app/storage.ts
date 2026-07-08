@@ -1,6 +1,6 @@
 // localStorage hydration helpers shared by App boot and its hooks.
-import { isChatMessage, isToolRun, type ChatMessage } from "./types";
-import { storageKeys, tabsActiveKey, tabsStorageKey } from "./constants";
+import { isChatMessage, isToolRun, type ChatMessage } from './types';
+import { storageKeys, tabsActiveKey, tabsStorageKey } from './constants';
 
 export function readJsonStorage<T>(key: string, fallback: T): T {
   try {
@@ -25,16 +25,14 @@ export function loadIdMap(key: string): Record<string, string> {
   try {
     const raw = window.localStorage.getItem(key);
     const obj = raw ? (JSON.parse(raw) as unknown) : {};
-    return obj && typeof obj === "object" ? (obj as Record<string, string>) : {};
+    return obj && typeof obj === 'object' ? (obj as Record<string, string>) : {};
   } catch {
     return {};
   }
 }
 
 export function storedRunHistory() {
-  return readJsonStorage<unknown[]>(storageKeys.runHistory, [])
-    .filter(isToolRun)
-    .slice(0, 6);
+  return readJsonStorage<unknown[]>(storageKeys.runHistory, []).filter(isToolRun).slice(0, 6);
 }
 
 export function storedLastRun() {
@@ -43,9 +41,7 @@ export function storedLastRun() {
 }
 
 export function storedMessages() {
-  return readJsonStorage<unknown[]>(storageKeys.messages, [])
-    .filter(isChatMessage)
-    .slice(-120);
+  return readJsonStorage<unknown[]>(storageKeys.messages, []).filter(isChatMessage).slice(-120);
 }
 
 /**

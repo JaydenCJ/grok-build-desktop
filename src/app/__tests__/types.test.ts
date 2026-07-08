@@ -27,7 +27,16 @@ describe('simple union guards', () => {
   });
 
   it('isInspectorTab accepts every tab, including the late-added desktop tab', () => {
-    for (const v of ['context', 'skills', 'mcp', 'agents', 'plugins', 'hooks', 'permissions', 'desktop']) {
+    for (const v of [
+      'context',
+      'skills',
+      'mcp',
+      'agents',
+      'plugins',
+      'hooks',
+      'permissions',
+      'desktop',
+    ]) {
       expect(isInspectorTab(v)).toBe(true);
     }
     expect(isInspectorTab('overview')).toBe(false);
@@ -36,7 +45,8 @@ describe('simple union guards', () => {
   it('isEffortLevel and isReasoningEffort', () => {
     for (const v of ['low', 'medium', 'high', 'xhigh', 'max']) expect(isEffortLevel(v)).toBe(true);
     expect(isEffortLevel('off')).toBe(false);
-    for (const v of ['off', 'low', 'medium', 'high', 'xhigh', 'max']) expect(isReasoningEffort(v)).toBe(true);
+    for (const v of ['off', 'low', 'medium', 'high', 'xhigh', 'max'])
+      expect(isReasoningEffort(v)).toBe(true);
     expect(isReasoningEffort('none')).toBe(false);
   });
 
@@ -47,7 +57,8 @@ describe('simple union guards', () => {
   });
 
   it('isPermissionMode / isThemeMode / isDockPosition', () => {
-    for (const v of ['default', 'acceptEdits', 'auto', 'dontAsk', 'plan']) expect(isPermissionMode(v)).toBe(true);
+    for (const v of ['default', 'acceptEdits', 'auto', 'dontAsk', 'plan'])
+      expect(isPermissionMode(v)).toBe(true);
     expect(isPermissionMode('always')).toBe(false);
     expect(isThemeMode('dark')).toBe(true);
     expect(isThemeMode('light')).toBe(true);
@@ -88,7 +99,9 @@ describe('isToolRun', () => {
 describe('isChatMessage', () => {
   it('accepts user and assistant messages', () => {
     expect(isChatMessage({ id: 'a', role: 'user', content: 'hi', ts: 1 })).toBe(true);
-    expect(isChatMessage({ id: 'b', role: 'assistant', content: '', ts: 2, status: 'done' })).toBe(true);
+    expect(isChatMessage({ id: 'b', role: 'assistant', content: '', ts: 2, status: 'done' })).toBe(
+      true,
+    );
   });
 
   it('rejects malformed messages', () => {

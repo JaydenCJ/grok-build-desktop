@@ -38,7 +38,7 @@ pip install -e .
   `--output-format streaming-json`.
 - `browser-use` (Python package): used by the Browser tool through
   `scripts/browser_automation.py`; requires `BROWSER_USE_API_KEY`.
-- `scrcpy` and `scrcpy-mcp`: optional. They are only *detected* by the
+- `scrcpy` and `scrcpy-mcp`: optional. They are only _detected_ by the
   environment doctor (`npm run doctor`); the app does not drive them.
 
 ## Checks and tests

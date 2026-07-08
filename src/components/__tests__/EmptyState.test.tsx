@@ -16,7 +16,9 @@ describe('EmptyState', () => {
     render(<EmptyState activeModel="grok-build" onPickStarter={onPickStarter} />);
     await user.click(screen.getByRole('button', { name: /Review this repository/ }));
     expect(onPickStarter).toHaveBeenCalledTimes(1);
-    expect(onPickStarter.mock.calls[0][0]).toContain('Review this repository like a senior engineer');
+    expect(onPickStarter.mock.calls[0][0]).toContain(
+      'Review this repository like a senior engineer',
+    );
     expect(screen.getAllByRole('button')).toHaveLength(4);
   });
 });

@@ -4,12 +4,12 @@
 // persistence, create/switch/delete, and the active-tab mirror effect.
 // Extracted from App.tsx unchanged apart from the injected callbacks
 // (composer seeding/focus, palette close, per-conversation metadata drop).
-import { useEffect, useRef, useState } from "react";
-import type { ToolRun } from "../lib/grok";
-import { defaultTabName, makeTab, type Tab, type TabMessage } from "../lib/tabs";
-import type { ChatMessage, Mode } from "../app/types";
-import { storageKeys, tabsActiveKey, tabsStorageKey } from "../app/constants";
-import { storedMessages } from "../app/storage";
+import { useEffect, useRef, useState } from 'react';
+import type { ToolRun } from '../lib/grok';
+import { defaultTabName, makeTab, type Tab, type TabMessage } from '../lib/tabs';
+import type { ChatMessage, Mode } from '../app/types';
+import { storageKeys, tabsActiveKey, tabsStorageKey } from '../app/constants';
+import { storedMessages } from '../app/storage';
 
 export interface SessionTabsDeps {
   messages: ChatMessage[];
@@ -57,8 +57,14 @@ export function useSessionTabs(deps: SessionTabsDeps) {
       // fall through
     }
     // First-run: synthesize one tab from the legacy single-session state.
-    const initialCwd = window.localStorage.getItem(storageKeys.codingCwd) ?? "";
-    return [makeTab(initialCwd, storedMessages() as unknown as TabMessage[], defaultTabName(initialCwd, 0))];
+    const initialCwd = window.localStorage.getItem(storageKeys.codingCwd) ?? '';
+    return [
+      makeTab(
+        initialCwd,
+        storedMessages() as unknown as TabMessage[],
+        defaultTabName(initialCwd, 0),
+      ),
+    ];
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     const stored = window.localStorage.getItem(tabsActiveKey);
@@ -73,7 +79,7 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     } catch {
       // fall through
     }
-    return "";
+    return '';
   });
   // Very first run: neither tabs key exists yet when the initializers above
   // run (the synthesized first tab is only persisted by the effect below), so
@@ -101,8 +107,8 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     // "New conversation" row into HISTORY on every ⌘N / New Session click.
     const currentTab = current.tabs.find((t) => t.id === current.activeTabId);
     if (currentTab && currentTab.messages.length === 0 && current.messages.length === 0) {
-      setDrafts({ standard: "", coding: "" });
-      setComposerValue("");
+      setDrafts({ standard: '', coding: '' });
+      setComposerValue('');
       setSessionNotice(null);
       setLastRun(null);
       focusComposer();
@@ -112,10 +118,7 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     // already mirrors codingCwd/messages into it on every change, and a
     // snapshot taken from a stale closure (⌘N/⌘K) would overwrite that fresh
     // mirror with old messages and truncate the conversation's history.
-    setTabs((existing) => [
-      ...existing,
-      makeTab("", [], defaultTabName("", existing.length)),
-    ]);
+    setTabs((existing) => [...existing, makeTab('', [], defaultTabName('', existing.length))]);
     // The new tab id is generated inside the setter; pull it out via a
     // microtask so the state update has committed.
     queueMicrotask(() => {
@@ -131,8 +134,8 @@ export function useSessionTabs(deps: SessionTabsDeps) {
       // "Clean slate" — Claude-Desktop-style. Wipe the composer draft, any
       // leftover banner / notice, and the last-run card. The user opened a
       // new session because they wanted a *fresh* surface.
-      setDrafts({ standard: "", coding: "" });
-      setComposerValue("");
+      setDrafts({ standard: '', coding: '' });
+      setComposerValue('');
       setSessionNotice(null);
       setLastRun(null);
     });
@@ -166,14 +169,12 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codingCwd, messages]);
 
-
   // First user prompt of a conversation (session/tab id) — used for copy /
   // save-to-library actions in the history menu.
   function sessionFirstPrompt(id: string): string | null {
     const tab = tabs.find((t) => t.id === id);
-    const msgs =
-      ((id === activeTabId ? (messages as unknown as TabMessage[]) : tab?.messages) ?? []);
-    return msgs.find((m) => m.role === "user")?.content ?? null;
+    const msgs = (id === activeTabId ? (messages as unknown as TabMessage[]) : tab?.messages) ?? [];
+    return msgs.find((m) => m.role === 'user')?.content ?? null;
   }
 
   // Clicking a HISTORY row returns you to THAT task's conversation (Claude /
@@ -210,16 +211,14 @@ export function useSessionTabs(deps: SessionTabsDeps) {
     const remaining = tabs.filter((t) => t.id !== id);
     if (remaining.length === 0) {
       // Last conversation → reset to a single fresh, empty one.
-      const fresh = makeTab("", []);
+      const fresh = makeTab('', []);
       setTabs([fresh]);
       setActiveTabId(fresh.id);
       setCodingCwd(fresh.cwd);
       setMessages([]);
     } else {
       if (id === activeTabId) {
-        const next = remaining
-          .slice()
-          .sort((a, b) => b.createdAt - a.createdAt)[0];
+        const next = remaining.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
         setActiveTabId(next.id);
         setCodingCwd(next.cwd);
         setMessages(next.messages as unknown as ChatMessage[]);

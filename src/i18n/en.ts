@@ -129,7 +129,8 @@ export const en = {
   'settings.actionPolicy': 'Action policy',
   'settings.actionPolicyHint': 'How much Grok is allowed to do on its own.',
   'settings.permissionMode': 'Permission mode',
-  'settings.permissionModeHint': 'Advanced: maps to grok --permission-mode (Plan/Autopilot override this).',
+  'settings.permissionModeHint':
+    'Advanced: maps to grok --permission-mode (Plan/Autopilot override this).',
   'settings.webSearch': 'Web search',
   'settings.webSearchHint': 'Allow Grok to fetch current docs / version-sensitive facts.',
   'settings.subagents': 'Subagents',
@@ -224,7 +225,8 @@ export const en = {
   'emptyState.title': 'How can Grok help today?',
   'emptyState.subtitle': 'Code with you across this repository · {model}',
   'emptyState.reviewTitle': 'Review this repository',
-  'emptyState.reviewBody': 'Surface the highest-impact risks and gaps you can verify in 30 seconds.',
+  'emptyState.reviewBody':
+    'Surface the highest-impact risks and gaps you can verify in 30 seconds.',
   'emptyState.explainTitle': 'Explain this codebase',
   'emptyState.explainBody': 'Give me a tight architecture tour so I can start contributing today.',
   'emptyState.testTitle': 'Add a failing test',
@@ -378,7 +380,8 @@ export const en = {
     'Grok inspect reads Claude-compatible skill sources and plugin skills, then Grok Desktop adds the best matches to the coding prompt.',
   'inspector.refreshSkills': 'Refresh Skills',
   'inspector.loadSkillsHint': 'Run Inspect Grok to load available skills.',
-  'inspector.mcpBlurb': 'Shows servers discovered by Grok inspect and the active managed list from `grok mcp list`.',
+  'inspector.mcpBlurb':
+    'Shows servers discovered by Grok inspect and the active managed list from `grok mcp list`.',
   'inspector.listMcp': 'List MCP',
   'inspector.discoveredServers': 'Discovered Servers',
   'inspector.noInspectData': 'No inspect data yet.',
@@ -431,10 +434,12 @@ export const en = {
   // ── App constants (mode copy, presets, policies) ──────────────────────────
   'mode.standard.title': 'Grok Chat',
   'mode.standard.subtitle': 'quick questions and product thinking',
-  'mode.standard.placeholder': 'Ask Grok for product thinking, research, or an engineering explanation...',
+  'mode.standard.placeholder':
+    'Ask Grok for product thinking, research, or an engineering explanation...',
   'mode.coding.title': 'Grok Code',
   'mode.coding.subtitle': 'repository, terminal, reviews, implementation',
-  'mode.coding.placeholder': 'Review this repo, implement a narrow fix, debug a test, refactor a module...',
+  'mode.coding.placeholder':
+    'Review this repo, implement a narrow fix, debug a test, refactor a module...',
   'preset.analyze': 'Analyze',
   'preset.analyzeDesc': 'Architecture, risks, next moves',
   'preset.implement': 'Implement',
@@ -504,7 +509,8 @@ export const en = {
   'rules.reasoningEffort': 'Use reasoning effort only when the selected model benefits from it',
   'rules.webSearch': 'Keep web search available for version-sensitive docs',
   'rules.engineControls': 'Expose Best-of-N, Memory, and Subagents as explicit engine controls',
-  'rules.verificationContract': 'Send repo path, workflow, approvals, ecosystem, and verification contract',
+  'rules.verificationContract':
+    'Send repo path, workflow, approvals, ecosystem, and verification contract',
 } as const;
 
 export type MessageKey = keyof typeof en;

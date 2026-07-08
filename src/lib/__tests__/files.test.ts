@@ -7,15 +7,14 @@ describe('extractFileMentions', () => {
   });
 
   it('parses a single mention at the start', () => {
-    expect(extractFileMentions('@src/lib/grok.ts please review')).toEqual([
-      'src/lib/grok.ts',
-    ]);
+    expect(extractFileMentions('@src/lib/grok.ts please review')).toEqual(['src/lib/grok.ts']);
   });
 
   it('parses multiple mentions separated by whitespace', () => {
-    expect(
-      extractFileMentions('compare @src/a.ts and @src/b.ts please'),
-    ).toEqual(['src/a.ts', 'src/b.ts']);
+    expect(extractFileMentions('compare @src/a.ts and @src/b.ts please')).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+    ]);
   });
 
   it('dedupes repeated mentions', () => {
@@ -29,9 +28,7 @@ describe('extractFileMentions', () => {
   });
 
   it('handles newlines as whitespace', () => {
-    expect(extractFileMentions('first line\n@second/file.ts ok')).toEqual([
-      'second/file.ts',
-    ]);
+    expect(extractFileMentions('first line\n@second/file.ts ok')).toEqual(['second/file.ts']);
   });
 
   it('parses quoted mentions with spaces in the path', () => {
@@ -41,8 +38,9 @@ describe('extractFileMentions', () => {
   });
 
   it('mixes quoted and bare mentions', () => {
-    expect(
-      extractFileMentions('@"a dir/x.ts" and @plain/y.ts together'),
-    ).toEqual(['a dir/x.ts', 'plain/y.ts']);
+    expect(extractFileMentions('@"a dir/x.ts" and @plain/y.ts together')).toEqual([
+      'a dir/x.ts',
+      'plain/y.ts',
+    ]);
   });
 });

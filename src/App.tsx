@@ -1,44 +1,34 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-  Globe2,
-  PanelRight,
-  TerminalSquare,
-} from "lucide-react";
-import "./App.css";
-import { cancelRun, ensureStreamListenersAttached } from "./lib/grok";
-import { hasTauriRuntime } from "./lib/runtime";
-import { streamStore } from "./lib/streamStore";
-import { MessageList, type MessageRef } from "./components/MessageList";
-import type { ComposerHandle } from "./components/Composer";
-import { StatusBar } from "./components/StatusBar";
-import { QueueDock } from "./components/QueueDock";
-import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
-import { ToolsPage } from "./components/ToolsPage";
-import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
-import { InspectorDrawer } from "./components/InspectorDrawer";
-import { Sidebar } from "./components/Sidebar";
-import { EmptyState } from "./components/EmptyState";
-import { PreviewPanel } from "./components/PreviewPanel";
-import { TerminalDock } from "./components/TerminalDock";
-import { Toolbelt } from "./components/Toolbelt";
-import { WorkspaceStatusBar } from "./components/WorkspaceStatusBar";
-import { TitleBar } from "./components/TitleBar";
-import { ComposerSection } from "./components/ComposerSection";
-import { SettingsHost } from "./components/SettingsHost";
-import { useActiveRun } from "./hooks/useActiveRun";
-import { useGrokRunners } from "./hooks/useGrokRunners";
-import { useSessionPersistence } from "./hooks/useSessionPersistence";
-import { useModelConfig } from "./hooks/useModelConfig";
-import { useSessionTabs } from "./hooks/useSessionTabs";
-import { useAppShortcuts } from "./hooks/useAppShortcuts";
-import { useHistoryOrganization } from "./hooks/useHistoryOrganization";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { Globe2, PanelRight, TerminalSquare } from 'lucide-react';
+import './App.css';
+import { cancelRun, ensureStreamListenersAttached } from './lib/grok';
+import { hasTauriRuntime } from './lib/runtime';
+import { streamStore } from './lib/streamStore';
+import { MessageList, type MessageRef } from './components/MessageList';
+import type { ComposerHandle } from './components/Composer';
+import { StatusBar } from './components/StatusBar';
+import { QueueDock } from './components/QueueDock';
+import { CommandPalette, type PaletteAction } from './components/CommandPalette';
+import { ToolsPage } from './components/ToolsPage';
+import { ContextMenu, type ContextMenuState, type ContextMenuItem } from './components/ContextMenu';
+import { InspectorDrawer } from './components/InspectorDrawer';
+import { Sidebar } from './components/Sidebar';
+import { EmptyState } from './components/EmptyState';
+import { PreviewPanel } from './components/PreviewPanel';
+import { TerminalDock } from './components/TerminalDock';
+import { Toolbelt } from './components/Toolbelt';
+import { WorkspaceStatusBar } from './components/WorkspaceStatusBar';
+import { TitleBar } from './components/TitleBar';
+import { ComposerSection } from './components/ComposerSection';
+import { SettingsHost } from './components/SettingsHost';
+import { useActiveRun } from './hooks/useActiveRun';
+import { useGrokRunners } from './hooks/useGrokRunners';
+import { useSessionPersistence } from './hooks/useSessionPersistence';
+import { useModelConfig } from './hooks/useModelConfig';
+import { useSessionTabs } from './hooks/useSessionTabs';
+import { useAppShortcuts } from './hooks/useAppShortcuts';
+import { useHistoryOrganization } from './hooks/useHistoryOrganization';
 
 import {
   isDockPosition,
@@ -47,18 +37,11 @@ import {
   type DockPosition,
   type InspectorTab,
   type Mode,
-} from "./app/types";
-import {
-  codingPresets,
-  defaultDrafts,
-  storageKeys,
-} from "./app/constants";
-import { t } from "./i18n";
-import {
-  formatOutput,
-  makeId,
-} from "./app/format";
-import { buildGrokArgs } from "./app/grokArgs";
+} from './app/types';
+import { codingPresets, defaultDrafts, storageKeys } from './app/constants';
+import { t } from './i18n';
+import { formatOutput, makeId } from './app/format';
+import { buildGrokArgs } from './app/grokArgs';
 
 function App() {
   // The textarea lives inside Composer (uncontrolled ref). We hold a
@@ -100,29 +83,23 @@ function App() {
   // live in hooks/useSessionTabs.ts. removeConversationMeta and setContextMenu
   // are declared later; the callback only runs from event handlers, after
   // every hook has initialized.
-  const {
-    tabs,
-    activeTabId,
-    handleTabCreate,
-    switchToSession,
-    deleteSession,
-    sessionFirstPrompt,
-  } = useSessionTabs({
-    messages,
-    setMessages,
-    codingCwd,
-    setCodingCwd,
-    setDrafts,
-    setLastRun,
-    setSessionNotice,
-    setComposerValue,
-    focusComposer: () => composerRef.current?.focus(),
-    closePalette: () => setPaletteOpen(false),
-    onConversationDeleted: (id) => {
-      removeConversationMeta(id);
-      setContextMenu(null);
-    },
-  });
+  const { tabs, activeTabId, handleTabCreate, switchToSession, deleteSession, sessionFirstPrompt } =
+    useSessionTabs({
+      messages,
+      setMessages,
+      codingCwd,
+      setCodingCwd,
+      setDrafts,
+      setLastRun,
+      setSessionNotice,
+      setComposerValue,
+      focusComposer: () => composerRef.current?.focus(),
+      closePalette: () => setPaletteOpen(false),
+      onConversationDeleted: (id) => {
+        removeConversationMeta(id);
+        setContextMenu(null);
+      },
+    });
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -136,8 +113,9 @@ function App() {
   // Dedicated Settings page (Claude-Desktop-style modal). settingsSection
   // selects which left-nav panel is shown.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] =
-    useState<"general" | "model" | "permissions" | "integrations" | "about">("general");
+  const [settingsSection, setSettingsSection] = useState<
+    'general' | 'model' | 'permissions' | 'integrations' | 'about'
+  >('general');
   // Dedicated Tools / MCP hub (community-tool integration).
   const [toolsPageOpen, setToolsPageOpen] = useState(false);
   // App-owned right-click menu (replaces the suppressed WebView menu).
@@ -155,15 +133,15 @@ function App() {
   const { recentPrompts, historySearchInputRef, removeConversationMeta } = historyApi;
   // Sidebar collapse for ⌘B — defaults to expanded.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    return window.localStorage.getItem("grok-desktop-sidebar-collapsed") === "1";
+    return window.localStorage.getItem('grok-desktop-sidebar-collapsed') === '1';
   });
   const [dockPosition, setDockPosition] = useState<DockPosition>(() => {
     const stored = window.localStorage.getItem(storageKeys.dockPosition);
-    return isDockPosition(stored) ? stored : "right";
+    return isDockPosition(stored) ? stored : 'right';
   });
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(() => {
     const stored = window.localStorage.getItem(storageKeys.inspectorTab);
-    return isInspectorTab(stored) ? stored : "skills";
+    return isInspectorTab(stored) ? stored : 'skills';
   });
   // Session notices (folder pick, restore/save failures, …) show as a
   // transient toast over the conversation — previously they rendered only
@@ -181,7 +159,9 @@ function App() {
   // streaming.
   function stopRun(runId: string) {
     cancelRun(runId).catch((error) => {
-      setSessionNotice(t("notices.stopFailed", { error: error instanceof Error ? error.message : String(error) }));
+      setSessionNotice(
+        t('notices.stopFailed', { error: error instanceof Error ? error.message : String(error) }),
+      );
     });
   }
 
@@ -242,8 +222,8 @@ function App() {
     setMessages([]);
     setTerminalLines([]);
     setTotalRuns(0);
-    window.localStorage.setItem("grok-desktop-run-count-total", "0");
-    setSessionNotice(t("notices.cleared"));
+    window.localStorage.setItem('grok-desktop-run-count-total', '0');
+    setSessionNotice(t('notices.cleared'));
   }
 
   // Write the streamed assistant text back into `messages` when a run reaches
@@ -257,14 +237,14 @@ function App() {
       setMessages((current) => {
         let changed = false;
         const next = current.map((message) => {
-          if (message.role !== "assistant" || !message.runId || message.status !== "streaming") {
+          if (message.role !== 'assistant' || !message.runId || message.status !== 'streaming') {
             return message;
           }
           const snap = streamStore.getRunSnapshot(message.runId);
-          if (!snap || snap.state === "queued" || snap.state === "running") return message;
+          if (!snap || snap.state === 'queued' || snap.state === 'running') return message;
           changed = true;
           const status: ChatMessageStatus =
-            snap.state === "done" ? "done" : snap.state === "cancelled" ? "stopped" : "error";
+            snap.state === 'done' ? 'done' : snap.state === 'cancelled' ? 'stopped' : 'error';
           return { ...message, content: snap.text || message.content, status };
         });
         return changed ? next : current;
@@ -282,17 +262,17 @@ function App() {
   // (replaces the suppressed WebView menu). Selection-aware.
   function openConversationMenu(e: React.MouseEvent) {
     e.preventDefault();
-    const selection = window.getSelection()?.toString().trim() ?? "";
+    const selection = window.getSelection()?.toString().trim() ?? '';
     const items: ContextMenuItem[] = [];
     if (selection) {
       items.push({
-        label: "Copy",
+        label: 'Copy',
         onClick: () => void navigator.clipboard?.writeText(selection),
       });
     }
     items.push(
       {
-        label: "New session",
+        label: 'New session',
         separator: selection.length > 0,
         onClick: () => {
           handleTabCreate();
@@ -300,14 +280,14 @@ function App() {
         },
       },
       {
-        label: "Clear conversation",
+        label: 'Clear conversation',
         disabled: messages.length === 0,
         onClick: () => clearRunHistory(),
       },
       ...(grokIsRunning && activeRunId
-        ? [{ label: "Stop current run", danger: true, onClick: () => stopRun(activeRunId) }]
+        ? [{ label: 'Stop current run', danger: true, onClick: () => stopRun(activeRunId) }]
         : []),
-      { label: "Settings…", separator: true, onClick: () => setSettingsOpen(true) },
+      { label: 'Settings…', separator: true, onClick: () => setSettingsOpen(true) },
     );
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -343,33 +323,38 @@ function App() {
     });
   }
 
-  function handleEnqueued(info: { runId: string; position: number; prompt: string; rawText?: string }) {
+  function handleEnqueued(info: {
+    runId: string;
+    position: number;
+    prompt: string;
+    rawText?: string;
+  }) {
     const now = Date.now();
-    const userMessageId = makeId("u");
-    const assistantMessageId = makeId("a");
+    const userMessageId = makeId('u');
+    const assistantMessageId = makeId('a');
     appendMessage({
       id: userMessageId,
-      role: "user",
+      role: 'user',
       // Show what the user ACTUALLY typed, not the sent prompt. The Composer
       // appends expanded @-mention file contents for grok's benefit — that
       // belongs in the request, not in the chat bubble. rawText is the clean
       // original; fall back to prompt only for callers that don't pass it.
       content: info.rawText ?? info.prompt,
       ts: now,
-      meta: { workflow: mode === "coding" ? codingWorkflow : "chat" },
+      meta: { workflow: mode === 'coding' ? codingWorkflow : 'chat' },
     });
     appendMessage({
       id: assistantMessageId,
-      role: "assistant",
-      content: "",
+      role: 'assistant',
+      content: '',
       ts: now,
       runId: info.runId,
-      status: "streaming",
-      meta: { model: activeModel, workflow: mode === "coding" ? codingWorkflow : "chat" },
+      status: 'streaming',
+      meta: { model: activeModel, workflow: mode === 'coding' ? codingWorkflow : 'chat' },
     });
     setTotalRuns((current) => {
       const next = current + 1;
-      window.localStorage.setItem("grok-desktop-run-count-total", String(next));
+      window.localStorage.setItem('grok-desktop-run-count-total', String(next));
       return next;
     });
     if (info.position > 0) {
@@ -377,19 +362,19 @@ function App() {
     }
   }
 
-  function togglePanel(target: "preview" | "context" | "terminal" | "tools") {
-    const next = !(target === "preview"
+  function togglePanel(target: 'preview' | 'context' | 'terminal' | 'tools') {
+    const next = !(target === 'preview'
       ? previewOpen
-      : target === "context"
+      : target === 'context'
         ? contextOpen
-        : target === "terminal"
+        : target === 'terminal'
           ? terminalOpen
           : toolsOpen);
-    setPreviewOpen(target === "preview" ? next : false);
-    setContextOpen(target === "context" ? next : false);
-    setTerminalOpen(target === "terminal" ? next : false);
-    setToolsOpen(target === "tools" ? next : false);
-    if (next && target === "preview") void refreshStaticPreview();
+    setPreviewOpen(target === 'preview' ? next : false);
+    setContextOpen(target === 'context' ? next : false);
+    setTerminalOpen(target === 'terminal' ? next : false);
+    setToolsOpen(target === 'tools' ? next : false);
+    if (next && target === 'preview') void refreshStaticPreview();
   }
 
   // Top-right "panels" menu — Preview / Context / Terminal / Tools, each opens
@@ -402,9 +387,24 @@ function App() {
       x: Math.round(b.right),
       y: Math.round(b.bottom + 6),
       items: [
-        { label: "Preview", icon: <Globe2 size={15} />, shortcut: previewOpen ? "✓" : undefined, onClick: () => togglePanel("preview") },
-        { label: "Context inspector", icon: <PanelRight size={15} />, shortcut: contextOpen ? "✓" : undefined, onClick: () => togglePanel("context") },
-        { label: "Terminal", icon: <TerminalSquare size={15} />, shortcut: terminalOpen ? "✓" : undefined, onClick: () => togglePanel("terminal") },
+        {
+          label: 'Preview',
+          icon: <Globe2 size={15} />,
+          shortcut: previewOpen ? '✓' : undefined,
+          onClick: () => togglePanel('preview'),
+        },
+        {
+          label: 'Context inspector',
+          icon: <PanelRight size={15} />,
+          shortcut: contextOpen ? '✓' : undefined,
+          onClick: () => togglePanel('context'),
+        },
+        {
+          label: 'Terminal',
+          icon: <TerminalSquare size={15} />,
+          shortcut: terminalOpen ? '✓' : undefined,
+          onClick: () => togglePanel('terminal'),
+        },
       ],
     });
   }
@@ -419,7 +419,7 @@ function App() {
     ensureStreamListenersAttached().catch((error) => {
       if (cancelled) return;
       setSessionNotice(
-        t("notices.liveUpdatesUnavailable", {
+        t('notices.liveUpdatesUnavailable', {
           error: error instanceof Error ? error.message : String(error),
         }),
       );
@@ -436,27 +436,24 @@ function App() {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       const target = e.target instanceof Element ? e.target : null;
-      const anchor = target?.closest("a[href]");
+      const anchor = target?.closest('a[href]');
       if (!anchor) return;
-      const href = anchor.getAttribute("href") ?? "";
+      const href = anchor.getAttribute('href') ?? '';
       if (!/^https?:\/\//i.test(href)) return;
       e.preventDefault();
       if (hasTauriRuntime()) {
         void openUrl(href).catch(() => {});
       } else {
-        window.open(href, "_blank", "noopener");
+        window.open(href, '_blank', 'noopener');
       }
     };
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
   }, []);
 
   // Persist sidebar-collapsed state so ⌘B is sticky across reloads.
   useEffect(() => {
-    window.localStorage.setItem(
-      "grok-desktop-sidebar-collapsed",
-      sidebarCollapsed ? "1" : "0",
-    );
+    window.localStorage.setItem('grok-desktop-sidebar-collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
   // ⌘K palette catalogue + global keyboard shortcuts live in
   // hooks/useAppShortcuts.ts.
@@ -509,8 +506,8 @@ function App() {
       recentPrompts.slice(0, 50).map((p) => ({
         id: `history-${p.id}`,
         label: p.title,
-        hint: p.detail ? `History · ${p.detail}` : "History",
-        group: "History",
+        hint: p.detail ? `History · ${p.detail}` : 'History',
+        group: 'History',
         run: () => switchToSession(p.id),
       })),
     [recentPrompts, switchToSession],
@@ -521,28 +518,29 @@ function App() {
   );
   // Project name shown in the minimal top bar (basename of the cwd).
   const repoName = useMemo(() => {
-    const trimmed = codingCwd.trim().replace(/\/+$/, "");
-    if (!trimmed) return "Pick a project";
-    const parts = trimmed.split("/");
+    const trimmed = codingCwd.trim().replace(/\/+$/, '');
+    if (!trimmed) return 'Pick a project';
+    const parts = trimmed.split('/');
     return parts[parts.length - 1] || trimmed;
   }, [codingCwd]);
 
   const grokToolStatus = statusMap.grok;
   const isGrokReady = Boolean(grokStatus?.authenticated);
   const statusLabel = grokStatus?.authenticated
-    ? "Connected"
+    ? 'Connected'
     : grokStatus?.installed
-      ? "Login needed"
-      : "Connect needed";
-  const workspacePath = codingCwd.trim() || "No project selected";
-  const terminalDisplay = terminalLines.length > 0
-    ? terminalLines
-    : formatOutput(lastRun)
-        .split("\n")
-        .slice(0, 80)
-        .map((line) => `[out] ${line}`);
+      ? 'Login needed'
+      : 'Connect needed';
+  const workspacePath = codingCwd.trim() || 'No project selected';
+  const terminalDisplay =
+    terminalLines.length > 0
+      ? terminalLines
+      : formatOutput(lastRun)
+          .split('\n')
+          .slice(0, 80)
+          .map((line) => `[out] ${line}`);
   const activeRun = useActiveRun();
-  const grokIsRunning = Boolean(activeRun && activeRun.state === "running");
+  const grokIsRunning = Boolean(activeRun && activeRun.state === 'running');
   const activeRunId = activeRun?.id ?? null;
 
   // Refresh the static preview when a streaming grok run finishes. The main
@@ -559,8 +557,8 @@ function App() {
   const messageRefs: MessageRef[] = useMemo(
     () =>
       messages.map((m) =>
-        m.role === "user"
-          ? { runId: "", role: "user" as const, userText: m.content, id: m.id }
+        m.role === 'user'
+          ? { runId: '', role: 'user' as const, userText: m.content, id: m.id }
           : {
               // Live runs keep their real id; restored/legacy assistant
               // messages get a STABLE synthetic id (msg:<id>) so MessageItem
@@ -568,7 +566,7 @@ function App() {
               // collide on "". fallbackText still feeds the worker + the
               // plain-text fallback while parsing.
               runId: m.runId || `msg:${m.id}`,
-              role: "assistant" as const,
+              role: 'assistant' as const,
               fallbackText: m.content,
               id: m.id,
             },
@@ -576,9 +574,7 @@ function App() {
     [messages],
   );
   return (
-    <main
-      className={`app-shell theme-${themeMode}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
-    >
+    <main className={`app-shell theme-${themeMode}${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <CommandPalette
         open={paletteOpen}
         actions={allPaletteActions}
@@ -604,7 +600,7 @@ function App() {
         codingCwd={codingCwd}
         setCodingCwd={setCodingCwd}
         onPickFolder={() => void pickFolder()}
-        grokVersionLine={`Grok CLI ${grokStatus?.version ?? "unknown"}`}
+        grokVersionLine={`Grok CLI ${grokStatus?.version ?? 'unknown'}`}
       />
       <ToolsPage open={toolsPageOpen} onClose={() => setToolsPageOpen(false)} cwd={codingCwd} />
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
@@ -673,7 +669,9 @@ function App() {
             </div>
 
             {sessionNotice ? (
-              <div className="session-toast" role="status">{sessionNotice}</div>
+              <div className="session-toast" role="status">
+                {sessionNotice}
+              </div>
             ) : null}
 
             <QueueDock />
@@ -709,7 +707,7 @@ function App() {
           />
           <InspectorDrawer
             open={contextOpen}
-            onOpenPanel={() => togglePanel("context")}
+            onOpenPanel={() => togglePanel('context')}
             onClose={() => setContextOpen(false)}
             inspectorTab={inspectorTab}
             setInspectorTab={setInspectorTab}
@@ -730,17 +728,17 @@ function App() {
             onInsertDesktopContext={(text) => {
               // Append into the active mode's draft so it lands in Composer
               // on next render.
-              const next = (drafts[mode] ?? "") + text;
+              const next = (drafts[mode] ?? '') + text;
               setDrafts((current) => ({ ...current, [mode]: next }));
               composerRef.current?.setValue(next);
-              setSessionNotice(t("notices.desktopContextAppended"));
+              setSessionNotice(t('notices.desktopContextAppended'));
             }}
           />
         </section>
 
         <TerminalDock
           open={terminalOpen}
-          onOpenPanel={() => togglePanel("terminal")}
+          onOpenPanel={() => togglePanel('terminal')}
           onClose={() => setTerminalOpen(false)}
           dockPosition={dockPosition}
           setDockPosition={setDockPosition}
@@ -751,11 +749,7 @@ function App() {
           sessionNotice={sessionNotice}
           terminalDisplay={terminalDisplay}
         />
-        <Toolbelt
-          open={toolbeltOpen}
-          onToggle={setToolbeltOpen}
-          runners={runners}
-        />
+        <Toolbelt open={toolbeltOpen} onToggle={setToolbeltOpen} runners={runners} />
         <WorkspaceStatusBar
           workspacePath={workspacePath}
           folderPickerBusy={folderPickerBusy}
@@ -764,11 +758,11 @@ function App() {
           modelIsVerified={modelIsVerified}
           actionPolicy={actionPolicy}
           openModelSettings={() => {
-            setSettingsSection("model");
+            setSettingsSection('model');
             setSettingsOpen(true);
           }}
           openPermissionSettings={() => {
-            setSettingsSection("permissions");
+            setSettingsSection('permissions');
             setSettingsOpen(true);
           }}
           grokIsRunning={grokIsRunning}

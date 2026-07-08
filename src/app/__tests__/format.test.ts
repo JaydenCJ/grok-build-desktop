@@ -131,8 +131,12 @@ describe('terminal line helpers', () => {
 describe('statusTone', () => {
   it('maps undefined/installed/missing states', () => {
     expect(statusTone(undefined)).toBe('idle');
-    expect(statusTone({ id: 'grok', label: '', command: '', installed: true, detail: '' })).toBe('ready');
-    expect(statusTone({ id: 'grok', label: '', command: '', installed: false, detail: '' })).toBe('missing');
+    expect(statusTone({ id: 'grok', label: '', command: '', installed: true, detail: '' })).toBe(
+      'ready',
+    );
+    expect(statusTone({ id: 'grok', label: '', command: '', installed: false, detail: '' })).toBe(
+      'missing',
+    );
   });
 });
 
@@ -165,7 +169,10 @@ describe('grok inspect parsing', () => {
   });
 
   it('stops at the next heading and respects the item limit', () => {
-    expect(grokInspectSection(inspectOutput, 'Skills', 2)).toEqual(['code-review', 'release-notes']);
+    expect(grokInspectSection(inspectOutput, 'Skills', 2)).toEqual([
+      'code-review',
+      'release-notes',
+    ]);
     expect(grokInspectSection(inspectOutput, 'MCP Servers')).toEqual(['filesystem']);
     expect(grokInspectSection(inspectOutput, 'Hooks')).toEqual([]);
   });

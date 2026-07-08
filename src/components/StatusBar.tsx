@@ -27,11 +27,15 @@ function formatElapsed(ms: number): string {
 function stateSuffix(snap: RunSnapshot | undefined): string | null {
   if (!snap) return null;
   if (snap.state === 'done') {
-    return snap.stopReason ? t('statusBar.doneWithReason', { reason: snap.stopReason }) : t('statusBar.done');
+    return snap.stopReason
+      ? t('statusBar.doneWithReason', { reason: snap.stopReason })
+      : t('statusBar.done');
   }
   if (snap.state === 'cancelled') return t('statusBar.cancelled');
   if (snap.state === 'failed') {
-    return snap.error ? t('statusBar.failedWithError', { error: snap.error }) : t('statusBar.failed');
+    return snap.error
+      ? t('statusBar.failedWithError', { error: snap.error })
+      : t('statusBar.failed');
   }
   // Spell out exactly what Grok is doing right now (the user asked to always
   // see the live phase, Claude/Codex-style):
@@ -51,10 +55,7 @@ function stateSuffix(snap: RunSnapshot | undefined): string | null {
  */
 function GrokMark({ pulsing }: { pulsing: boolean }) {
   return (
-    <span
-      aria-hidden
-      className={`status-mark${pulsing ? ' status-mark-pulse' : ''}`}
-    >
+    <span aria-hidden className={`status-mark${pulsing ? ' status-mark-pulse' : ''}`}>
       ✦
     </span>
   );
@@ -75,7 +76,9 @@ export function StatusBar() {
         <div className="status-bar">
           <GrokMark pulsing />
           <span className="status-state">
-            {pending > 1 ? t('statusBar.preparingMulti', { count: pending }) : t('statusBar.preparing')}
+            {pending > 1
+              ? t('statusBar.preparingMulti', { count: pending })
+              : t('statusBar.preparing')}
           </span>
           {queuedExtra > 0 ? (
             <>
@@ -110,11 +113,11 @@ export function StatusBar() {
   return (
     <div className="status-bar">
       <GrokMark pulsing={isLive} />
-      <span className="status-elapsed">
-        {elapsed != null ? formatElapsed(elapsed) : '0.0s'}
-      </span>
+      <span className="status-elapsed">{elapsed != null ? formatElapsed(elapsed) : '0.0s'}</span>
       <span className="status-sep">·</span>
-      <span className="status-tokens">{t('statusBar.tokens', { tokens: formatTokens(chars) })}</span>
+      <span className="status-tokens">
+        {t('statusBar.tokens', { tokens: formatTokens(chars) })}
+      </span>
       {suffix ? (
         <>
           <span className="status-sep">·</span>

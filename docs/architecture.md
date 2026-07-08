@@ -34,7 +34,7 @@ the user's locally installed `grok` CLI.
   official CLI authorization flow outside the app.
 - Grok ecosystem discovery runs through `grok inspect`, while managed
   capability commands use `grok mcp list`, `grok mcp doctor`, `grok plugin
-  list`, and `grok sessions list`. The right inspector separates Context,
+list`, and `grok sessions list`. The right inspector separates Context,
   Skills, MCP, Agents, Plugins, Hooks, Permissions, and Desktop.
 - The Skills hub installs curated skills as real `SKILL.md` files under
   `~/.grok/skills` for the CLI to discover.

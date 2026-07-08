@@ -192,8 +192,19 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
   };
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t('tools.ariaLabel')} onClick={onClose}>
-      <div className="tools-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="settings-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('tools.ariaLabel')}
+      onClick={onClose}
+    >
+      <div
+        className="tools-modal"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="tools-head">
           <div>
             <h2>{t('tools.title')}</h2>
@@ -213,7 +224,13 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
               )}
             </p>
           </div>
-          <button ref={closeRef} type="button" className="settings-close" aria-label={t('common.close')} onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className="settings-close"
+            aria-label={t('common.close')}
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
@@ -243,7 +260,9 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
 
         <input
           className="tools-search"
-          placeholder={tab === 'mcp' ? t('tools.searchMcpPlaceholder') : t('tools.searchSkillsPlaceholder')}
+          placeholder={
+            tab === 'mcp' ? t('tools.searchMcpPlaceholder') : t('tools.searchSkillsPlaceholder')
+          }
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
         />
@@ -253,7 +272,10 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
             {filteredSkills.map((entry) => {
               const installed = installedSkills.has(entry.slug);
               return (
-                <div key={entry.slug} className={`tool-mcp-card${installed ? ' is-connected' : ''}`}>
+                <div
+                  key={entry.slug}
+                  className={`tool-mcp-card${installed ? ' is-connected' : ''}`}
+                >
                   <div className="tool-mcp-top">
                     <span className="tool-mcp-name">{entry.name}</span>
                     <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
@@ -291,53 +313,53 @@ export function ToolsPage({ open, onClose, cwd }: Props) {
             })}
           </div>
         ) : (
-        <div className="tools-grid">
-          {filtered.map((entry) => {
-            const connected = connectedIds.has(entry.id);
-            return (
-              <div key={entry.id} className={`tool-mcp-card${connected ? ' is-connected' : ''}`}>
-                <div className="tool-mcp-top">
-                  <span className="tool-mcp-name">{entry.name}</span>
-                  <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
-                </div>
-                <p className="tool-mcp-desc">{entry.description}</p>
-                {entry.requiredEnv?.length ? (
-                  <p className="tool-mcp-env">
-                    {t('tools.needs', { keys: entry.requiredEnv.map((e) => e.key).join(', ') })}
-                  </p>
-                ) : null}
-                {entry.argHint ? <p className="tool-mcp-hint">{entry.argHint}</p> : null}
-                <code className="tool-mcp-cmd" title={previewAddCommand(entry)}>
-                  {previewAddCommand(entry)}
-                </code>
-                <div className="tool-mcp-actions">
-                  {connected ? (
-                    <>
-                      <span className="tool-mcp-badge">{t('tools.connectedBadge')}</span>
+          <div className="tools-grid">
+            {filtered.map((entry) => {
+              const connected = connectedIds.has(entry.id);
+              return (
+                <div key={entry.id} className={`tool-mcp-card${connected ? ' is-connected' : ''}`}>
+                  <div className="tool-mcp-top">
+                    <span className="tool-mcp-name">{entry.name}</span>
+                    <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
+                  </div>
+                  <p className="tool-mcp-desc">{entry.description}</p>
+                  {entry.requiredEnv?.length ? (
+                    <p className="tool-mcp-env">
+                      {t('tools.needs', { keys: entry.requiredEnv.map((e) => e.key).join(', ') })}
+                    </p>
+                  ) : null}
+                  {entry.argHint ? <p className="tool-mcp-hint">{entry.argHint}</p> : null}
+                  <code className="tool-mcp-cmd" title={previewAddCommand(entry)}>
+                    {previewAddCommand(entry)}
+                  </code>
+                  <div className="tool-mcp-actions">
+                    {connected ? (
+                      <>
+                        <span className="tool-mcp-badge">{t('tools.connectedBadge')}</span>
+                        <button
+                          type="button"
+                          className="tool-mcp-remove"
+                          disabled={busy !== null}
+                          onClick={() => void handleRemove(entry)}
+                        >
+                          {busy === entry.id ? t('common.busy') : t('common.remove')}
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        className="tool-mcp-remove"
+                        className="tool-mcp-add"
                         disabled={busy !== null}
-                        onClick={() => void handleRemove(entry)}
+                        onClick={() => void handleAdd(entry)}
                       >
-                        {busy === entry.id ? t('common.busy') : t('common.remove')}
+                        {busy === entry.id ? t('tools.adding') : t('tools.add')}
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="tool-mcp-add"
-                      disabled={busy !== null}
-                      onClick={() => void handleAdd(entry)}
-                    >
-                      {busy === entry.id ? t('tools.adding') : t('tools.add')}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         )}
 
         <div className="tools-foot">

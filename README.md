@@ -317,16 +317,16 @@ npm run doctor       # 环境体检
 
 All variables are also in [`.env.example`](.env.example). The Rust backend reads the `GROK_DESKTOP_*` names below (not any other prefix).
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `GROK_DESKTOP_PYTHON` | `python3` | Python interpreter for the tool bridges. |
-| `GROK_DESKTOP_GROK_CMD` | `grok` | Grok CLI executable. |
-| `GROK_DESKTOP_GROK_ARGS` | see `.env.example` | Argument template; `{prompt}` and `{mode}` are substituted (legacy non-streaming path only — streaming runs get their args from the UI). |
-| `GROK_DESKTOP_GROK_CHECK` | `false` | Enable Grok's headless `--check` self-verification (legacy path). |
-| `GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS` | `420` | Streaming watchdog: kill a run after this many seconds with no stdout output. Resets on every line, so an actively thinking Grok never trips it. |
-| `GROK_DESKTOP_QUIET_GROK_STDERR` | `0` | `1` stops mirroring Grok's stderr (`[grok stderr] …`) to the host process during streaming runs. |
-| `GROK_DESKTOP_COMMAND_TIMEOUT_SECS` | `240` | Timeout for auxiliary commands (inspect, mcp, login, scripts) — streaming runs use the no-output watchdog instead. |
-| `GROK_DESKTOP_GROK_MAX_TURNS` | `12` | Bounded turn limit for headless runs on the legacy path (the streaming UI always sends `--max-turns 12`). |
-| `GROK_DESKTOP_VERBOSE_GROK_STDERR` | `0` | `1` shows raw Grok stderr in auxiliary command output (otherwise tracing noise is filtered). |
-| `XAI_API_KEY` | — | Optional API-key auth (Grok can also use a cached `grok login`). |
-| `BROWSER_USE_API_KEY` | — | Required only for the browser-use bridge. |
+| Variable                              | Default            | Purpose                                                                                                                                          |
+| ------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GROK_DESKTOP_PYTHON`                 | `python3`          | Python interpreter for the tool bridges.                                                                                                         |
+| `GROK_DESKTOP_GROK_CMD`               | `grok`             | Grok CLI executable.                                                                                                                             |
+| `GROK_DESKTOP_GROK_ARGS`              | see `.env.example` | Argument template; `{prompt}` and `{mode}` are substituted (legacy non-streaming path only — streaming runs get their args from the UI).         |
+| `GROK_DESKTOP_GROK_CHECK`             | `false`            | Enable Grok's headless `--check` self-verification (legacy path).                                                                                |
+| `GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS` | `420`              | Streaming watchdog: kill a run after this many seconds with no stdout output. Resets on every line, so an actively thinking Grok never trips it. |
+| `GROK_DESKTOP_QUIET_GROK_STDERR`      | `0`                | `1` stops mirroring Grok's stderr (`[grok stderr] …`) to the host process during streaming runs.                                                 |
+| `GROK_DESKTOP_COMMAND_TIMEOUT_SECS`   | `240`              | Timeout for auxiliary commands (inspect, mcp, login, scripts) — streaming runs use the no-output watchdog instead.                               |
+| `GROK_DESKTOP_GROK_MAX_TURNS`         | `12`               | Bounded turn limit for headless runs on the legacy path (the streaming UI always sends `--max-turns 12`).                                        |
+| `GROK_DESKTOP_VERBOSE_GROK_STDERR`    | `0`                | `1` shows raw Grok stderr in auxiliary command output (otherwise tracing noise is filtered).                                                     |
+| `XAI_API_KEY`                         | —                  | Optional API-key auth (Grok can also use a cached `grok login`).                                                                                 |
+| `BROWSER_USE_API_KEY`                 | —                  | Required only for the browser-use bridge.                                                                                                        |

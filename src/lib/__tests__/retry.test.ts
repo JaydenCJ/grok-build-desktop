@@ -7,9 +7,9 @@ describe('retryWithBackoff', () => {
   it('resolves on first success without retrying', async () => {
     const fn = vi.fn().mockResolvedValue('ok');
     const onRetry = vi.fn();
-    await expect(
-      retryWithBackoff(fn, { attempts: 5, sleep: instantSleep, onRetry }),
-    ).resolves.toBe('ok');
+    await expect(retryWithBackoff(fn, { attempts: 5, sleep: instantSleep, onRetry })).resolves.toBe(
+      'ok',
+    );
     expect(fn).toHaveBeenCalledTimes(1);
     expect(onRetry).not.toHaveBeenCalled();
   });
@@ -52,9 +52,9 @@ describe('retryWithBackoff', () => {
       .mockRejectedValueOnce(new Error('first'))
       .mockRejectedValueOnce(new Error('second'))
       .mockRejectedValueOnce(new Error('last'));
-    await expect(
-      retryWithBackoff(fn, { attempts: 3, sleep: instantSleep }),
-    ).rejects.toThrow('last');
+    await expect(retryWithBackoff(fn, { attempts: 3, sleep: instantSleep })).rejects.toThrow(
+      'last',
+    );
     expect(fn).toHaveBeenCalledTimes(3);
   });
 

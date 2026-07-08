@@ -3,7 +3,7 @@
 // self-check toggles — each persisted to localStorage — plus the derived
 // active model, the CLI-verified model options, and the coding-mode
 // auto-snap. Extracted from App.tsx unchanged.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 import {
   isEffortLevel,
   isGrokModelId,
@@ -14,8 +14,8 @@ import {
   type Mode,
   type PermissionMode,
   type ReasoningEffort,
-} from "../app/types";
-import { grokModelPresets, reasoningEfforts, storageKeys } from "../app/constants";
+} from '../app/types';
+import { grokModelPresets, reasoningEfforts, storageKeys } from '../app/constants';
 
 export interface ModelConfigDeps {
   mode: Mode;
@@ -26,46 +26,50 @@ export interface ModelConfigDeps {
 export function useModelConfig({ mode, availableModels }: ModelConfigDeps) {
   const [modelPreset, setModelPreset] = useState<GrokModelId>(() => {
     const stored = window.localStorage.getItem(storageKeys.modelPreset);
-    return isGrokModelId(stored) ? stored : "grok-build";
+    return isGrokModelId(stored) ? stored : 'grok-build';
   });
   const [customModel, setCustomModel] = useState(
-    () => window.localStorage.getItem(storageKeys.customModel) ?? "",
+    () => window.localStorage.getItem(storageKeys.customModel) ?? '',
   );
   const safeRuntimeDefaultsMigrated =
-    window.localStorage.getItem(storageKeys.safeRuntimeDefaults) === "true";
+    window.localStorage.getItem(storageKeys.safeRuntimeDefaults) === 'true';
   const [effortLevel, setEffortLevel] = useState<EffortLevel>(() => {
     const stored = window.localStorage.getItem(storageKeys.effortLevel);
-    return safeRuntimeDefaultsMigrated && isEffortLevel(stored) ? stored : "medium";
+    return safeRuntimeDefaultsMigrated && isEffortLevel(stored) ? stored : 'medium';
   });
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
     const stored = window.localStorage.getItem(storageKeys.reasoningEffort);
-    return isReasoningEffort(stored) ? stored : grokModelPresets["grok-build"].defaultReasoning;
+    return isReasoningEffort(stored) ? stored : grokModelPresets['grok-build'].defaultReasoning;
   });
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
     const stored = window.localStorage.getItem(storageKeys.permissionMode);
-    return isPermissionMode(stored) ? stored : "default";
+    return isPermissionMode(stored) ? stored : 'default';
   });
   const [bestOfN, setBestOfN] = useState(() => {
-    const value = Number(window.localStorage.getItem(storageKeys.bestOfN) ?? "1");
+    const value = Number(window.localStorage.getItem(storageKeys.bestOfN) ?? '1');
     return Number.isInteger(value) && value >= 1 && value <= 5 ? value : 1;
   });
   const [experimentalMemory, setExperimentalMemory] = useState(
-    () => window.localStorage.getItem(storageKeys.experimentalMemory) === "true",
+    () => window.localStorage.getItem(storageKeys.experimentalMemory) === 'true',
   );
   const [webSearchEnabled, setWebSearchEnabled] = useState(
-    () => safeRuntimeDefaultsMigrated && window.localStorage.getItem(storageKeys.webSearchEnabled) === "true",
+    () =>
+      safeRuntimeDefaultsMigrated &&
+      window.localStorage.getItem(storageKeys.webSearchEnabled) === 'true',
   );
   const [subagentsEnabled, setSubagentsEnabled] = useState(
-    () => safeRuntimeDefaultsMigrated && window.localStorage.getItem(storageKeys.subagentsEnabled) === "true",
+    () =>
+      safeRuntimeDefaultsMigrated &&
+      window.localStorage.getItem(storageKeys.subagentsEnabled) === 'true',
   );
   const [selfCheck, setSelfCheck] = useState(
-    () => window.localStorage.getItem(storageKeys.selfCheck) === "true",
+    () => window.localStorage.getItem(storageKeys.selfCheck) === 'true',
   );
 
-  const activeModel = modelPreset === "custom" ? customModel.trim() || "grok-build" : modelPreset;
+  const activeModel = modelPreset === 'custom' ? customModel.trim() || 'grok-build' : modelPreset;
   const activeModelMeta = grokModelPresets[modelPreset];
   const activeReasoningLabel =
-    reasoningEffort === "off" ? "auto" : reasoningEfforts[reasoningEffort].label;
+    reasoningEffort === 'off' ? 'auto' : reasoningEfforts[reasoningEffort].label;
 
   function changeModelPreset(nextModel: GrokModelId) {
     setModelPreset(nextModel);
@@ -113,8 +117,10 @@ export function useModelConfig({ mode, availableModels }: ModelConfigDeps) {
   }, [selfCheck]);
 
   const modelOptions = useMemo(() => {
-    const fromCli = availableModels.filter((value) => value && value !== "models" && value !== "available");
-    const declared = Object.keys(grokModelPresets).filter((id) => id !== "custom");
+    const fromCli = availableModels.filter(
+      (value) => value && value !== 'models' && value !== 'available',
+    );
+    const declared = Object.keys(grokModelPresets).filter((id) => id !== 'custom');
     // The grok CLI is authoritative about which models THIS login can actually
     // run. When it reported them (the normal case), offer ONLY those — hardcoded
     // presets grok doesn't know (grok-build-0.1, grok-4.3, grok-latest, …) make
@@ -123,17 +129,20 @@ export function useModelConfig({ mode, availableModels }: ModelConfigDeps) {
     if (fromCli.length > 0) return fromCli;
     // CLI reported nothing (offline / parse miss): best-effort fallback so the
     // dropdown isn't empty. Coding locks to grok-build; chat shows the presets.
-    return mode === "coding" ? ["grok-build"] : declared;
+    return mode === 'coding' ? ['grok-build'] : declared;
   }, [availableModels, mode]);
-  const modelIsVerified = availableModels.length === 0 || availableModels.includes(activeModel) || modelPreset === "custom";
+  const modelIsVerified =
+    availableModels.length === 0 ||
+    availableModels.includes(activeModel) ||
+    modelPreset === 'custom';
 
   // Only auto-snap in CODE mode, where the list is intentionally restricted —
   // if a stale grok-4.3 selection lingers there, jump to the coding agent.
   // Chat mode leaves the user's pick alone.
   useEffect(() => {
-    if (mode !== "coding") return;
+    if (mode !== 'coding') return;
     if (availableModels.length === 0) return; // CLI didn't report — leave as-is
-    if (modelPreset === "custom") return;
+    if (modelPreset === 'custom') return;
     if (modelOptions.includes(modelPreset)) return;
     const fallback = modelOptions[0];
     if (!fallback) return;
@@ -144,7 +153,7 @@ export function useModelConfig({ mode, availableModels }: ModelConfigDeps) {
       // model generation). Route through "custom" so the <select> value and
       // the --model arg stay in sync — otherwise the dropdown displays the
       // first CLI model while runs silently send the stale preset.
-      setModelPreset("custom");
+      setModelPreset('custom');
       setCustomModel(fallback);
     }
   }, [mode, availableModels, modelOptions, modelPreset]);

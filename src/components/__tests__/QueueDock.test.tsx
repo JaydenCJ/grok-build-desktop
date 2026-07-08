@@ -25,7 +25,10 @@ describe('QueueDock', () => {
     mockIPC((cmd) => {
       calls.push(cmd);
       if (cmd === 'get_queue') {
-        return { active: null, queue: [queueItem('q1', 'first task'), queueItem('q2', 'second task')] };
+        return {
+          active: null,
+          queue: [queueItem('q1', 'first task'), queueItem('q2', 'second task')],
+        };
       }
       if (cmd === 'resume_pending_runs') return 2;
       return undefined;

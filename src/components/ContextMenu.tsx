@@ -175,7 +175,9 @@ export function ContextMenu({ menu, onClose }: Props) {
                 {item.icon ? <span className="ctx-icon">{item.icon}</span> : null}
                 <span className="ctx-label">{item.label}</span>
                 {item.shortcut ? <span className="ctx-shortcut">{item.shortcut}</span> : null}
-                <span className="ctx-chevron" aria-hidden>›</span>
+                <span className="ctx-chevron" aria-hidden>
+                  ›
+                </span>
               </div>
               {openSub === i ? (
                 <div className="ctx-menu ctx-submenu" role="menu">

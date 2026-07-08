@@ -130,8 +130,7 @@ export function classifyEvent(raw: unknown): TraceParseResult {
     return undefined;
   })();
   const outputSummary = (() => {
-    const out =
-      readObj(obj, 'output') ?? readObj(obj, 'result') ?? readObj(obj, 'response');
+    const out = readObj(obj, 'output') ?? readObj(obj, 'result') ?? readObj(obj, 'response');
     if (out) return shortenJson(out);
     const outStr = readField(obj, 'output', 'result', 'response', 'text', 'content');
     if (outStr) return shortenJson(outStr);

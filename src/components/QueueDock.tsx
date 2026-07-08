@@ -32,7 +32,9 @@ export function QueueDock() {
           setResumeBannerVisible(true);
         }
       })
-      .catch(() => {/* ignore: backend not ready yet */});
+      .catch(() => {
+        /* ignore: backend not ready yet */
+      });
     return () => {
       cancelled = true;
     };
@@ -79,7 +81,9 @@ export function QueueDock() {
           <span className="queue-idle">{t('queue.idle')}</span>
         )}
         {queue.items.length > 0 ? (
-          <span className="queue-count">{t('queue.queuedCount', { count: queue.items.length })}</span>
+          <span className="queue-count">
+            {t('queue.queuedCount', { count: queue.items.length })}
+          </span>
         ) : null}
         <span className="queue-expand">{expanded ? t('queue.collapse') : t('queue.expand')}</span>
       </button>
@@ -90,7 +94,9 @@ export function QueueDock() {
             <li key={item.id} className="queue-item">
               <span className="queue-item-state">⏸</span>
               <span className="queue-item-prompt">{item.prompt.slice(0, 80)}</span>
-              <button onClick={() => cancelRun(item.id)} aria-label={t('queue.cancelQueuedRun')}>✕</button>
+              <button onClick={() => cancelRun(item.id)} aria-label={t('queue.cancelQueuedRun')}>
+                ✕
+              </button>
             </li>
           ))}
         </ul>

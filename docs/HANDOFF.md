@@ -65,7 +65,7 @@ npm run tauri build        # production .app + .dmg under src-tauri/target/relea
 **Browser preview is the reliable way to verify UI.** The React app runs in a plain
 browser on `:1420` (`npm run dev`). In a browser, Tauri `invoke` fails gracefully
 (features that need the backend show "native unavailable"), but all layout, CSS,
-menus, theming, and footer options render and are clickable. Driving the *real*
+menus, theming, and footer options render and are clickable. Driving the _real_
 Tauri window with cliclick is fragile on HiDPI/multi-monitor — prefer the browser
 for UI checks; use the real app only for grok runs (which need the CLI).
 
@@ -127,8 +127,8 @@ A single rAF loop advances a "shown" cursor toward the full text. Two cadences:
 
 ```ts
 const step = endedRef.current
-  ? Math.min(Math.max(4, Math.ceil(remaining / 20)), 120)   // ended: drain tail in ~0.3-0.5s
-  : Math.min(Math.max(1, Math.ceil(remaining / 60)), 3);    // live: calm ~60-180 cps, never "dumps"
+  ? Math.min(Math.max(4, Math.ceil(remaining / 20)), 120) // ended: drain tail in ~0.3-0.5s
+  : Math.min(Math.max(1, Math.ceil(remaining / 60)), 3); // live: calm ~60-180 cps, never "dumps"
 ```
 
 Live: caps at 3 chars/frame so a burst (best-of-n, fast model) trails the caret
@@ -213,20 +213,20 @@ in `recentPrompts` so they remain searchable via the ⌘K palette.
 
 ## 7. Features & where they live
 
-| Feature | Where |
-|---|---|
+| Feature                                                        | Where                                                                                               |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Conversations sidebar (switch/rename/pin/group/archive/delete) | App.tsx: `recentPrompts`, `switchToSession`, `deleteSession`, `openHistoryMenu`, `renderHistoryRow` |
-| Non-blocking streaming + queue | `runs/queue.rs`, `streamStore.ts`, `MessageList/MessageItem`, `StatusBar`, `QueueDock` |
-| Typewriter pacing | `hooks/useSmoothText.ts` |
-| Live status (thinking…/writing…/working…) | `components/StatusBar.tsx` (`stateSuffix`) |
-| Theme toggle (sun/moon) | App.tsx titlebar (`titlebar-icon-btn theme-toggle`) + CSS; ⌘⇧L |
-| Connection pill ("● Grok"/Offline) | App.tsx `.conn-pill` + CSS |
-| Panels menu (Preview/Context/Terminal) | App.tsx `openPanelMenu` |
-| Tools & Skills hub | `components/ToolsPage.tsx` + `lib/mcp.ts` + `lib/skills.ts` |
-| Prompt library | App.tsx (`savePromptToLibrary`, inline UI) + `lib/prompts.ts` + `prompts/mod.rs` |
-| Command palette (⌘K) + search | `components/CommandPalette.tsx` (history rows searchable, IME-safe) |
-| Capability inspector | App.tsx context panel + `grok inspect` parsing |
-| macOS desktop bridge | `lib/desktop.ts` + `desktop_*` Tauri commands + `DesktopPanel` |
+| Non-blocking streaming + queue                                 | `runs/queue.rs`, `streamStore.ts`, `MessageList/MessageItem`, `StatusBar`, `QueueDock`              |
+| Typewriter pacing                                              | `hooks/useSmoothText.ts`                                                                            |
+| Live status (thinking…/writing…/working…)                      | `components/StatusBar.tsx` (`stateSuffix`)                                                          |
+| Theme toggle (sun/moon)                                        | App.tsx titlebar (`titlebar-icon-btn theme-toggle`) + CSS; ⌘⇧L                                      |
+| Connection pill ("● Grok"/Offline)                             | App.tsx `.conn-pill` + CSS                                                                          |
+| Panels menu (Preview/Context/Terminal)                         | App.tsx `openPanelMenu`                                                                             |
+| Tools & Skills hub                                             | `components/ToolsPage.tsx` + `lib/mcp.ts` + `lib/skills.ts`                                         |
+| Prompt library                                                 | App.tsx (`savePromptToLibrary`, inline UI) + `lib/prompts.ts` + `prompts/mod.rs`                    |
+| Command palette (⌘K) + search                                  | `components/CommandPalette.tsx` (history rows searchable, IME-safe)                                 |
+| Capability inspector                                           | App.tsx context panel + `grok inspect` parsing                                                      |
+| macOS desktop bridge                                           | `lib/desktop.ts` + `desktop_*` Tauri commands + `DesktopPanel`                                      |
 
 ### Skills hub (new) — `lib/skills.ts` + ToolsPage `[MCP servers][Skills]` tabs
 

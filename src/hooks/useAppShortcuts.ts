@@ -2,11 +2,11 @@
 // ⌘B sidebar, ⌘, settings, ⌘⇧L theme, ⌘N new session, ⌘F history search,
 // "/" composer focus, Esc panel dismissal, ⌘1/⌘2 mode switch). Extracted
 // from App.tsx unchanged; DOM focus targets arrive as callbacks.
-import { useEffect, useMemo } from "react";
-import type { PaletteAction } from "../components/CommandPalette";
-import { streamStore } from "../lib/streamStore";
-import type { InspectorTab, Mode, ThemeMode } from "../app/types";
-import { t } from "../i18n";
+import { useEffect, useMemo } from 'react';
+import type { PaletteAction } from '../components/CommandPalette';
+import { streamStore } from '../lib/streamStore';
+import type { InspectorTab, Mode, ThemeMode } from '../app/types';
+import { t } from '../i18n';
 
 export interface AppShortcutsDeps {
   paletteOpen: boolean;
@@ -26,7 +26,7 @@ export interface AppShortcutsDeps {
   setInspectorTab: (tab: InspectorTab) => void;
   themeMode: ThemeMode;
   setThemeMode: React.Dispatch<React.SetStateAction<ThemeMode>>;
-  togglePanel: (target: "preview" | "context" | "terminal" | "tools") => void;
+  togglePanel: (target: 'preview' | 'context' | 'terminal' | 'tools') => void;
   handleTabCreate: () => void;
   clearRunHistory: () => void;
   focusComposer: () => void;
@@ -69,7 +69,6 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
     mode,
   } = deps;
 
-
   // ── Command palette catalogue ────────────────────────────────────────────
   // Every action here is reachable both through ⌘K and (where applicable) a
   // direct button in the UI. Keep them in sync — adding an action here is
@@ -77,77 +76,79 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
   const paletteActions = useMemo<PaletteAction[]>(() => {
     return [
       {
-        id: "new-session",
-        label: t("palette.action.newSession"),
-        hint: t("palette.action.newSessionHint"),
-        shortcut: "⌘N",
-        group: t("palette.group.session"),
+        id: 'new-session',
+        label: t('palette.action.newSession'),
+        hint: t('palette.action.newSessionHint'),
+        shortcut: '⌘N',
+        group: t('palette.group.session'),
         run: () => handleTabCreate(),
       },
       {
-        id: "clear-conversation",
-        label: t("palette.action.clearConversation"),
-        hint: t("palette.action.clearConversationHint"),
-        group: t("palette.group.session"),
+        id: 'clear-conversation',
+        label: t('palette.action.clearConversation'),
+        hint: t('palette.action.clearConversationHint'),
+        group: t('palette.group.session'),
         run: () => clearRunHistory(),
       },
       {
-        id: "focus-composer",
-        label: t("palette.action.focusComposer"),
-        shortcut: "/",
-        group: t("palette.group.navigation"),
+        id: 'focus-composer',
+        label: t('palette.action.focusComposer'),
+        shortcut: '/',
+        group: t('palette.group.navigation'),
         run: () => focusComposer(),
       },
       {
-        id: "search-history",
-        label: t("palette.action.searchHistory"),
-        shortcut: "⌘F",
-        group: t("palette.group.navigation"),
+        id: 'search-history',
+        label: t('palette.action.searchHistory'),
+        shortcut: '⌘F',
+        group: t('palette.group.navigation'),
         run: () => focusHistorySearch(),
       },
       {
-        id: "toggle-sidebar",
-        label: sidebarCollapsed ? t("palette.action.expandSidebar") : t("palette.action.collapseSidebar"),
-        shortcut: "⌘B",
-        group: t("palette.group.view"),
+        id: 'toggle-sidebar',
+        label: sidebarCollapsed
+          ? t('palette.action.expandSidebar')
+          : t('palette.action.collapseSidebar'),
+        shortcut: '⌘B',
+        group: t('palette.group.view'),
         run: () => setSidebarCollapsed((v) => !v),
       },
       {
-        id: "open-tools",
-        label: t("palette.action.openTools"),
-        group: t("palette.group.view"),
+        id: 'open-tools',
+        label: t('palette.action.openTools'),
+        group: t('palette.group.view'),
         run: () => setToolsPageOpen(true),
       },
       {
-        id: "toggle-preview",
-        label: previewOpen ? t("palette.action.closePreview") : t("palette.action.openPreview"),
-        group: t("palette.group.view"),
-        run: () => togglePanel("preview"),
+        id: 'toggle-preview',
+        label: previewOpen ? t('palette.action.closePreview') : t('palette.action.openPreview'),
+        group: t('palette.group.view'),
+        run: () => togglePanel('preview'),
       },
       {
-        id: "toggle-context",
-        label: contextOpen ? t("palette.action.closeContext") : t("palette.action.openContext"),
-        group: t("palette.group.view"),
-        run: () => togglePanel("context"),
+        id: 'toggle-context',
+        label: contextOpen ? t('palette.action.closeContext') : t('palette.action.openContext'),
+        group: t('palette.group.view'),
+        run: () => togglePanel('context'),
       },
       {
-        id: "toggle-terminal",
-        label: terminalOpen ? t("palette.action.closeTerminal") : t("palette.action.openTerminal"),
-        group: t("palette.group.view"),
-        run: () => togglePanel("terminal"),
+        id: 'toggle-terminal',
+        label: terminalOpen ? t('palette.action.closeTerminal') : t('palette.action.openTerminal'),
+        group: t('palette.group.view'),
+        run: () => togglePanel('terminal'),
       },
       {
-        id: "toggle-theme",
-        label: themeMode === "dark" ? t("titleBar.toLight") : t("titleBar.toDark"),
-        shortcut: "⌘⇧L",
-        group: t("palette.group.theme"),
-        run: () => setThemeMode(themeMode === "dark" ? "light" : "dark"),
+        id: 'toggle-theme',
+        label: themeMode === 'dark' ? t('titleBar.toLight') : t('titleBar.toDark'),
+        shortcut: '⌘⇧L',
+        group: t('palette.group.theme'),
+        run: () => setThemeMode(themeMode === 'dark' ? 'light' : 'dark'),
       },
       {
-        id: "open-desktop-bridge",
-        label: t("palette.action.openDesktopBridge"),
-        hint: t("palette.action.openDesktopBridgeHint"),
-        group: t("palette.group.view"),
+        id: 'open-desktop-bridge',
+        label: t('palette.action.openDesktopBridge'),
+        hint: t('palette.action.openDesktopBridgeHint'),
+        group: t('palette.group.view'),
         run: () => {
           // The inspector drawer is gated on contextOpen (not toolsOpen) —
           // open it exclusively, then select the Desktop tab.
@@ -155,20 +156,20 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
           setTerminalOpen(false);
           setToolsOpen(false);
           setContextOpen(true);
-          setInspectorTab("desktop");
+          setInspectorTab('desktop');
         },
       },
       {
-        id: "open-settings",
-        label: t("palette.action.openSettings"),
-        shortcut: "⌘,",
-        group: t("palette.group.view"),
+        id: 'open-settings',
+        label: t('palette.action.openSettings'),
+        shortcut: '⌘,',
+        group: t('palette.group.view'),
         run: () => setSettingsOpen(true),
       },
       {
-        id: "cancel-run",
-        label: t("palette.action.cancelRun"),
-        group: t("palette.group.run"),
+        id: 'cancel-run',
+        label: t('palette.action.cancelRun'),
+        group: t('palette.group.run'),
         run: () => {
           // Read activeRunId via streamStore at action-fire time — the value
           // declared further down the component isn't in scope here yet, and
@@ -187,39 +188,39 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
-      if (meta && e.key.toLowerCase() === "k") {
+      if (meta && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((v) => !v);
-      } else if (meta && e.key.toLowerCase() === "b") {
+      } else if (meta && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setSidebarCollapsed((v) => !v);
-      } else if (meta && e.key === ",") {
+      } else if (meta && e.key === ',') {
         e.preventDefault();
         setSettingsOpen(true);
-      } else if (meta && e.shiftKey && e.key.toLowerCase() === "l") {
+      } else if (meta && e.shiftKey && e.key.toLowerCase() === 'l') {
         e.preventDefault();
-        setThemeMode((t) => (t === "dark" ? "light" : "dark"));
-      } else if (meta && e.key.toLowerCase() === "n" && !e.shiftKey) {
+        setThemeMode((t) => (t === 'dark' ? 'light' : 'dark'));
+      } else if (meta && e.key.toLowerCase() === 'n' && !e.shiftKey) {
         // Don't steal the system "New Window" shortcut if the user is in a
         // textarea (composer). Only act when focus is elsewhere.
-        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
-        if (tag !== "textarea" && tag !== "input") {
+        const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+        if (tag !== 'textarea' && tag !== 'input') {
           e.preventDefault();
           handleTabCreate();
         }
-      } else if (meta && e.key.toLowerCase() === "f" && !e.shiftKey) {
+      } else if (meta && e.key.toLowerCase() === 'f' && !e.shiftKey) {
         // ⌘F — search recent conversations (advertised in the ⌘K palette).
         e.preventDefault();
         focusHistorySearch();
-      } else if (e.key === "/" && !meta && !e.altKey) {
+      } else if (e.key === '/' && !meta && !e.altKey) {
         // "/" — focus the composer (advertised in the ⌘K palette), but never
         // while the user is typing in another field.
-        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
-        if (tag !== "textarea" && tag !== "input") {
+        const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+        if (tag !== 'textarea' && tag !== 'input') {
           e.preventDefault();
           focusComposer();
         }
-      } else if (e.key === "Escape") {
+      } else if (e.key === 'Escape') {
         // Esc closes whatever transient surface is open: palette first, then
         // any open dock panel (Preview / Context / Terminal / Tools). Without
         // this, Esc did nothing for the panels — they could only be closed by
@@ -235,26 +236,26 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
         }
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paletteOpen, previewOpen, contextOpen, terminalOpen, toolsOpen]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || busyRunner !== null) return;
-      if (event.key === "1") {
+      if (event.key === '1') {
         event.preventDefault();
-        switchMode("standard");
+        switchMode('standard');
       }
-      if (event.key === "2") {
+      if (event.key === '2') {
         event.preventDefault();
-        switchMode("coding");
+        switchMode('coding');
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [busyRunner, drafts, mode, switchMode]);
 
   return { paletteActions };

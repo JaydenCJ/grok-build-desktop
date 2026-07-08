@@ -8,9 +8,5 @@ import { getPendingSubmitCount, subscribePendingSubmit } from '../lib/streamStor
  * between pressing Enter and the first Tauri event arriving.
  */
 export function usePendingSubmitCount(): number {
-  return useSyncExternalStore(
-    subscribePendingSubmit,
-    getPendingSubmitCount,
-    () => 0,
-  );
+  return useSyncExternalStore(subscribePendingSubmit, getPendingSubmitCount, () => 0);
 }

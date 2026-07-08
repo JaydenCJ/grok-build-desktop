@@ -1,35 +1,36 @@
 // Shared app-level types and runtime type guards.
-import type { ToolRun } from "../lib/grok";
+import type { ToolRun } from '../lib/grok';
 
-export type Mode = "standard" | "coding";
+export type Mode = 'standard' | 'coding';
 export type Runner =
-  | "grok"
-  | "shell"
-  | "browser"
-  | "absorb"
-  | "doctor"
-  | "inspect"
-  | "models"
-  | "mcp"
-  | "mcp-doctor"
-  | "plugins"
-  | "sessions";
-export type ActionPolicy = "review" | "patch" | "autopilot";
-export type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions" | "desktop";
-export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
-export type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
-export type PermissionMode = "default" | "acceptEdits" | "auto" | "dontAsk" | "plan";
-export type ThemeMode = "dark" | "light";
-export type DockPosition = "right" | "bottom";
+  | 'grok'
+  | 'shell'
+  | 'browser'
+  | 'absorb'
+  | 'doctor'
+  | 'inspect'
+  | 'models'
+  | 'mcp'
+  | 'mcp-doctor'
+  | 'plugins'
+  | 'sessions';
+export type ActionPolicy = 'review' | 'patch' | 'autopilot';
+export type InspectorTab =
+  'context' | 'skills' | 'mcp' | 'agents' | 'plugins' | 'hooks' | 'permissions' | 'desktop';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'dontAsk' | 'plan';
+export type ThemeMode = 'dark' | 'light';
+export type DockPosition = 'right' | 'bottom';
 export type GrokModelId =
-  | "grok-build"
-  | "grok-build-0.1"
-  | "grok-4.3"
-  | "grok-4.3-latest"
-  | "grok-latest"
-  | "grok-4-fast-reasoning"
-  | "grok-4-fast-non-reasoning"
-  | "custom";
+  | 'grok-build'
+  | 'grok-build-0.1'
+  | 'grok-4.3'
+  | 'grok-4.3-latest'
+  | 'grok-latest'
+  | 'grok-4-fast-reasoning'
+  | 'grok-4-fast-non-reasoning'
+  | 'custom';
 
 export type ToolStatus = {
   id: string;
@@ -81,11 +82,11 @@ export type GrokAuthStatus = {
   configPath: string;
 };
 
-export type ChatMessageStatus = "streaming" | "done" | "error" | "stopped";
+export type ChatMessageStatus = 'streaming' | 'done' | 'error' | 'stopped';
 
 export type ChatMessage = {
   id: string;
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   ts: number;
   status?: ChatMessageStatus;
@@ -123,81 +124,100 @@ export type HistoryRow = HistoryPreview & {
 };
 
 export function isMode(value: unknown): value is Mode {
-  return value === "coding" || value === "standard";
+  return value === 'coding' || value === 'standard';
 }
 
 export function isActionPolicy(value: unknown): value is ActionPolicy {
-  return value === "review" || value === "patch" || value === "autopilot";
+  return value === 'review' || value === 'patch' || value === 'autopilot';
 }
 
 export function isInspectorTab(value: unknown): value is InspectorTab {
   return (
-    value === "context" ||
-    value === "skills" ||
-    value === "mcp" ||
-    value === "agents" ||
-    value === "plugins" ||
-    value === "hooks" ||
-    value === "permissions" ||
-    value === "desktop"
+    value === 'context' ||
+    value === 'skills' ||
+    value === 'mcp' ||
+    value === 'agents' ||
+    value === 'plugins' ||
+    value === 'hooks' ||
+    value === 'permissions' ||
+    value === 'desktop'
   );
 }
 
 export function isEffortLevel(value: unknown): value is EffortLevel {
-  return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
+  return (
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+  );
 }
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return value === "off" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
+  return (
+    value === 'off' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+  );
 }
 
 export function isGrokModelId(value: unknown): value is GrokModelId {
   return (
-    value === "grok-build" ||
-    value === "grok-build-0.1" ||
-    value === "grok-4.3" ||
-    value === "grok-4.3-latest" ||
-    value === "grok-latest" ||
-    value === "grok-4-fast-reasoning" ||
-    value === "grok-4-fast-non-reasoning" ||
-    value === "custom"
+    value === 'grok-build' ||
+    value === 'grok-build-0.1' ||
+    value === 'grok-4.3' ||
+    value === 'grok-4.3-latest' ||
+    value === 'grok-latest' ||
+    value === 'grok-4-fast-reasoning' ||
+    value === 'grok-4-fast-non-reasoning' ||
+    value === 'custom'
   );
 }
 
 export function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "default" || value === "acceptEdits" || value === "auto" || value === "dontAsk" || value === "plan";
+  return (
+    value === 'default' ||
+    value === 'acceptEdits' ||
+    value === 'auto' ||
+    value === 'dontAsk' ||
+    value === 'plan'
+  );
 }
 
 export function isThemeMode(value: unknown): value is ThemeMode {
-  return value === "dark" || value === "light";
+  return value === 'dark' || value === 'light';
 }
 
 export function isDockPosition(value: unknown): value is DockPosition {
-  return value === "right" || value === "bottom";
+  return value === 'right' || value === 'bottom';
 }
 
 export function isToolRun(value: unknown): value is ToolRun {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== 'object') return false;
   const run = value as Partial<ToolRun>;
   return (
-    typeof run.ok === "boolean" &&
-    typeof run.command === "string" &&
-    typeof run.cwd === "string" &&
-    (typeof run.exit_code === "number" || run.exit_code === null) &&
-    typeof run.duration_ms === "number" &&
-    typeof run.timed_out === "boolean" &&
-    typeof run.output === "string" &&
-    typeof run.stderr === "string"
+    typeof run.ok === 'boolean' &&
+    typeof run.command === 'string' &&
+    typeof run.cwd === 'string' &&
+    (typeof run.exit_code === 'number' || run.exit_code === null) &&
+    typeof run.duration_ms === 'number' &&
+    typeof run.timed_out === 'boolean' &&
+    typeof run.output === 'string' &&
+    typeof run.stderr === 'string'
   );
 }
 
 export function isChatMessage(value: unknown): value is ChatMessage {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== 'object') return false;
   const message = value as Partial<ChatMessage>;
   return (
-    typeof message.id === "string" &&
-    (message.role === "user" || message.role === "assistant") &&
-    typeof message.content === "string" &&
-    typeof message.ts === "number"
+    typeof message.id === 'string' &&
+    (message.role === 'user' || message.role === 'assistant') &&
+    typeof message.content === 'string' &&
+    typeof message.ts === 'number'
   );
 }

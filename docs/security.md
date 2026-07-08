@@ -37,7 +37,7 @@ Key decisions:
   bootstrap scripts at build time; nothing else may run.
 - **`style-src 'self' 'unsafe-inline'`** — the codebase uses React `style={}`
   props (governed by `style-src-attr`, which falls back to `style-src`), so
-  inline *styles* stay allowed. This is a deliberate trade-off: inline style
+  inline _styles_ stay allowed. This is a deliberate trade-off: inline style
   abuse is a cosmetic/exfiltration-lite primitive, not code execution, and
   `connect-src` still pins where the page can send data.
 - **Fonts are bundled** — Geist and JetBrains Mono ship via

@@ -23,7 +23,7 @@ function config(overrides: Partial<GrokRunConfig> = {}): GrokRunConfig {
 /** Value of the flag that immediately follows `flag` in args, or null. */
 function flagValue(args: string[], flag: string): string | null {
   const index = args.indexOf(flag);
-  return index >= 0 ? args[index + 1] ?? null : null;
+  return index >= 0 ? (args[index + 1] ?? null) : null;
 }
 
 describe('buildGrokRules', () => {
@@ -55,9 +55,13 @@ describe('buildGrokArgs', () => {
 
   it('omits reasoning-effort when off and maps max to xhigh', () => {
     expect(buildGrokArgs(config({ reasoningEffort: 'off' }))).not.toContain('--reasoning-effort');
-    expect(flagValue(buildGrokArgs(config({ reasoningEffort: 'high' })), '--reasoning-effort')).toBe('high');
+    expect(
+      flagValue(buildGrokArgs(config({ reasoningEffort: 'high' })), '--reasoning-effort'),
+    ).toBe('high');
     // "max" is NOT a valid grok value — it must be translated, never sent raw.
-    expect(flagValue(buildGrokArgs(config({ reasoningEffort: 'max' })), '--reasoning-effort')).toBe('xhigh');
+    expect(flagValue(buildGrokArgs(config({ reasoningEffort: 'max' })), '--reasoning-effort')).toBe(
+      'xhigh',
+    );
   });
 
   it('maps autopilot to --always-approve and suppresses --permission-mode', () => {

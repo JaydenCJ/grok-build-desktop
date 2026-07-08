@@ -21,8 +21,20 @@ function seedTabs() {
   window.localStorage.setItem(
     tabsStorageKey,
     JSON.stringify([
-      { id: 't1', name: 'alpha', cwd: '/a', createdAt: 1, messages: [message('m100', 'fix the login flake')] },
-      { id: 't2', name: 'beta', cwd: '/b', createdAt: 2, messages: [message('m200', 'write release notes')] },
+      {
+        id: 't1',
+        name: 'alpha',
+        cwd: '/a',
+        createdAt: 1,
+        messages: [message('m100', 'fix the login flake')],
+      },
+      {
+        id: 't2',
+        name: 'beta',
+        cwd: '/b',
+        createdAt: 2,
+        messages: [message('m200', 'write release notes')],
+      },
     ]),
   );
   window.localStorage.setItem(tabsActiveKey, 't1');
@@ -74,7 +86,13 @@ function Harness() {
         busyRunner={null}
         refreshStatuses={() => {}}
         runDoctor={() => {}}
-        grokToolStatus={{ id: 'grok', label: 'Grok Build', command: 'grok', installed: true, detail: '' }}
+        grokToolStatus={{
+          id: 'grok',
+          label: 'Grok Build',
+          command: 'grok',
+          installed: true,
+          detail: '',
+        }}
         isGrokReady
         activeModel="grok-build"
         statusLabel="Connected"
@@ -90,7 +108,9 @@ beforeEach(() => {
 });
 
 function historyRow(title: RegExp | string) {
-  return screen.getByRole('button', { name: new RegExp(typeof title === 'string' ? title : title.source) });
+  return screen.getByRole('button', {
+    name: new RegExp(typeof title === 'string' ? title : title.source),
+  });
 }
 
 describe('Sidebar conversations list', () => {
@@ -134,9 +154,7 @@ describe('Sidebar right-click actions', () => {
     fireEvent.contextMenu(historyRow('write release notes'));
     const menu = await screen.findByRole('menu');
     await user.click(within(menu).getByRole('menuitem', { name: /Delete conversation/ }));
-    await waitFor(() =>
-      expect(screen.queryByText('write release notes')).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText('write release notes')).not.toBeInTheDocument());
     expect(screen.getByText('fix the login flake')).toBeInTheDocument();
   });
 

@@ -39,9 +39,7 @@ export async function readFileSafe(
 ): Promise<string | null> {
   if (!hasTauri()) return null;
   try {
-    return (
-      (await invoke<string | null>('read_file_safe', { cwd, path, maxBytes })) ?? null
-    );
+    return (await invoke<string | null>('read_file_safe', { cwd, path, maxBytes })) ?? null;
   } catch (err) {
     console.warn('[grok-desktop] read_file_safe failed', err);
     return null;
