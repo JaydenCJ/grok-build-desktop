@@ -89,7 +89,7 @@
   color: var(--text-1);
   background: var(--bg-0);
   font-family:
-    "Geist", "Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system,
+    "Geist Variable", "Geist", "Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "cv11", "ss01", "ss03";
   font-size: 13px;
@@ -3626,7 +3626,7 @@ button.status-cluster.status-action:disabled {
 }
 
 .streaming-raw {
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono Variable", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   font-size: 13px;
   color: var(--grok-text-2);
 }
@@ -3648,7 +3648,7 @@ button.status-cluster.status-action:disabled {
   border-radius: 10px;
   background: var(--grok-bg-1);
   border: 1px solid var(--grok-border-1);
-  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono Variable", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   font-size: 12.5px;
   line-height: 1.55;
   margin: 8px 0;

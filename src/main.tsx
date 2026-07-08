@@ -1,5 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+// Bundled variable fonts (family names "Geist Variable" and
+// "JetBrains Mono Variable") — replaces the Google Fonts <link> so the app
+// works offline and the CSP can drop remote style/font origins.
+import "@fontsource-variable/geist";
+import "@fontsource-variable/jetbrains-mono";
 import App from "./App";
 
 const STORAGE_KEY_PREFIX = "grok-desktop-";
