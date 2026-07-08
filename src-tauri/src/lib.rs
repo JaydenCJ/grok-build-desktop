@@ -46,11 +46,6 @@ use tauri::Manager;
 use crate::runs::db::Db;
 use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
 
-#[cfg(unix)]
-extern "C" {
-    fn setpgid(pid: i32, pgid: i32) -> i32;
-}
-
 #[derive(Serialize)]
 struct ToolStatus {
     id: String,
@@ -333,11 +328,11 @@ fn prepare_child_process(command: &mut Command) {
     #[cfg(unix)]
     unsafe {
         command.pre_exec(|| {
-            if setpgid(0, 0) == 0 {
-                Ok(())
-            } else {
-                Err(std::io::Error::last_os_error())
-            }
+            // Become the leader of a new process group so we can kill
+            // descendants — same pattern as runs/process.rs::spawn.
+            nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            Ok(())
         });
     }
 }
@@ -1405,8 +1400,8 @@ fn collect_tool_statuses() -> Vec<ToolStatus> {
 /// Run a blocking ToolRun-producing body on the blocking pool. Commands
 /// declared without `async` execute on the MAIN thread in Tauri 2, so a
 /// long-running synchronous body (shell command, python script, dialog)
-/// freezes the entire window for its duration. This is the same pattern
-/// `inspect_grok_environment` and friends already use.
+/// freezes the entire window for its duration. `command_label` names the
+/// command in the error ToolRun if the blocking task itself fails to join.
 async fn run_blocking_tool(
     command_label: &str,
     task: impl FnOnce() -> ToolRun + Send + 'static,
@@ -1482,7 +1477,7 @@ async fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
 async fn inspect_grok_environment(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok inspect", move || {
         run_external_command(
             &program,
             vec!["inspect".to_string()],
@@ -1492,25 +1487,12 @@ async fn inspect_grok_environment(cwd: Option<String>) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok inspect".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_models() -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok models", move || {
         run_external_command(
             &program,
             vec!["models".to_string()],
@@ -1520,26 +1502,13 @@ async fn list_grok_models() -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok models".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_mcp(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp list", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "list".to_string()],
@@ -1549,26 +1518,13 @@ async fn list_grok_mcp(cwd: Option<String>) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn doctor_grok_mcp(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp doctor", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "doctor".to_string()],
@@ -1578,19 +1534,6 @@ async fn doctor_grok_mcp(cwd: Option<String>) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp doctor".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 /// Add (or update) an MCP server: `grok mcp add <name> --command <cmd> --args …`
@@ -1642,30 +1585,17 @@ async fn grok_mcp_add(
         argv.push("--type".into());
         argv.push(t);
     }
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp add", move || {
         run_external_command(&program, argv, None, command_timeout_secs(30), true)
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp add".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 /// Remove a configured MCP server: `grok mcp remove <name>`.
 #[tauri::command]
 async fn grok_mcp_remove(name: String) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp remove", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "remove".to_string(), name],
@@ -1675,26 +1605,13 @@ async fn grok_mcp_remove(name: String) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp remove".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_plugins(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok plugin list", move || {
         run_external_command(
             &program,
             vec!["plugin".to_string(), "list".to_string()],
@@ -1704,26 +1621,13 @@ async fn list_grok_plugins(cwd: Option<String>) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok plugin list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_sessions(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok sessions list", move || {
         run_external_command(
             &program,
             vec!["sessions".to_string(), "list".to_string()],
@@ -1733,19 +1637,6 @@ async fn list_grok_sessions(cwd: Option<String>) -> ToolRun {
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok sessions list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]

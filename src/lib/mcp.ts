@@ -4,21 +4,10 @@
 // remove`. This module wraps those commands and ships a curated catalog of
 // popular community servers so the user can one-click install them.
 import { invoke } from '@tauri-apps/api/core';
+import type { ToolRun } from './grok';
+import { hasTauriRuntime as hasTauri } from './runtime';
 
-export interface ToolRun {
-  ok: boolean;
-  command: string;
-  cwd: string;
-  exit_code: number | null;
-  duration_ms: number;
-  timed_out: boolean;
-  output: string;
-  stderr: string;
-}
-
-function hasTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
+export type { ToolRun };
 
 export async function listMcpServers(cwd?: string): Promise<ToolRun | null> {
   if (!hasTauri()) return null;
