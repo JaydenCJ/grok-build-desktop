@@ -51,7 +51,8 @@ import {
 } from "lucide-react";
 import { upsertPrompt } from "./lib/prompts";
 import "./App.css";
-import { cancelRun } from "./lib/grok";
+import { cancelRun, type ToolRun } from "./lib/grok";
+import { hasTauriRuntime } from "./lib/runtime";
 import { streamStore } from "./lib/streamStore";
 import { MessageList, type MessageRef } from "./components/MessageList";
 import { Composer, type ComposerHandle } from "./components/Composer";
@@ -110,17 +111,6 @@ type ModeMeta = {
   shortcut: string;
   placeholder: string;
   defaultPrompt: string;
-};
-
-type ToolRun = {
-  ok: boolean;
-  command: string;
-  cwd: string;
-  exit_code: number | null;
-  duration_ms: number;
-  timed_out: boolean;
-  output: string;
-  stderr: string;
 };
 
 type StaticPreviewFile = {
@@ -469,10 +459,6 @@ const grokOptimizationRules = [
   "Expose Best-of-N, Memory, and Subagents as explicit engine controls",
   "Send repo path, workflow, approvals, ecosystem, and verification contract",
 ];
-
-function hasTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 function readJsonStorage<T>(key: string, fallback: T): T {
   try {
@@ -967,6 +953,16 @@ function App() {
     return () => window.clearTimeout(t);
   }, [sessionNotice]);
 
+  // Stop a run, surfacing failures. A bare `void cancelRun(...)` swallowed
+  // backend rejections (queue lock, run already gone, IPC error) as unhandled
+  // promise rejections — Stop could silently do nothing while the run kept
+  // streaming.
+  function stopRun(runId: string) {
+    cancelRun(runId).catch((error) => {
+      setSessionNotice(`Stop failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
   const statusMap = useMemo(
     () => Object.fromEntries(statuses.map((status) => [status.id, status])),
     [statuses],
@@ -1344,7 +1340,7 @@ function App() {
         onClick: () => clearRunHistory(),
       },
       ...(grokIsRunning && activeRunId
-        ? [{ label: "Stop current run", danger: true, onClick: () => void cancelRun(activeRunId) }]
+        ? [{ label: "Stop current run", danger: true, onClick: () => stopRun(activeRunId) }]
         : []),
       { label: "Settings…", separator: true, onClick: () => setSettingsOpen(true) },
     );
@@ -1552,13 +1548,10 @@ function App() {
   // The user turn is EXACTLY what the user typed. grok-build already ships a
   // strong coding system prompt, so durable behavioural guidance is appended at
   // the system level via `--rules` (see buildGrokRules) instead of bolting a
-  // 25-line preamble onto every user turn. That keeps the model on-task, makes
-  // the chat bubble an exact mirror of the request, and avoids fighting
+  // preamble onto every user turn. That keeps the model on-task, makes the
+  // chat bubble an exact mirror of the request, and avoids fighting
   // grok-build's own prompt. Operational settings (effort/reasoning/best-of-n/
   // permission/web/subagents) ride as real CLI flags — never echoed as prose.
-  function buildPromptWithPreamble(raw: string): string {
-    return raw;
-  }
 
   // Durable, system-level guidance for grok-build, passed via `--rules` (grok
   // appends it to the agent's own system prompt — verified the model honours
@@ -1592,11 +1585,10 @@ function App() {
     appendMessage({
       id: userMessageId,
       role: "user",
-      // Show what the user ACTUALLY typed, not the wrapped prompt. In coding
-      // mode buildPromptWithPreamble prepends a long "Professional Coding
-      // Session" preamble for grok's benefit — that belongs in the request,
-      // not in the chat bubble. rawText is the clean original; fall back to
-      // prompt only for callers that don't pass it.
+      // Show what the user ACTUALLY typed, not the sent prompt. The Composer
+      // appends expanded @-mention file contents for grok's benefit — that
+      // belongs in the request, not in the chat bubble. rawText is the clean
+      // original; fall back to prompt only for callers that don't pass it.
       content: info.rawText ?? info.prompt,
       ts: now,
       meta: { workflow: mode === "coding" ? codingWorkflow : "chat" },
@@ -2087,7 +2079,7 @@ function App() {
     // CRITICAL: drive the `data-theme` attribute, not just the `theme-*`
     // className. The legacy palette (--app-bg, --panel, …) flips via the
     // `.app-shell.theme-light` class, but the v0.4.0 mono tokens
-    // (--bg-0..5, --text-1..4, used by TabBar / CommandPalette / FilePicker /
+    // (--bg-0..5, --text-1..4, used by CommandPalette / FilePicker /
     // TraceTimeline) flip via the `[data-theme="light"]` attribute selector.
     // Without this line the new components stay dark in light mode — that's
     // what produced the black block behind the tab strip.
@@ -2209,7 +2201,7 @@ function App() {
           // declared further down the component isn't in scope here yet, and
           // listing it as a dep would create a TDZ error during render.
           const snap = streamStore.getActiveRunSnapshot();
-          if (snap?.id) void cancelRun(snap.id);
+          if (snap?.id) stopRun(snap.id);
         },
       },
     ];
@@ -2439,26 +2431,6 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busyRunner, drafts, mode]);
-
-  const conversationScrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-  useEffect(() => {
-    const node = conversationScrollRef.current;
-    if (!node) return;
-    const onScroll = () => {
-      const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
-      stickToBottomRef.current = distanceFromBottom < 80;
-    };
-    node.addEventListener("scroll", onScroll, { passive: true });
-    return () => node.removeEventListener("scroll", onScroll);
-  }, []);
-  useEffect(() => {
-    const node = conversationScrollRef.current;
-    if (!node) return;
-    if (stickToBottomRef.current) {
-      node.scrollTop = node.scrollHeight;
-    }
-  }, [messages]);
 
   const [historyFilter, setHistoryFilter] = useState("");
   const historySearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -3039,7 +3011,7 @@ function App() {
             {grokIsRunning && activeRunId ? (
               <button
                 className="primary-run"
-                onClick={() => void cancelRun(activeRunId)}
+                onClick={() => stopRun(activeRunId)}
                 type="button"
                 title="Stop the current run"
               >
@@ -3093,7 +3065,9 @@ function App() {
                 stay reachable from the HISTORY sidebar (which aggregates
                 across sessions). The tabs state machinery is retained purely
                 as the per-session history store. */}
-            <div className="conversation-scroll" ref={conversationScrollRef}>
+            {/* Scroll position is owned by MessageList's Virtuoso instance —
+                this div only provides the flex sizing for it. */}
+            <div className="conversation-scroll">
               {messages.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-state-head">
@@ -3184,7 +3158,6 @@ function App() {
                 ref={composerRef}
                 cwd={codingCwd}
                 argsBuilder={buildGrokArgs}
-                promptWrapper={buildPromptWithPreamble}
                 initialValue={drafts[mode] || defaultDrafts[mode]}
                 placeholder={modeCopy[mode].placeholder}
                 onTextChange={(text) => {
@@ -3303,7 +3276,7 @@ function App() {
                 {grokIsRunning && activeRunId ? (
                   <button
                     className="mini-run"
-                    onClick={() => void cancelRun(activeRunId)}
+                    onClick={() => stopRun(activeRunId)}
                     type="button"
                     title="Stop run"
                   >
