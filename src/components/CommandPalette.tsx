@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 export interface PaletteAction {
   id: string;
@@ -32,6 +33,11 @@ export function CommandPalette({ open, actions, onClose }: Props) {
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  // Focus trap: focus lands on the search input on open, Tab/Shift+Tab cycle
+  // inside the palette, Escape closes, focus returns to the opener on close.
+  useModalFocus(open, shellRef, { initialFocus: inputRef, onEscape: onClose });
 
   // Keep the highlighted row visible — the list scrolls (max 60vh) and the
   // catalogue is longer than the viewport, so arrow-nav could select a row
@@ -42,16 +48,12 @@ export function CommandPalette({ open, actions, onClose }: Props) {
       ?.scrollIntoView({ block: 'nearest' });
   }, [highlight]);
 
-  // Reset query + focus when palette opens.
+  // Reset the query when the palette opens (focus is handled by the trap).
   useEffect(() => {
     if (open) {
       setQuery('');
       setHighlight(0);
-      // Wait a tick so the input is mounted before focusing.
-      const t = window.setTimeout(() => inputRef.current?.focus(), 0);
-      return () => window.clearTimeout(t);
     }
-    return undefined;
   }, [open]);
 
   const filtered = useMemo(() => {
@@ -87,7 +89,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
       aria-label="Command palette"
       onClick={onClose}
     >
-      <div className="palette-shell" onClick={(e) => e.stopPropagation()}>
+      <div className="palette-shell" ref={shellRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="palette-search-row">
           <span className="palette-search-glyph" aria-hidden>⌕</span>
           <input
@@ -115,10 +117,8 @@ export function CommandPalette({ open, actions, onClose }: Props) {
                 e.preventDefault();
                 const pick = filtered[highlight];
                 if (pick) run(pick);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                onClose();
               }
+              // Escape is handled by the useModalFocus trap.
             }}
           />
           <span className="palette-search-kbd">esc</span>
