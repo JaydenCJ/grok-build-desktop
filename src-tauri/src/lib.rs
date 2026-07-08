@@ -189,8 +189,16 @@ fn verbose_grok_stderr() -> bool {
     )
 }
 
+fn redact_env_pair(pair: &str) -> String {
+    match pair.split_once('=') {
+        Some((key, _)) => format!("{key}=<redacted>"),
+        None => "<redacted>".to_string(),
+    }
+}
+
 fn command_line(program: &str, args: &[String]) -> String {
     let mut redact_next = false;
+    let mut redact_next_env = false;
     let suffix = args
         .iter()
         .map(|arg| {
@@ -199,12 +207,28 @@ fn command_line(program: &str, args: &[String]) -> String {
                 return "<prompt>".to_string();
             }
 
+            // `--env KEY=VALUE` pairs (grok mcp add) can carry API tokens;
+            // the echoed command line is persisted (session_state.json,
+            // localStorage), so never echo the value.
+            if redact_next_env {
+                redact_next_env = false;
+                return redact_env_pair(arg);
+            }
+
             if arg == "-p" || arg == "--single" {
                 redact_next = true;
             }
 
+            if arg == "--env" {
+                redact_next_env = true;
+            }
+
             if arg.starts_with("--single=") {
                 return "--single=<prompt>".to_string();
+            }
+
+            if let Some(pair) = arg.strip_prefix("--env=") {
+                return format!("--env={}", redact_env_pair(pair));
             }
 
             if arg.contains(' ') {
@@ -743,7 +767,33 @@ fn asset_path(root: &PathBuf, canonical_root: &PathBuf, reference: &str) -> Opti
     }
 }
 
-fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+/// Per-asset and total byte budgets for the preview inliner. Every inlined
+/// asset lands in a single srcDoc string shipped over IPC, so unbounded reads
+/// of project-local JS/CSS (e.g. a bundled multi-hundred-MB artifact) would
+/// produce a giant payload and hang the UI. Oversized assets keep their
+/// original tag (same outcome as an unreadable file) and a marker comment is
+/// appended so the user can tell why the preview is partial.
+const PREVIEW_ASSET_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const PREVIEW_TOTAL_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+fn read_asset_within_budget(path: PathBuf, used: &mut u64, skipped: &mut bool) -> Option<String> {
+    let size = fs::metadata(&path).ok()?.len();
+    if size > PREVIEW_ASSET_MAX_BYTES || *used + size > PREVIEW_TOTAL_MAX_BYTES {
+        *skipped = true;
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    *used += size;
+    Some(text)
+}
+
+fn inline_stylesheets(
+    mut html: String,
+    root: &PathBuf,
+    canonical_root: &PathBuf,
+    used: &mut u64,
+    skipped: &mut bool,
+) -> String {
     let mut cursor = 0;
     while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<link") {
         let start = cursor + relative_start;
@@ -766,7 +816,7 @@ fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf
             cursor = end;
             continue;
         };
-        let Ok(css) = fs::read_to_string(path) else {
+        let Some(css) = read_asset_within_budget(path, used, skipped) else {
             cursor = end;
             continue;
         };
@@ -777,7 +827,13 @@ fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf
     html
 }
 
-fn inline_scripts(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+fn inline_scripts(
+    mut html: String,
+    root: &PathBuf,
+    canonical_root: &PathBuf,
+    used: &mut u64,
+    skipped: &mut bool,
+) -> String {
     let mut cursor = 0;
     while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<script") {
         let start = cursor + relative_start;
@@ -801,7 +857,7 @@ fn inline_scripts(mut html: String, root: &PathBuf, canonical_root: &PathBuf) ->
             cursor = close_end;
             continue;
         };
-        let Ok(script) = fs::read_to_string(path) else {
+        let Some(script) = read_asset_within_budget(path, used, skipped) else {
             cursor = close_end;
             continue;
         };
@@ -816,8 +872,16 @@ fn inline_static_assets(html: String, root: &PathBuf) -> String {
     let Ok(canonical_root) = root.canonicalize() else {
         return html;
     };
-    let html = inline_stylesheets(html, root, &canonical_root);
-    inline_scripts(html, root, &canonical_root)
+    let mut used: u64 = 0;
+    let mut skipped = false;
+    let html = inline_stylesheets(html, root, &canonical_root, &mut used, &mut skipped);
+    let mut html = inline_scripts(html, root, &canonical_root, &mut used, &mut skipped);
+    if skipped {
+        html.push_str(
+            "\n<!-- grok-desktop preview: some local assets were too large to inline and were skipped -->",
+        );
+    }
+    html
 }
 
 fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
@@ -2094,4 +2158,60 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_line_redacts_prompt_and_env_values() {
+        let args = vec![
+            "mcp".to_string(),
+            "add".to_string(),
+            "github".to_string(),
+            "--env".to_string(),
+            "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_secret".to_string(),
+            "--env=BRAVE_API_KEY=abc123".to_string(),
+            "-p".to_string(),
+            "hello world".to_string(),
+        ];
+        let line = command_line("grok", &args);
+        assert!(!line.contains("ghp_secret"), "env value leaked: {line}");
+        assert!(!line.contains("abc123"), "env= value leaked: {line}");
+        assert!(line.contains("--env GITHUB_PERSONAL_ACCESS_TOKEN=<redacted>"));
+        assert!(line.contains("--env=BRAVE_API_KEY=<redacted>"));
+        assert!(line.contains("-p <prompt>"));
+    }
+
+    #[test]
+    fn command_line_keeps_ordinary_args() {
+        let args = vec!["models".to_string(), "--cwd".to_string(), "/tmp/x".to_string()];
+        assert_eq!(command_line("grok", &args), "grok models --cwd /tmp/x");
+    }
+
+    #[test]
+    fn inline_static_assets_skips_oversized_assets() {
+        let root = env::temp_dir().join(format!("grok-preview-test-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&root).expect("create temp preview root");
+        fs::write(root.join("small.js"), "console.log('ok');").expect("write small.js");
+        fs::write(
+            root.join("big.js"),
+            "x".repeat((PREVIEW_ASSET_MAX_BYTES + 1) as usize),
+        )
+        .expect("write big.js");
+
+        let html = concat!(
+            r#"<script src="small.js"></script>"#,
+            r#"<script src="big.js"></script>"#
+        )
+        .to_string();
+        let out = inline_static_assets(html, &root);
+
+        assert!(out.contains("console.log('ok');"), "small asset must inline");
+        assert!(out.contains(r#"src="big.js""#), "oversized asset must keep its tag");
+        assert!(out.contains("too large to inline"), "must append truncation marker");
+
+        fs::remove_dir_all(&root).ok();
+    }
 }
