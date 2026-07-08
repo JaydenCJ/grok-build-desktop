@@ -64,8 +64,26 @@ class StreamStore {
   patchRun = (id: string, patch: Partial<RunSnapshot>): void => {
     const cur = this.runs.get(id) ?? this.makeEmpty(id);
     this.runs.set(id, { ...cur, ...patch });
+    this.evictSettled();
     this.notify();
   };
+
+  /**
+   * Cap memory over long sessions: snapshots (full text + rendered HTML) were
+   * kept for every run forever, so a desktop session that stays open for days
+   * grew without bound. Settled runs beyond the cap are dropped oldest-first
+   * (Map preserves insertion order); live runs are never evicted. Messages
+   * persist their own final text, so an evicted run re-renders from that.
+   */
+  private evictSettled(maxRuns = 100): void {
+    if (this.runs.size <= maxRuns) return;
+    for (const [id, snap] of this.runs) {
+      if (this.runs.size <= maxRuns) break;
+      if (snap.state === 'running' || snap.state === 'queued') continue;
+      this.runs.delete(id);
+      this.html.delete(id);
+    }
+  }
 
   setHtml = (id: string, html: string): void => {
     this.html.set(id, html);
