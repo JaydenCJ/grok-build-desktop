@@ -38,6 +38,9 @@ interface Props {
     prompt: string;
     rawText: string;
   }) => void;
+  /** Called when enqueueing fails (backend missing, grok error). The typed
+   *  text stays in the textarea so nothing is lost. */
+  onSubmitError?: (message: string) => void;
   /**
    * Optional draft-persistence callback. **Called only on blur and on unmount**,
    * not on every keystroke — passing it as a per-keystroke listener would force
@@ -82,6 +85,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     initialValue,
     placeholder,
     onEnqueued,
+    onSubmitError,
     onTextChange,
   }: Props,
   outerRef,
@@ -211,6 +215,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
     } catch (err) {
       console.error('[grok-desktop] enqueue failed', err);
+      // Surface the failure — a silent console.error left the user staring
+      // at a composer that "ate" Enter with no visible reaction.
+      onSubmitError?.(err instanceof Error ? err.message : String(err));
     } finally {
       notePendingSubmitEnd();
       setSubmitting(false);

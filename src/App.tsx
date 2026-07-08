@@ -3162,6 +3162,20 @@ function App() {
                   setDrafts((current) => ({ ...current, [mode]: text }));
                 }}
                 onEnqueued={handleEnqueued}
+                onSubmitError={(text) => {
+                  // Show the failure in the conversation itself — the typed
+                  // prompt stays in the composer, so this reads as "your send
+                  // didn't go through, here's why".
+                  appendMessage({
+                    id: makeId("a"),
+                    role: "assistant",
+                    content: hasTauriRuntime()
+                      ? `Couldn't start the run — ${text}`
+                      : "Couldn't start the run — native commands need the desktop app (npm run tauri:dev).",
+                    ts: Date.now(),
+                    status: "error",
+                  });
+                }}
               />
               <div className="composer-footer">
                 <select
