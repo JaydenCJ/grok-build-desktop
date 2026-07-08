@@ -66,669 +66,79 @@ import { ToolsPage } from "./components/ToolsPage";
 import { ContextMenu, type ContextMenuState, type ContextMenuItem } from "./components/ContextMenu";
 import { useActiveRun } from "./hooks/useActiveRun";
 
-type Mode = "standard" | "coding";
-type Runner =
-  | "grok"
-  | "shell"
-  | "browser"
-  | "absorb"
-  | "doctor"
-  | "inspect"
-  | "models"
-  | "mcp"
-  | "mcp-doctor"
-  | "plugins"
-  | "sessions";
-type ActionPolicy = "review" | "patch" | "autopilot";
-type InspectorTab = "context" | "skills" | "mcp" | "agents" | "plugins" | "hooks" | "permissions" | "desktop";
-type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
-type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
-type PermissionMode = "default" | "acceptEdits" | "auto" | "dontAsk" | "plan";
-type ThemeMode = "dark" | "light";
-type DockPosition = "right" | "bottom";
-type GrokModelId =
-  | "grok-build"
-  | "grok-build-0.1"
-  | "grok-4.3"
-  | "grok-4.3-latest"
-  | "grok-latest"
-  | "grok-4-fast-reasoning"
-  | "grok-4-fast-non-reasoning"
-  | "custom";
-
-type ToolStatus = {
-  id: string;
-  label: string;
-  command: string;
-  installed: boolean;
-  detail: string;
-};
-
-type ModeMeta = {
-  title: string;
-  subtitle: string;
-  shortcut: string;
-  placeholder: string;
-  defaultPrompt: string;
-};
-
-type StaticPreviewFile = {
-  name: string;
-  path: string;
-  kind: string;
-  size: number;
-};
-
-type StaticPreview = {
-  available: boolean;
-  root: string;
-  entryPath: string;
-  html: string;
-  files: StaticPreviewFile[];
-  detail: string;
-  updatedAt: number;
-};
-
-type GrokAuthStatus = {
-  installed: boolean;
-  authenticated: boolean;
-  apiKeyPresent: boolean;
-  cachedLoginPresent: boolean;
-  configPresent: boolean;
-  version: string;
-  detail: string;
-  loginCommand: string;
-  deviceLoginCommand: string;
-  installCommand: string;
-  npmInstallCommand: string;
-  authPath: string;
-  configPath: string;
-};
-
-type ChatMessageStatus = "streaming" | "done" | "error" | "stopped";
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  ts: number;
-  status?: ChatMessageStatus;
-  runId?: string;
-  meta?: {
-    model?: string;
-    durationMs?: number;
-    exitCode?: number | null;
-    workflow?: string;
-  };
-};
-
-type SessionState = {
-  mode?: Mode;
-  drafts?: Partial<Record<Mode, string>>;
-  codingCwd?: string;
-  shellCommand?: string;
-  actionPolicy?: ActionPolicy;
-  codingWorkflow?: string;
-  themeMode?: ThemeMode;
-  lastRun?: ToolRun | null;
-  history?: ToolRun[];
-  messages?: ChatMessage[];
-};
-
-const modeCopy = {
-  standard: {
-    title: "Grok Chat",
-    subtitle: "quick questions and product thinking",
-    shortcut: "⌘1",
-    placeholder: "Ask Grok for product thinking, research, or an engineering explanation...",
-    defaultPrompt: "Answer clearly, keep the response practical, and suggest when this should move into Coding Mode.",
-  },
-  coding: {
-    title: "Grok Code",
-    subtitle: "repository, terminal, reviews, implementation",
-    shortcut: "⌘2",
-    placeholder: "Review this repo, implement a narrow fix, debug a test, refactor a module...",
-    defaultPrompt: "Inspect the current repository like a senior engineer. Identify the most useful next code action and include exact commands to verify it.",
-  },
-} satisfies Record<Mode, ModeMeta>;
-
-const storageKeys = {
-  mode: "grok-desktop-mode",
-  drafts: "grok-desktop-mode-drafts",
-  codingCwd: "grok-desktop-coding-cwd",
-  shellCommand: "grok-desktop-shell-command",
-  actionPolicy: "grok-desktop-action-policy",
-  codingWorkflow: "grok-desktop-coding-workflow",
-  lastRun: "grok-desktop-last-run",
-  runHistory: "grok-desktop-run-history",
-  messages: "grok-desktop-messages-v1",
-  themeMode: "grok-desktop-theme-mode",
-  cleanLayoutTheme: "grok-desktop-clean-layout-theme-v1",
-  cleanComposer: "grok-desktop-clean-composer-v3",
-  dockPosition: "grok-desktop-dock-position",
-  inspectorTab: "grok-desktop-inspector-tab",
-  modelPreset: "grok-desktop-model-preset",
-  customModel: "grok-desktop-custom-model",
-  effortLevel: "grok-desktop-effort-level",
-  reasoningEffort: "grok-desktop-reasoning-effort",
-  permissionMode: "grok-desktop-permission-mode",
-  bestOfN: "grok-desktop-best-of-n",
-  experimentalMemory: "grok-desktop-experimental-memory",
-  webSearchEnabled: "grok-desktop-web-search-enabled",
-  subagentsEnabled: "grok-desktop-subagents-enabled",
-  selfCheck: "grok-desktop-self-check",
-  safeRuntimeDefaults: "grok-desktop-safe-runtime-defaults-v3",
-  // History-organization (keyed by prompt/message id):
-  historyPinned: "grok-desktop-history-pinned-v1",
-  historyLabels: "grok-desktop-history-labels-v1",
-  historyGroups: "grok-desktop-history-groups-v1",
-  historyArchived: "grok-desktop-history-archived-v1",
-  historyDeleted: "grok-desktop-history-deleted-v1",
-};
-
-// Small localStorage helpers for the history-organization maps/sets.
-function loadIdSet(key: string): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const arr = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(arr) ? arr.map(String) : []);
-  } catch {
-    return new Set();
-  }
-}
-function loadIdMap(key: string): Record<string, string> {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const obj = raw ? (JSON.parse(raw) as unknown) : {};
-    return obj && typeof obj === "object" ? (obj as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-const defaultDrafts: Record<Mode, string> = {
-  standard: modeCopy.standard.defaultPrompt,
-  coding: modeCopy.coding.defaultPrompt,
-};
-
-const codingPresets = [
-  {
-    id: "analyze",
-    label: "Analyze",
-    description: "Architecture, risks, next moves",
-    prompt:
-      "Analyze this project as a senior engineer. Summarize the architecture, identify the most important correctness and maintainability risks, and recommend the smallest high-leverage next steps. Do not edit files yet.",
-  },
-  {
-    id: "implement",
-    label: "Implement",
-    description: "Small focused code change",
-    prompt:
-      "Find one focused improvement in this project, explain why it matters, make the smallest safe code change, and include verification commands.",
-  },
-  {
-    id: "review",
-    label: "Review",
-    description: "Bug-first code review",
-    prompt:
-      "Review the current repository or recent changes like a strict senior reviewer. Lead with bugs, regressions, missing tests, security risks, and maintainability issues. Include file paths and concrete fixes.",
-  },
-  {
-    id: "debug",
-    label: "Debug",
-    description: "Root cause and fix",
-    prompt:
-      "Investigate the reported issue. Read relevant files first, separate evidence from hypothesis, identify the root cause, then propose or apply the smallest fix with verification.",
-  },
-  {
-    id: "tests",
-    label: "Tests",
-    description: "Coverage and verification",
-    prompt:
-      "Inspect the test setup, identify the most valuable missing or failing test, add or propose the smallest useful test change, and include commands to run it.",
-  },
-  {
-    id: "refactor",
-    label: "Refactor",
-    description: "Behavior-preserving cleanup",
-    prompt:
-      "Inspect the current code for a small refactor that improves maintainability without changing behavior. Keep the change narrow and include verification steps.",
-  },
-];
-
-const actionPolicies: Record<
-  ActionPolicy,
-  { label: string; detail: string; risk: "none" | "low" | "high" }
-> = {
-  review: {
-    label: "Review only",
-    detail: "Read, reason, propose. No file edits unless asked.",
-    risk: "none",
-  },
-  patch: {
-    label: "Patch ready",
-    detail: "Produce exact changes and apply narrow safe edits with normal approvals.",
-    risk: "low",
-  },
-  autopilot: {
-    label: "Autopilot",
-    detail: "Auto-approves every tool call (--always-approve). Grok can edit files and run commands without asking. Use only in a sandbox or disposable checkout.",
-    risk: "high",
-  },
-};
-
-const effortLevels: Record<EffortLevel, { label: string; detail: string }> = {
-  low: { label: "Low", detail: "Fast triage and small answers" },
-  medium: { label: "Medium", detail: "Balanced repo reasoning" },
-  high: { label: "High", detail: "Default coding depth" },
-  xhigh: { label: "XHigh", detail: "Deep plans and refactors" },
-  max: { label: "Max", detail: "Most thorough Grok pass" },
-};
-
-const reasoningEfforts: Record<ReasoningEffort, { label: string; detail: string }> = {
-  off: { label: "Auto", detail: "Let Grok choose reasoning depth" },
-  low: { label: "Low", detail: "Fast reasoning pass" },
-  medium: { label: "Medium", detail: "Balanced reasoning" },
-  high: { label: "High", detail: "Harder code paths" },
-  xhigh: { label: "XHigh", detail: "Architecture and debugging" },
-  max: { label: "Max", detail: "Maximum reasoning budget" },
-};
-
-const grokModelPresets: Record<GrokModelId, { label: string; detail: string; defaultReasoning: ReasoningEffort }> = {
-  "grok-build": {
-    label: "grok-build",
-    detail: "Recommended Grok Build CLI coding agent",
-    defaultReasoning: "off",
-  },
-  "grok-build-0.1": {
-    label: "grok-build-0.1",
-    detail: "Pinned Grok Build API model",
-    defaultReasoning: "off",
-  },
-  "grok-4.3": {
-    label: "grok-4.3",
-    detail: "Flagship reasoning model for complex implementation",
-    defaultReasoning: "high",
-  },
-  "grok-4.3-latest": {
-    label: "grok-4.3-latest",
-    detail: "Latest Grok 4.3 alias when the CLI supports it",
-    defaultReasoning: "high",
-  },
-  "grok-latest": {
-    label: "grok-latest",
-    detail: "Follow the current xAI default alias",
-    defaultReasoning: "medium",
-  },
-  "grok-4-fast-reasoning": {
-    label: "grok-4-fast-reasoning",
-    detail: "Fast reasoning for iterative coding loops",
-    defaultReasoning: "medium",
-  },
-  "grok-4-fast-non-reasoning": {
-    label: "grok-4-fast-non-reasoning",
-    detail: "Fast edits and simple command work",
-    defaultReasoning: "off",
-  },
-  custom: {
-    label: "Custom",
-    detail: "Use any model ID accepted by your Grok CLI",
-    defaultReasoning: "off",
-  },
-};
-
-const permissionModes: Record<PermissionMode, { label: string; detail: string }> = {
-  default: { label: "Default", detail: "Use Grok CLI configured prompts and approvals" },
-  acceptEdits: { label: "Accept edits", detail: "Prefer quick edit approval for trusted changes" },
-  auto: { label: "Auto", detail: "Let Grok proceed through low-risk tool steps" },
-  dontAsk: { label: "Don't ask", detail: "Reduce prompts while keeping Grok Desktop safety context visible" },
-  plan: { label: "Plan", detail: "Plan-first behavior for larger or uncertain work" },
-};
-
-const inspectorTabs: { id: InspectorTab; label: string }[] = [
-  { id: "context", label: "Context" },
-  { id: "skills", label: "Skills" },
-  { id: "mcp", label: "MCP" },
-  { id: "agents", label: "Agents" },
-  { id: "plugins", label: "Plugins" },
-  { id: "hooks", label: "Hooks" },
-  { id: "permissions", label: "Perms" },
-  { id: "desktop", label: "Desktop" },
-];
-
-const defaultStatuses: ToolStatus[] = [
-  {
-    id: "grok",
-    label: "Grok Build",
-    command: "grok",
-    installed: false,
-    detail: "Not checked",
-  },
-];
-
-const primaryNavItems = [
-  { label: "New Session", meta: "Start fresh" },
-  { label: "Search", meta: "Find work" },
-  { label: "Tools", meta: "Skills and MCP" },
-  { label: "Settings", meta: "Preferences" },
-];
-
-type HistoryPreview = { id: string; title: string; detail: string; time: string };
-type HistoryRow = HistoryPreview & {
-  pinned: boolean;
-  group: string | null;
-  archived: boolean;
-  /** Last-activity timestamp (newest conversation sorts first). */
-  lastTs: number;
-  /** True when this is the conversation currently open. */
-  active: boolean;
-};
-
-// Brand mark — a constructed geometric "G" monogram (monoline grotesque,
-// matched to the app's Geist display face). Crisp and flat in-app so it stays
-// sharp at chip size and adapts to the theme-aware foreground; the dock icon
-// carries the richer graphite material. Same letterform everywhere → one
-// identity. Self-contained path (no font dependency for rasterized icons).
-function BrandGlyph({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden focusable="false">
-      <path
-        d="M18.5 8.2 A7.6 7.6 0 1 0 19.6 12 L13 12"
-        stroke="currentColor"
-        strokeWidth="2.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-const contextFiles = [
-  "README.md",
-  "src/App.tsx",
-  "src/lib/grok.ts",
-  "src-tauri/src/lib.rs",
-  "src-tauri/Cargo.toml",
-];
-
-const grokOptimizationRules = [
-  "Default to grok-build for agentic repository work",
-  "Use reasoning effort only when the selected model benefits from it",
-  "Keep web search available for version-sensitive docs",
-  "Expose Best-of-N, Memory, and Subagents as explicit engine controls",
-  "Send repo path, workflow, approvals, ecosystem, and verification contract",
-];
-
-function readJsonStorage<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function isMode(value: unknown): value is Mode {
-  return value === "coding" || value === "standard";
-}
-
-function isActionPolicy(value: unknown): value is ActionPolicy {
-  return value === "review" || value === "patch" || value === "autopilot";
-}
-
-function isInspectorTab(value: unknown): value is InspectorTab {
-  return (
-    value === "context" ||
-    value === "skills" ||
-    value === "mcp" ||
-    value === "agents" ||
-    value === "plugins" ||
-    value === "hooks" ||
-    value === "permissions" ||
-    value === "desktop"
-  );
-}
-
-function isEffortLevel(value: unknown): value is EffortLevel {
-  return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
-}
-
-function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return value === "off" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
-}
-
-function isGrokModelId(value: unknown): value is GrokModelId {
-  return (
-    value === "grok-build" ||
-    value === "grok-build-0.1" ||
-    value === "grok-4.3" ||
-    value === "grok-4.3-latest" ||
-    value === "grok-latest" ||
-    value === "grok-4-fast-reasoning" ||
-    value === "grok-4-fast-non-reasoning" ||
-    value === "custom"
-  );
-}
-
-function isPermissionMode(value: unknown): value is PermissionMode {
-  return value === "default" || value === "acceptEdits" || value === "auto" || value === "dontAsk" || value === "plan";
-}
-
-function isThemeMode(value: unknown): value is ThemeMode {
-  return value === "dark" || value === "light";
-}
-
-function isDockPosition(value: unknown): value is DockPosition {
-  return value === "right" || value === "bottom";
-}
-
-function isToolRun(value: unknown): value is ToolRun {
-  if (!value || typeof value !== "object") return false;
-  const run = value as Partial<ToolRun>;
-  return (
-    typeof run.ok === "boolean" &&
-    typeof run.command === "string" &&
-    typeof run.cwd === "string" &&
-    (typeof run.exit_code === "number" || run.exit_code === null) &&
-    typeof run.duration_ms === "number" &&
-    typeof run.timed_out === "boolean" &&
-    typeof run.output === "string" &&
-    typeof run.stderr === "string"
-  );
-}
-
-function storedRunHistory() {
-  return readJsonStorage<unknown[]>(storageKeys.runHistory, [])
-    .filter(isToolRun)
-    .slice(0, 6);
-}
-
-function storedLastRun() {
-  const run = readJsonStorage<unknown | null>(storageKeys.lastRun, null);
-  return isToolRun(run) ? run : null;
-}
-
-function isChatMessage(value: unknown): value is ChatMessage {
-  if (!value || typeof value !== "object") return false;
-  const message = value as Partial<ChatMessage>;
-  return (
-    typeof message.id === "string" &&
-    (message.role === "user" || message.role === "assistant") &&
-    typeof message.content === "string" &&
-    typeof message.ts === "number"
-  );
-}
-
-function storedMessages() {
-  return readJsonStorage<unknown[]>(storageKeys.messages, [])
-    .filter(isChatMessage)
-    .slice(-120);
-}
-
-// Multi-session tab storage. Hoisted to module scope so boot-time hydration
-// helpers below can read the same keys the App component persists to.
-const tabsStorageKey = "grok-desktop-tabs-v1";
-const tabsActiveKey = "grok-desktop-tabs-active-v1";
-
-/**
- * Boot hydration: read the active tab's messages from the tabs store. The tabs
- * store persists immediately on every change while the flat
- * `grok-desktop-messages-v1` key is written on a 300ms debounce with no flush
- * on quit — so after a quick tab-switch-and-quit the flat key can hold ANOTHER
- * conversation's messages. Making tabs authoritative at boot prevents the
- * mount-time tab-mirror effect from merging two conversations. Returns null
- * when no tabs are stored (legacy/first run) so callers can fall back to the
- * flat key.
- */
-function storedActiveTabMessages(): ChatMessage[] | null {
-  try {
-    const raw = window.localStorage.getItem(tabsStorageKey);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    const activeId = window.localStorage.getItem(tabsActiveKey);
-    const active = parsed.find((t) => t && t.id === activeId) ?? parsed[0];
-    if (!active || !Array.isArray(active.messages)) return null;
-    return (active.messages as unknown[]).filter(isChatMessage).slice(-120);
-  } catch {
-    return null;
-  }
-}
-
-function makeId(prefix: string) {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
-}
-
-function parseAvailableModels(output: string): string[] {
-  if (!output.trim()) return [];
-  const lines = output.split("\n");
-  const start = lines.findIndex((line) => /available models/i.test(line));
-  if (start < 0) return [];
-  const models = new Set<string>();
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*[\*\-•]\s*([\w./:@-]+)/);
-    if (!match) {
-      if (models.size > 0) break;
-      continue;
-    }
-    models.add(match[1]);
-  }
-  return Array.from(models);
-}
-
-function timeLabel(ts: number) {
-  try {
-    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function nativeUnavailable(command: string): ToolRun {
-  return {
-    ok: false,
-    command,
-    cwd: "",
-    exit_code: null,
-    duration_ms: 0,
-    timed_out: false,
-    output: "",
-    stderr:
-      "Native commands are available in the Tauri desktop window. Run npm run tauri:dev.",
-  };
-}
-
-function formatOutput(run: ToolRun | null, terminalOutput = "") {
-  if (terminalOutput.trim()) return terminalOutput;
-  if (!run) return "No run yet.";
-  const output = run.output.trim();
-  const stderr = run.stderr.trim();
-
-  if (!output && !stderr) return "Command finished without output.";
-  if (run.ok && output) return output;
-  if (!output) return stderr;
-  if (!stderr) return output;
-  return `${output}\n\nstderr:\n${stderr}`;
-}
-
-function terminalClass(line: string) {
-  if (line.startsWith("[err]")) return "terminal-line terminal-error";
-  if (line.startsWith("[sys]")) return "terminal-line terminal-system";
-  if (
-    line.includes("```") ||
-    line.includes("diff --git") ||
-    line.includes("@@") ||
-    /^\[out\]\s{2,}/.test(line) ||
-    /^\[out\]\s[+\-]/.test(line)
-  ) {
-    return "terminal-line terminal-code";
-  }
-  return "terminal-line";
-}
-
-function terminalText(line: string) {
-  return line.replace(/^\[(out|err|sys)\]\s?/, "");
-}
-
-function terminalPrefix(line: string) {
-  const match = line.match(/^\[(out|err|sys)\]/);
-  return match?.[1] ?? "out";
-}
-
-function statusTone(status?: ToolStatus) {
-  if (!status) return "idle";
-  return status.installed ? "ready" : "missing";
-}
-
-function grokInspectCount(output: string, label: string) {
-  const match = output.match(new RegExp(`${label} \\((\\d+)\\)`));
-  return match?.[1] ?? "0";
-}
-
-function grokInspectSection(output: string, label: string, limit = 8) {
-  const lines = output.split("\n");
-  const headings = [
-    "Skills",
-    "Agents",
-    "Plugins",
-    "Marketplaces",
-    "MCP Servers",
-    "Hooks",
-    "Config Sources",
-    "Permissions",
-  ];
-  const start = lines.findIndex((line) => line.trim().startsWith(`${label} (`));
-  if (start < 0) return [];
-
-  const items: string[] = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const trimmed = lines[index].trim();
-    if (!trimmed) {
-      if (items.length > 0) break;
-      continue;
-    }
-
-    if (headings.some((heading) => trimmed.startsWith(`${heading} (`))) break;
-
-    const item = trimmed
-      .replace(/^[-•]\s*/, "")
-      .replace(/^\d+[.)]\s*/, "")
-      .replace(/\s+/g, " ");
-    if (item) items.push(item);
-    if (items.length >= limit) break;
-  }
-
-  return items;
-}
-
-function grokInspectLine(output: string, pattern: RegExp, fallback = "unknown") {
-  return output.match(pattern)?.[1]?.trim() ?? fallback;
-}
-
-function grokTrust(output: string) {
-  const match = output.match(/Project trusted:\s*(yes|no)/i);
-  return match?.[1] ?? "unknown";
-}
+import {
+  isActionPolicy,
+  isChatMessage,
+  isDockPosition,
+  isEffortLevel,
+  isGrokModelId,
+  isInspectorTab,
+  isMode,
+  isPermissionMode,
+  isReasoningEffort,
+  isThemeMode,
+  isToolRun,
+  type ActionPolicy,
+  type ChatMessage,
+  type ChatMessageStatus,
+  type DockPosition,
+  type EffortLevel,
+  type GrokAuthStatus,
+  type GrokModelId,
+  type HistoryPreview,
+  type HistoryRow,
+  type InspectorTab,
+  type Mode,
+  type PermissionMode,
+  type ReasoningEffort,
+  type Runner,
+  type SessionState,
+  type StaticPreview,
+  type ThemeMode,
+  type ToolStatus,
+} from "./app/types";
+import {
+  actionPolicies,
+  codingPresets,
+  contextFiles,
+  defaultDrafts,
+  defaultStatuses,
+  effortLevels,
+  grokModelPresets,
+  grokOptimizationRules,
+  inspectorTabs,
+  modeCopy,
+  permissionModes,
+  primaryNavItems,
+  reasoningEfforts,
+  storageKeys,
+  tabsActiveKey,
+  tabsStorageKey,
+} from "./app/constants";
+import {
+  loadIdMap,
+  loadIdSet,
+  storedActiveTabMessages,
+  storedLastRun,
+  storedMessages,
+  storedRunHistory,
+} from "./app/storage";
+import {
+  formatOutput,
+  grokInspectCount,
+  grokInspectLine,
+  grokInspectSection,
+  grokTrust,
+  makeId,
+  nativeUnavailable,
+  parseAvailableModels,
+  statusTone,
+  terminalClass,
+  terminalPrefix,
+  terminalText,
+  timeLabel,
+} from "./app/format";
+import { BrandGlyph } from "./components/BrandGlyph";
 
 function App() {
   const [mode, setMode] = useState<Mode>(() => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,7 +11,20 @@ for (const scriptName of ["build", "check", "test", "doctor", "mac:build", "mac:
   assert.ok(packageJson.scripts?.[scriptName], `missing package script: ${scriptName}`);
 }
 
-const app = read("src/App.tsx");
+// App.tsx was split into focused modules (src/app/* + components/ + hooks/).
+// Guards that assert on "the app source" search the combined text so the
+// intent (feature X exists and is wired) survives mechanical extraction.
+const appModules = [
+  "src/App.tsx",
+  ...readdirSync(join(root, "src/app")).map((f) => `src/app/${f}`),
+  ...readdirSync(join(root, "src/hooks"))
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => `src/hooks/${f}`),
+  ...readdirSync(join(root, "src/components"))
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `src/components/${f}`),
+];
+const app = appModules.map(read).join("\n");
 for (const label of [
   "Grok Desktop",
   "Grok Code",
