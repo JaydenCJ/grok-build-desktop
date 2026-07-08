@@ -46,7 +46,12 @@ export interface SettingsPageProps {
   setExperimentalMemory: (v: boolean) => void;
 
   // Permissions & policy
-  actionPolicyOptions: { value: string; label: string; detail: string; risk: 'none' | 'low' | 'high' }[];
+  actionPolicyOptions: {
+    value: string;
+    label: string;
+    detail: string;
+    risk: 'none' | 'low' | 'high';
+  }[];
   actionPolicy: string;
   setActionPolicy: (v: string) => void;
   permissionOptions: Option[];
@@ -78,7 +83,15 @@ const NAV: { id: SettingsSection; label: string }[] = [
 ];
 
 /** A labelled row: title + description on the left, control on the right. */
-function Row({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Row({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="set-row">
       <div className="set-row-text">
@@ -90,7 +103,15 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
   return (
     <button
       type="button"
@@ -122,8 +143,19 @@ export function SettingsPage(props: SettingsPageProps) {
   if (!open) return null;
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t('settings.title')} onClick={onClose}>
-      <div className="settings-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="settings-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('settings.title')}
+      onClick={onClose}
+    >
+      <div
+        className="settings-modal"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <aside className="settings-nav">
           <div className="settings-nav-head">{t('settings.title')}</div>
           {NAV.map((n) => (
@@ -139,7 +171,13 @@ export function SettingsPage(props: SettingsPageProps) {
         </aside>
 
         <div className="settings-content">
-          <button ref={closeRef} type="button" className="settings-close" aria-label={t('settings.close')} onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className="settings-close"
+            aria-label={t('settings.close')}
+            onClick={onClose}
+          >
             ✕
           </button>
 
@@ -165,13 +203,24 @@ export function SettingsPage(props: SettingsPageProps) {
                 </div>
               </Row>
               <Row title={t('settings.dockPosition')} hint={t('settings.dockPositionHint')}>
-                <select aria-label={t('settings.dockPosition')} value={props.dockPosition} onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}>
+                <select
+                  aria-label={t('settings.dockPosition')}
+                  value={props.dockPosition}
+                  onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}
+                >
                   <option value="right">{t('common.right')}</option>
                   <option value="bottom">{t('common.bottom')}</option>
                 </select>
               </Row>
-              <Row title={t('settings.collapseSidebarTitle')} hint={t('settings.collapseSidebarHint')}>
-                <Toggle checked={props.sidebarCollapsed} onChange={props.setSidebarCollapsed} label={t('settings.collapseSidebar')} />
+              <Row
+                title={t('settings.collapseSidebarTitle')}
+                hint={t('settings.collapseSidebarHint')}
+              >
+                <Toggle
+                  checked={props.sidebarCollapsed}
+                  onChange={props.setSidebarCollapsed}
+                  label={t('settings.collapseSidebar')}
+                />
               </Row>
             </section>
           ) : null}
@@ -179,8 +228,15 @@ export function SettingsPage(props: SettingsPageProps) {
           {section === 'model' ? (
             <section className="settings-section">
               <h2>{t('settings.nav.model')}</h2>
-              <Row title={t('settings.model')} hint={t('settings.modelHint', { model: props.activeModel })}>
-                <select aria-label={t('settings.model')} value={props.modelPreset} onChange={(e) => props.onModelPreset(e.currentTarget.value)}>
+              <Row
+                title={t('settings.model')}
+                hint={t('settings.modelHint', { model: props.activeModel })}
+              >
+                <select
+                  aria-label={t('settings.model')}
+                  value={props.modelPreset}
+                  onChange={(e) => props.onModelPreset(e.currentTarget.value)}
+                >
                   {props.modelOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -199,7 +255,11 @@ export function SettingsPage(props: SettingsPageProps) {
                 </Row>
               ) : null}
               <Row title={t('settings.effort')} hint={t('settings.effortHint')}>
-                <select aria-label={t('settings.effort')} value={props.effortLevel} onChange={(e) => props.setEffortLevel(e.currentTarget.value)}>
+                <select
+                  aria-label={t('settings.effort')}
+                  value={props.effortLevel}
+                  onChange={(e) => props.setEffortLevel(e.currentTarget.value)}
+                >
                   {props.effortOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -208,7 +268,11 @@ export function SettingsPage(props: SettingsPageProps) {
                 </select>
               </Row>
               <Row title={t('settings.reasoningEffort')} hint={t('settings.reasoningEffortHint')}>
-                <select aria-label={t('settings.reasoningEffort')} value={props.reasoningEffort} onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}>
+                <select
+                  aria-label={t('settings.reasoningEffort')}
+                  value={props.reasoningEffort}
+                  onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}
+                >
                   {props.reasoningOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -223,11 +287,17 @@ export function SettingsPage(props: SettingsPageProps) {
                   min={1}
                   max={5}
                   value={props.bestOfN}
-                  onChange={(e) => props.setBestOfN(Math.max(1, Math.min(5, Number(e.currentTarget.value) || 1)))}
+                  onChange={(e) =>
+                    props.setBestOfN(Math.max(1, Math.min(5, Number(e.currentTarget.value) || 1)))
+                  }
                 />
               </Row>
               <Row title={t('settings.memoryTitle')} hint={t('settings.memoryHint')}>
-                <Toggle checked={props.experimentalMemory} onChange={props.setExperimentalMemory} label={t('settings.memoryToggle')} />
+                <Toggle
+                  checked={props.experimentalMemory}
+                  onChange={props.setExperimentalMemory}
+                  label={t('settings.memoryToggle')}
+                />
               </Row>
             </section>
           ) : null}
@@ -236,7 +306,11 @@ export function SettingsPage(props: SettingsPageProps) {
             <section className="settings-section">
               <h2>{t('settings.nav.permissions')}</h2>
               <Row title={t('settings.actionPolicy')} hint={t('settings.actionPolicyHint')}>
-                <select aria-label={t('settings.actionPolicy')} value={props.actionPolicy} onChange={(e) => props.setActionPolicy(e.currentTarget.value)}>
+                <select
+                  aria-label={t('settings.actionPolicy')}
+                  value={props.actionPolicy}
+                  onChange={(e) => props.setActionPolicy(e.currentTarget.value)}
+                >
                   {props.actionPolicyOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -255,7 +329,11 @@ export function SettingsPage(props: SettingsPageProps) {
                 );
               })()}
               <Row title={t('settings.permissionMode')} hint={t('settings.permissionModeHint')}>
-                <select aria-label={t('settings.permissionMode')} value={props.permissionMode} onChange={(e) => props.setPermissionMode(e.currentTarget.value)}>
+                <select
+                  aria-label={t('settings.permissionMode')}
+                  value={props.permissionMode}
+                  onChange={(e) => props.setPermissionMode(e.currentTarget.value)}
+                >
                   {props.permissionOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -264,13 +342,25 @@ export function SettingsPage(props: SettingsPageProps) {
                 </select>
               </Row>
               <Row title={t('settings.webSearch')} hint={t('settings.webSearchHint')}>
-                <Toggle checked={props.webSearchEnabled} onChange={props.setWebSearchEnabled} label={t('settings.webSearch')} />
+                <Toggle
+                  checked={props.webSearchEnabled}
+                  onChange={props.setWebSearchEnabled}
+                  label={t('settings.webSearch')}
+                />
               </Row>
               <Row title={t('settings.subagents')} hint={t('settings.subagentsHint')}>
-                <Toggle checked={props.subagentsEnabled} onChange={props.setSubagentsEnabled} label={t('settings.subagents')} />
+                <Toggle
+                  checked={props.subagentsEnabled}
+                  onChange={props.setSubagentsEnabled}
+                  label={t('settings.subagents')}
+                />
               </Row>
               <Row title={t('settings.selfCheck')} hint={t('settings.selfCheckHint')}>
-                <Toggle checked={props.selfCheck} onChange={props.setSelfCheck} label={t('settings.selfCheck')} />
+                <Toggle
+                  checked={props.selfCheck}
+                  onChange={props.setSelfCheck}
+                  label={t('settings.selfCheck')}
+                />
               </Row>
             </section>
           ) : null}
@@ -301,7 +391,9 @@ export function SettingsPage(props: SettingsPageProps) {
                 <div className="set-about-mark">G</div>
                 <div>
                   <div className="set-about-name">{t('settings.aboutName')}</div>
-                  <div className="set-about-ver">{t('settings.aboutVersion', { version: props.appVersion })}</div>
+                  <div className="set-about-ver">
+                    {t('settings.aboutVersion', { version: props.appVersion })}
+                  </div>
                   <div className="set-about-grok">{props.grokVersionLine}</div>
                 </div>
               </div>

@@ -54,7 +54,13 @@ const I18nContext = createContext<I18nValue>({ locale: 'en', t });
  * locales exist, switching the `locale` prop re-renders consumers of
  * `useI18n()`.
  */
-export function I18nProvider({ locale = 'en', children }: { locale?: string; children: ReactNode }) {
+export function I18nProvider({
+  locale = 'en',
+  children,
+}: {
+  locale?: string;
+  children: ReactNode;
+}) {
   setLocale(locale);
   return <I18nContext.Provider value={{ locale, t }}>{children}</I18nContext.Provider>;
 }

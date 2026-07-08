@@ -140,7 +140,7 @@ try {
   console.log('e2e: ok');
 } catch (error) {
   process.exitCode = 1;
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
 } finally {
   shuttingDown = true;
   await browser?.close().catch(() => {});

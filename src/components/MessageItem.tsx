@@ -38,8 +38,7 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
     return null;
   }
 
-  const ended =
-    snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
+  const ended = snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
 
   // While the run is streaming, render the typewriter-paced raw text (smooth,
   // Claude-like cadence). Once it settles, swap to the fully-parsed markdown
@@ -61,7 +60,9 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
           queue moves on, leaving a silent empty bubble. */}
       {snap.state === 'failed' ? (
         <div className="message-error" role="alert">
-          {snap.error ? t('message.runFailedWithError', { error: snap.error }) : t('message.runFailed')}
+          {snap.error
+            ? t('message.runFailedWithError', { error: snap.error })
+            : t('message.runFailed')}
         </div>
       ) : null}
       {snap.state === 'cancelled' ? (

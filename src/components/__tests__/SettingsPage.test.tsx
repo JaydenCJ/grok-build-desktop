@@ -36,7 +36,12 @@ function makeProps(overrides: Partial<SettingsPageProps> = {}): SettingsPageProp
     setExperimentalMemory: vi.fn(),
     actionPolicyOptions: [
       { value: 'review', label: 'Review only', detail: 'Read only.', risk: 'none' },
-      { value: 'autopilot', label: 'Autopilot', detail: 'Auto-approves every tool call.', risk: 'high' },
+      {
+        value: 'autopilot',
+        label: 'Autopilot',
+        detail: 'Auto-approves every tool call.',
+        risk: 'high',
+      },
     ],
     actionPolicy: 'review',
     setActionPolicy: vi.fn(),

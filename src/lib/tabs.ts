@@ -20,8 +20,8 @@ export interface TabMessage {
 }
 
 export interface Tab {
-  id: string;          // uuid (v7-style timestamped)
-  name: string;        // user-editable, defaults to basename(cwd) or "Session N"
+  id: string; // uuid (v7-style timestamped)
+  name: string; // user-editable, defaults to basename(cwd) or "Session N"
   cwd: string;
   messages: TabMessage[];
   createdAt: number;

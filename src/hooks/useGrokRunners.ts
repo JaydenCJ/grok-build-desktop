@@ -4,14 +4,14 @@
 // Owns the busy flags, terminal lines, and result state. Extracted from
 // App.tsx unchanged — the only substitution is that opening the preview
 // panel goes through the onPreviewAvailable callback.
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { ToolRun } from "../lib/grok";
-import { hasTauriRuntime } from "../lib/runtime";
-import type { GrokAuthStatus, Runner, StaticPreview, ToolStatus } from "../app/types";
-import { defaultStatuses } from "../app/constants";
-import { nativeUnavailable, parseAvailableModels } from "../app/format";
-import { t } from "../i18n";
+import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { ToolRun } from '../lib/grok';
+import { hasTauriRuntime } from '../lib/runtime';
+import type { GrokAuthStatus, Runner, StaticPreview, ToolStatus } from '../app/types';
+import { defaultStatuses } from '../app/constants';
+import { nativeUnavailable, parseAvailableModels } from '../app/format';
+import { t } from '../i18n';
 
 export interface GrokRunnerDeps {
   codingCwd: string;
@@ -38,9 +38,9 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   } = deps;
 
   const [browserTask, setBrowserTask] = useState(
-    "Open https://example.com and report the main heading.",
+    'Open https://example.com and report the main heading.',
   );
-  const [repoPath, setRepoPath] = useState("");
+  const [repoPath, setRepoPath] = useState('');
   const [copyText, setCopyText] = useState(true);
   const [grokStatus, setGrokStatus] = useState<GrokAuthStatus | null>(null);
   const [statuses, setStatuses] = useState<ToolStatus[]>([]);
@@ -55,26 +55,26 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [folderPickerBusy, setFolderPickerBusy] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const [busyRunner, setBusyRunner] = useState<Runner | "status" | null>(null);
-  const [contextBusy, setContextBusy] = useState<"models" | "inspect" | null>(null);
+  const [busyRunner, setBusyRunner] = useState<Runner | 'status' | null>(null);
+  const [contextBusy, setContextBusy] = useState<'models' | 'inspect' | null>(null);
   async function refreshStatuses() {
-    setBusyRunner("status");
+    setBusyRunner('status');
     try {
       if (!hasTauriRuntime()) {
         setStatuses(defaultStatuses);
-        setLastRun(nativeUnavailable("web preview"));
+        setLastRun(nativeUnavailable('web preview'));
         return;
       }
-      setStatuses(await invoke<ToolStatus[]>("get_tool_statuses"));
+      setStatuses(await invoke<ToolStatus[]>('get_tool_statuses'));
     } catch (error) {
       setLastRun({
         ok: false,
-        command: "get_tool_statuses",
-        cwd: "",
+        command: 'get_tool_statuses',
+        cwd: '',
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -91,18 +91,18 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
           apiKeyPresent: false,
           cachedLoginPresent: false,
           configPresent: false,
-          version: "",
-          detail: "Grok status is available in the Tauri desktop window.",
-          loginCommand: "grok login",
-          deviceLoginCommand: "grok login --device-auth",
-          installCommand: "curl -fsSL https://x.ai/cli/install.sh | bash",
-          npmInstallCommand: "npm install -g @xai-official/grok",
-          authPath: "~/.grok/auth",
-          configPath: "~/.grok/config.toml",
+          version: '',
+          detail: 'Grok status is available in the Tauri desktop window.',
+          loginCommand: 'grok login',
+          deviceLoginCommand: 'grok login --device-auth',
+          installCommand: 'curl -fsSL https://x.ai/cli/install.sh | bash',
+          npmInstallCommand: 'npm install -g @xai-official/grok',
+          authPath: '~/.grok/auth',
+          configPath: '~/.grok/config.toml',
         });
         return;
       }
-      setGrokStatus(await invoke<GrokAuthStatus>("get_grok_auth_status"));
+      setGrokStatus(await invoke<GrokAuthStatus>('get_grok_auth_status'));
     } catch (error) {
       setGrokStatus({
         installed: false,
@@ -110,14 +110,14 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
         apiKeyPresent: false,
         cachedLoginPresent: false,
         configPresent: false,
-        version: "",
+        version: '',
         detail: error instanceof Error ? error.message : String(error),
-        loginCommand: "grok login",
-        deviceLoginCommand: "grok login --device-auth",
-        installCommand: "curl -fsSL https://x.ai/cli/install.sh | bash",
-        npmInstallCommand: "npm install -g @xai-official/grok",
-        authPath: "~/.grok/auth",
-        configPath: "~/.grok/config.toml",
+        loginCommand: 'grok login',
+        deviceLoginCommand: 'grok login --device-auth',
+        installCommand: 'curl -fsSL https://x.ai/cli/install.sh | bash',
+        npmInstallCommand: 'npm install -g @xai-official/grok',
+        authPath: '~/.grok/auth',
+        configPath: '~/.grok/config.toml',
       });
     }
   }
@@ -129,15 +129,15 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
         setStaticPreview({
           available: false,
           root: codingCwd,
-          entryPath: "",
-          previewUrl: "",
+          entryPath: '',
+          previewUrl: '',
           files: [],
-          detail: "Preview is available in the installed Grok Desktop app.",
+          detail: 'Preview is available in the installed Grok Desktop app.',
           updatedAt: Date.now(),
         });
         return;
       }
-      const preview = await invoke<StaticPreview>("get_static_preview", { cwd: codingCwd });
+      const preview = await invoke<StaticPreview>('get_static_preview', { cwd: codingCwd });
       setStaticPreview(preview);
       if (openWhenAvailable && preview.available) {
         onPreviewAvailable();
@@ -146,8 +146,8 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
       setStaticPreview({
         available: false,
         root: codingCwd,
-        entryPath: "",
-        previewUrl: "",
+        entryPath: '',
+        previewUrl: '',
         files: [],
         detail: error instanceof Error ? error.message : String(error),
         updatedAt: Date.now(),
@@ -158,20 +158,20 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function startGrokLogin(deviceAuth = false) {
-    setBusyRunner("grok");
+    setBusyRunner('grok');
     setTerminalLines([
-      `[sys] Opening Terminal for ${deviceAuth ? "device login" : "Grok setup"}.`,
-      "[sys] If Grok is missing, Terminal will ask before running the official installer.",
-      "[sys] Complete the official authorization, then return here and refresh status.",
+      `[sys] Opening Terminal for ${deviceAuth ? 'device login' : 'Grok setup'}.`,
+      '[sys] If Grok is missing, Terminal will ask before running the official installer.',
+      '[sys] Complete the official authorization, then return here and refresh status.',
     ]);
     try {
       if (!hasTauriRuntime()) {
-        const unavailable = nativeUnavailable("grok login");
+        const unavailable = nativeUnavailable('grok login');
         setTerminalLines((current) => [...current, `[err] ${unavailable.stderr}`]);
         recordRun(unavailable);
         return;
       }
-      const run = await invoke<ToolRun>("start_grok_login", {
+      const run = await invoke<ToolRun>('start_grok_login', {
         deviceAuth,
         cwd: codingCwd,
       });
@@ -183,12 +183,12 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
       setTerminalLines((current) => [...current, `[err] ${message}`]);
       recordRun({
         ok: false,
-        command: deviceAuth ? "grok login --device-auth" : "grok login",
+        command: deviceAuth ? 'grok login --device-auth' : 'grok login',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: message,
       });
     } finally {
@@ -197,15 +197,15 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function runShell() {
-    setBusyRunner("shell");
+    setBusyRunner('shell');
     setTerminalLines([]);
     try {
       if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("zsh -lc"));
+        recordRun(nativeUnavailable('zsh -lc'));
         return;
       }
       recordRun(
-        await invoke<ToolRun>("run_shell_command", {
+        await invoke<ToolRun>('run_shell_command', {
           command: shellCommand,
           cwd: codingCwd,
         }),
@@ -213,12 +213,12 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
     } catch (error) {
       recordRun({
         ok: false,
-        command: "zsh -lc",
+        command: 'zsh -lc',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -227,26 +227,26 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function refreshGrokEcosystem() {
-    setContextBusy("inspect");
+    setContextBusy('inspect');
     try {
       if (!hasTauriRuntime()) {
-        setEcosystemRun(nativeUnavailable("grok inspect"));
+        setEcosystemRun(nativeUnavailable('grok inspect'));
         return;
       }
       setEcosystemRun(
-        await invoke<ToolRun>("inspect_grok_environment", {
+        await invoke<ToolRun>('inspect_grok_environment', {
           cwd: codingCwd,
         }),
       );
     } catch (error) {
       setEcosystemRun({
         ok: false,
-        command: "grok inspect",
+        command: 'grok inspect',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -255,25 +255,25 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function refreshGrokModels() {
-    setContextBusy("models");
+    setContextBusy('models');
     try {
       if (!hasTauriRuntime()) {
-        setModelsRun(nativeUnavailable("grok models"));
+        setModelsRun(nativeUnavailable('grok models'));
         return;
       }
-      const run = await invoke<ToolRun>("list_grok_models");
+      const run = await invoke<ToolRun>('list_grok_models');
       setModelsRun(run);
       const parsed = parseAvailableModels(run.output);
       if (parsed.length > 0) setAvailableModels(parsed);
     } catch (error) {
       setModelsRun({
         ok: false,
-        command: "grok models",
+        command: 'grok models',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -283,21 +283,23 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
 
   async function pickFolder() {
     if (!hasTauriRuntime()) {
-      setSessionNotice(t("notices.folderPickerUnavailable"));
+      setSessionNotice(t('notices.folderPickerUnavailable'));
       return;
     }
     setFolderPickerBusy(true);
     try {
-      const next = await invoke<string | null>("pick_project_folder", {
+      const next = await invoke<string | null>('pick_project_folder', {
         initial: codingCwd || null,
       });
       if (next) {
         setCodingCwd(next);
-        setSessionNotice(t("notices.repoSet", { path: next }));
+        setSessionNotice(t('notices.repoSet', { path: next }));
       }
     } catch (error) {
       setSessionNotice(
-        t("notices.folderPickerFailed", { error: error instanceof Error ? error.message : String(error) }),
+        t('notices.folderPickerFailed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setFolderPickerBusy(false);
@@ -305,24 +307,24 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function refreshGrokMcp() {
-    setBusyRunner("mcp");
+    setBusyRunner('mcp');
     try {
       if (!hasTauriRuntime()) {
-        setMcpRun(nativeUnavailable("grok mcp list"));
+        setMcpRun(nativeUnavailable('grok mcp list'));
         return;
       }
-      const run = await invoke<ToolRun>("list_grok_mcp", { cwd: codingCwd });
+      const run = await invoke<ToolRun>('list_grok_mcp', { cwd: codingCwd });
       setMcpRun(run);
       recordRun(run);
     } catch (error) {
       const run = {
         ok: false,
-        command: "grok mcp list",
+        command: 'grok mcp list',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       };
       setMcpRun(run);
@@ -333,24 +335,24 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function doctorGrokMcp() {
-    setBusyRunner("mcp-doctor");
+    setBusyRunner('mcp-doctor');
     try {
       if (!hasTauriRuntime()) {
-        setMcpDoctorRun(nativeUnavailable("grok mcp doctor"));
+        setMcpDoctorRun(nativeUnavailable('grok mcp doctor'));
         return;
       }
-      const run = await invoke<ToolRun>("doctor_grok_mcp", { cwd: codingCwd });
+      const run = await invoke<ToolRun>('doctor_grok_mcp', { cwd: codingCwd });
       setMcpDoctorRun(run);
       recordRun(run);
     } catch (error) {
       const run = {
         ok: false,
-        command: "grok mcp doctor",
+        command: 'grok mcp doctor',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       };
       setMcpDoctorRun(run);
@@ -361,24 +363,24 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function refreshGrokPlugins() {
-    setBusyRunner("plugins");
+    setBusyRunner('plugins');
     try {
       if (!hasTauriRuntime()) {
-        setPluginsRun(nativeUnavailable("grok plugin list"));
+        setPluginsRun(nativeUnavailable('grok plugin list'));
         return;
       }
-      const run = await invoke<ToolRun>("list_grok_plugins", { cwd: codingCwd });
+      const run = await invoke<ToolRun>('list_grok_plugins', { cwd: codingCwd });
       setPluginsRun(run);
       recordRun(run);
     } catch (error) {
       const run = {
         ok: false,
-        command: "grok plugin list",
+        command: 'grok plugin list',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       };
       setPluginsRun(run);
@@ -389,24 +391,24 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function refreshGrokSessions() {
-    setBusyRunner("sessions");
+    setBusyRunner('sessions');
     try {
       if (!hasTauriRuntime()) {
-        setSessionsRun(nativeUnavailable("grok sessions list"));
+        setSessionsRun(nativeUnavailable('grok sessions list'));
         return;
       }
-      const run = await invoke<ToolRun>("list_grok_sessions", { cwd: codingCwd });
+      const run = await invoke<ToolRun>('list_grok_sessions', { cwd: codingCwd });
       setSessionsRun(run);
       recordRun(run);
     } catch (error) {
       const run = {
         ok: false,
-        command: "grok sessions list",
+        command: 'grok sessions list',
         cwd: codingCwd,
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       };
       setSessionsRun(run);
@@ -417,15 +419,15 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function runBrowser() {
-    setBusyRunner("browser");
+    setBusyRunner('browser');
     setTerminalLines([]);
     try {
       if (!hasTauriRuntime()) {
-        setLastRun(nativeUnavailable("browser-use"));
+        setLastRun(nativeUnavailable('browser-use'));
         return;
       }
       recordRun(
-        await invoke<ToolRun>("run_browser_task", {
+        await invoke<ToolRun>('run_browser_task', {
           task: browserTask,
           maxSteps: 10,
         }),
@@ -433,12 +435,12 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
     } catch (error) {
       recordRun({
         ok: false,
-        command: "browser-use",
-        cwd: "",
+        command: 'browser-use',
+        cwd: '',
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -447,15 +449,15 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function runAbsorbRepo() {
-    setBusyRunner("absorb");
+    setBusyRunner('absorb');
     setTerminalLines([]);
     try {
       if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("absorb-repo"));
+        recordRun(nativeUnavailable('absorb-repo'));
         return;
       }
       recordRun(
-        await invoke<ToolRun>("run_absorb_repo", {
+        await invoke<ToolRun>('run_absorb_repo', {
           repoPath,
           copyText,
         }),
@@ -463,12 +465,12 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
     } catch (error) {
       recordRun({
         ok: false,
-        command: "absorb-repo",
-        cwd: "",
+        command: 'absorb-repo',
+        cwd: '',
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -477,23 +479,23 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
   }
 
   async function runDoctor() {
-    setBusyRunner("doctor");
+    setBusyRunner('doctor');
     setTerminalLines([]);
     try {
       if (!hasTauriRuntime()) {
-        recordRun(nativeUnavailable("doctor"));
+        recordRun(nativeUnavailable('doctor'));
         return;
       }
-      recordRun(await invoke<ToolRun>("run_doctor"));
+      recordRun(await invoke<ToolRun>('run_doctor'));
     } catch (error) {
       recordRun({
         ok: false,
-        command: "doctor",
-        cwd: "",
+        command: 'doctor',
+        cwd: '',
         exit_code: null,
         duration_ms: 0,
         timed_out: false,
-        output: "",
+        output: '',
         stderr: error instanceof Error ? error.message : String(error),
       });
     } finally {

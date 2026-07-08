@@ -84,12 +84,17 @@ class StreamStore {
 
   private makeEmpty(id: string): RunSnapshot {
     return {
-      id, state: 'queued',
-      startedAt: null, endedAt: null,
-      thoughtChars: 0, textChars: 0,
-      lastEventType: null, text: '',
+      id,
+      state: 'queued',
+      startedAt: null,
+      endedAt: null,
+      thoughtChars: 0,
+      textChars: 0,
+      lastEventType: null,
+      text: '',
       htmlVersion: 0,
-      stopReason: null, error: null,
+      stopReason: null,
+      error: null,
       traces: [],
     };
   }
@@ -112,7 +117,7 @@ export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): v
     streamStore.patchRun(runId, {
       thoughtChars: (cur?.thoughtChars ?? 0) + data.length,
       lastEventType: 'thought',
-      state: cur?.state === 'queued' ? 'running' : cur?.state ?? 'running',
+      state: cur?.state === 'queued' ? 'running' : (cur?.state ?? 'running'),
     });
   } else if (event.type === 'text') {
     const { data } = event as Extract<GrokEvent, { type: 'text' }>;
@@ -121,18 +126,24 @@ export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): v
       text: nextText,
       textChars: (cur?.textChars ?? 0) + data.length,
       lastEventType: 'text',
-      state: cur?.state === 'queued' ? 'running' : cur?.state ?? 'running',
+      state: cur?.state === 'queued' ? 'running' : (cur?.state ?? 'running'),
     });
     // Lazy-import to keep the worker out of unit-test bundles (vitest jsdom).
-    import('./markdownWorker').then(({ scheduleMarkdownParse }) => {
-      scheduleMarkdownParse(runId, nextText);
-    }).catch(() => {/* worker unavailable; MessageItem will render raw text */});
+    import('./markdownWorker')
+      .then(({ scheduleMarkdownParse }) => {
+        scheduleMarkdownParse(runId, nextText);
+      })
+      .catch(() => {
+        /* worker unavailable; MessageItem will render raw text */
+      });
   } else if (event.type === 'end') {
     // Also schedule a final parse so the post-stream HTML matches the last text.
     if (cur?.text) {
-      import('./markdownWorker').then(({ scheduleMarkdownParse }) => {
-        scheduleMarkdownParse(runId, cur.text);
-      }).catch(() => {});
+      import('./markdownWorker')
+        .then(({ scheduleMarkdownParse }) => {
+          scheduleMarkdownParse(runId, cur.text);
+        })
+        .catch(() => {});
     }
     const e = event as Extract<GrokEvent, { type: 'end' }>;
     streamStore.patchRun(runId, {
@@ -170,7 +181,12 @@ export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): v
 
 export function applyStateChange(
   runId: string,
-  payload: { state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed'; startedAt?: number | null; endedAt?: number | null; error?: string | null }
+  payload: {
+    state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed';
+    startedAt?: number | null;
+    endedAt?: number | null;
+    error?: string | null;
+  },
 ): void {
   streamStore.patchRun(runId, {
     state: payload.state.toLowerCase() as RunState,
@@ -243,9 +259,7 @@ export async function attachTauriListeners(): Promise<void> {
           startedAt?: number;
           endedAt?: number;
           error?: string;
-        }>('grok-desktop://run-state-changed', (e) =>
-          applyStateChange(e.payload.runId, e.payload),
-        ),
+        }>('grok-desktop://run-state-changed', (e) => applyStateChange(e.payload.runId, e.payload)),
       );
       attached.push(
         await listen<{ active: string | null; queue: QueuedRunMeta[] }>(

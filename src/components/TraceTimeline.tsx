@@ -29,9 +29,7 @@ export function TraceTimeline({ runId }: Props) {
 
 function TraceCard({ trace }: { trace: TraceEvent }) {
   const [expanded, setExpanded] = useState(false);
-  const duration = trace.endedAt
-    ? formatDuration(trace.endedAt - trace.startedAt)
-    : null;
+  const duration = trace.endedAt ? formatDuration(trace.endedAt - trace.startedAt) : null;
   return (
     <div className={`trace-card trace-${trace.kind} trace-status-${trace.status}`}>
       <button
@@ -45,11 +43,7 @@ function TraceCard({ trace }: { trace: TraceEvent }) {
         </span>
         <span className="trace-label">{trace.label}</span>
         <span className="trace-meta">
-          {trace.status === 'running' ? (
-            <span className="trace-pulse">…</span>
-          ) : (
-            duration
-          )}
+          {trace.status === 'running' ? <span className="trace-pulse">…</span> : duration}
         </span>
       </button>
       {trace.detail ? <div className="trace-detail">{trace.detail}</div> : null}

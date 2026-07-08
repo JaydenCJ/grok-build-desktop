@@ -93,7 +93,9 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     description: 'Browse repos, read/write issues & PRs, search code.',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
-    requiredEnv: [{ key: 'GITHUB_PERSONAL_ACCESS_TOKEN', hint: 'A GitHub PAT with the scopes you need.' }],
+    requiredEnv: [
+      { key: 'GITHUB_PERSONAL_ACCESS_TOKEN', hint: 'A GitHub PAT with the scopes you need.' },
+    ],
     category: 'dev',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
   },
@@ -183,7 +185,15 @@ export function previewAddCommand(entry: McpCatalogEntry): string {
   // Mirror exactly what the backend runs: each arg as its own `--args=VALUE`
   // (clap rejects a bare `-y`; the `=` form binds it). Keep in sync with
   // grok_mcp_add in src-tauri/src/lib.rs.
-  const parts = ['grok', 'mcp', 'add', entry.id, '--command', entry.command, ...entry.args.map((a) => `--args=${a}`)];
+  const parts = [
+    'grok',
+    'mcp',
+    'add',
+    entry.id,
+    '--command',
+    entry.command,
+    ...entry.args.map((a) => `--args=${a}`),
+  ];
   const env = (entry.requiredEnv ?? []).flatMap((e) => ['--env', `${e.key}=…`]);
   return [...parts, ...env].join(' ');
 }

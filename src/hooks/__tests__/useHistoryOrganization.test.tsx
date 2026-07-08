@@ -5,7 +5,12 @@ import { storageKeys } from '../../app/constants';
 import type { Tab } from '../../lib/tabs';
 import type { ChatMessage } from '../../app/types';
 
-function message(id: string, content: string, ts: number, role: 'user' | 'assistant' = 'user'): ChatMessage {
+function message(
+  id: string,
+  content: string,
+  ts: number,
+  role: 'user' | 'assistant' = 'user',
+): ChatMessage {
   return { id, role, content, ts };
 }
 
@@ -39,7 +44,8 @@ function render(activeMessages: ChatMessage[] = tabs[0].messages as ChatMessage[
       activeTabId: 't1',
       messages: activeMessages,
       sessionFirstPrompt: (id) =>
-        (tabs.find((t) => t.id === id)?.messages.find((m) => m.role === 'user')?.content as string) ?? null,
+        (tabs.find((t) => t.id === id)?.messages.find((m) => m.role === 'user')
+          ?.content as string) ?? null,
       closeContextMenu,
     }),
   );
@@ -85,7 +91,9 @@ describe('pin / archive / group organization', () => {
 
     // Persisted so restarts keep the layout.
     expect(JSON.parse(window.localStorage.getItem(storageKeys.historyPinned)!)).toEqual(['t2']);
-    expect(JSON.parse(window.localStorage.getItem(storageKeys.historyGroups)!)).toEqual({ t1: 'Work' });
+    expect(JSON.parse(window.localStorage.getItem(storageKeys.historyGroups)!)).toEqual({
+      t1: 'Work',
+    });
     expect(JSON.parse(window.localStorage.getItem(storageKeys.historyArchived)!)).toEqual(['t3']);
   });
 

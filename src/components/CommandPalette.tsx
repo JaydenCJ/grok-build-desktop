@@ -44,9 +44,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
   // catalogue is longer than the viewport, so arrow-nav could select a row
   // below the fold and Enter would run an invisible command.
   useEffect(() => {
-    listRef.current
-      ?.querySelector('.is-highlight')
-      ?.scrollIntoView({ block: 'nearest' });
+    listRef.current?.querySelector('.is-highlight')?.scrollIntoView({ block: 'nearest' });
   }, [highlight]);
 
   // Reset the query when the palette opens (focus is handled by the trap).
@@ -90,9 +88,16 @@ export function CommandPalette({ open, actions, onClose }: Props) {
       aria-label={t('palette.ariaLabel')}
       onClick={onClose}
     >
-      <div className="palette-shell" ref={shellRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+      <div
+        className="palette-shell"
+        ref={shellRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="palette-search-row">
-          <span className="palette-search-glyph" aria-hidden>⌕</span>
+          <span className="palette-search-glyph" aria-hidden>
+            ⌕
+          </span>
           <input
             ref={inputRef}
             className="palette-search-input"
@@ -139,9 +144,7 @@ export function CommandPalette({ open, actions, onClose }: Props) {
                 onClick={() => run(action)}
               >
                 <span className="palette-row-label">{action.label}</span>
-                {action.group ? (
-                  <span className="palette-row-group">{action.group}</span>
-                ) : null}
+                {action.group ? <span className="palette-row-group">{action.group}</span> : null}
                 {action.shortcut ? (
                   <span className="palette-row-shortcut">{action.shortcut}</span>
                 ) : null}

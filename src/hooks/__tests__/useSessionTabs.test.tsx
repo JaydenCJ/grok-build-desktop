@@ -37,7 +37,13 @@ let harnessDeleted: (id: string) => void = () => {};
 function seedTabs() {
   const tabs = [
     { id: 't1', name: 'alpha', cwd: '/repo/alpha', createdAt: 1, messages: [message('a1')] },
-    { id: 't2', name: 'beta', cwd: '/repo/beta', createdAt: 2, messages: [message('b1'), message('b2')] },
+    {
+      id: 't2',
+      name: 'beta',
+      cwd: '/repo/beta',
+      createdAt: 2,
+      messages: [message('b1'), message('b2')],
+    },
   ];
   window.localStorage.setItem(tabsStorageKey, JSON.stringify(tabs));
   window.localStorage.setItem(tabsActiveKey, 't1');
@@ -162,7 +168,9 @@ describe('deleteSession', () => {
   it('resets to a single fresh empty conversation when the last one is deleted', () => {
     window.localStorage.setItem(
       tabsStorageKey,
-      JSON.stringify([{ id: 't1', name: 'only', cwd: '/x', createdAt: 1, messages: [message('m')] }]),
+      JSON.stringify([
+        { id: 't1', name: 'only', cwd: '/x', createdAt: 1, messages: [message('m')] },
+      ]),
     );
     window.localStorage.setItem(tabsActiveKey, 't1');
     const { result } = renderHook(() => useHarness([message('m')]));

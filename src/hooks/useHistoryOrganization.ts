@@ -2,14 +2,14 @@
 // group / archive / delete metadata (persisted per conversation id), the
 // filter box, the transient action toast, and the derived recent/partitioned
 // row views. Extracted from App.tsx unchanged.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { upsertPrompt } from "../lib/prompts";
-import type { Tab, TabMessage } from "../lib/tabs";
-import type { ChatMessage, HistoryRow } from "../app/types";
-import { storageKeys } from "../app/constants";
-import { loadIdMap, loadIdSet } from "../app/storage";
-import { timeLabel } from "../app/format";
-import { t } from "../i18n";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { upsertPrompt } from '../lib/prompts';
+import type { Tab, TabMessage } from '../lib/tabs';
+import type { ChatMessage, HistoryRow } from '../app/types';
+import { storageKeys } from '../app/constants';
+import { loadIdMap, loadIdSet } from '../app/storage';
+import { timeLabel } from '../app/format';
+import { t } from '../i18n';
 
 export interface HistoryOrganizationDeps {
   tabs: Tab[];
@@ -25,13 +25,21 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
   // History organization — pin / rename / group / archive / delete, persisted
   // by prompt id so the right-click actions survive restarts and have a
   // visible effect in the list (no decorative no-ops).
-  const [pinnedPromptIds, setPinnedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyPinned));
-  const [promptLabels, setPromptLabels] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyLabels));
-  const [promptGroups, setPromptGroups] = useState<Record<string, string>>(() => loadIdMap(storageKeys.historyGroups));
-  const [archivedPromptIds, setArchivedPromptIds] = useState<Set<string>>(() => loadIdSet(storageKeys.historyArchived));
+  const [pinnedPromptIds, setPinnedPromptIds] = useState<Set<string>>(() =>
+    loadIdSet(storageKeys.historyPinned),
+  );
+  const [promptLabels, setPromptLabels] = useState<Record<string, string>>(() =>
+    loadIdMap(storageKeys.historyLabels),
+  );
+  const [promptGroups, setPromptGroups] = useState<Record<string, string>>(() =>
+    loadIdMap(storageKeys.historyGroups),
+  );
+  const [archivedPromptIds, setArchivedPromptIds] = useState<Set<string>>(() =>
+    loadIdSet(storageKeys.historyArchived),
+  );
   const [showArchived, setShowArchived] = useState(false);
   // Inline editing for a history row: rename (custom label) or new-group entry.
-  const [rowEdit, setRowEdit] = useState<{ id: string; mode: "rename" | "newgroup" } | null>(null);
+  const [rowEdit, setRowEdit] = useState<{ id: string; mode: 'rename' | 'newgroup' } | null>(null);
   // Transient toast for actions without an obvious list change (copy/save).
   const [historyNote, setHistoryNote] = useState<string | null>(null);
   useEffect(() => {
@@ -49,7 +57,10 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
     window.localStorage.setItem(storageKeys.historyGroups, JSON.stringify(promptGroups));
   }, [promptGroups]);
   useEffect(() => {
-    window.localStorage.setItem(storageKeys.historyArchived, JSON.stringify([...archivedPromptIds]));
+    window.localStorage.setItem(
+      storageKeys.historyArchived,
+      JSON.stringify([...archivedPromptIds]),
+    );
   }, [archivedPromptIds]);
 
   // ---- History row actions: all persisted, each with a visible effect ----
@@ -89,12 +100,12 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
 
   function startRename(id: string) {
     closeContextMenu();
-    setRowEdit({ id, mode: "rename" });
+    setRowEdit({ id, mode: 'rename' });
   }
 
   function startNewGroup(id: string) {
     closeContextMenu();
-    setRowEdit({ id, mode: "newgroup" });
+    setRowEdit({ id, mode: 'newgroup' });
   }
 
   function commitRowEdit(value: string) {
@@ -102,7 +113,7 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
     setRowEdit(null);
     if (!edit) return;
     const v = value.trim();
-    if (edit.mode === "rename") {
+    if (edit.mode === 'rename') {
       setPromptLabels((prev) => {
         const next = { ...prev };
         if (v) next[edit.id] = v;
@@ -117,24 +128,43 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
   async function savePromptToLibrary(id: string) {
     const text = sessionFirstPrompt(id);
     if (!text) return;
-    const name = (promptLabels[id] ?? text.split("\n").find(Boolean) ?? "Saved prompt").slice(0, 60);
+    const name = (promptLabels[id] ?? text.split('\n').find(Boolean) ?? 'Saved prompt').slice(
+      0,
+      60,
+    );
     try {
-      await upsertPrompt({ name, body: text, category: "History" });
-      setHistoryNote(t("notices.savedToLibrary"));
+      await upsertPrompt({ name, body: text, category: 'History' });
+      setHistoryNote(t('notices.savedToLibrary'));
     } catch {
-      setHistoryNote(t("notices.librarySaveFailed"));
+      setHistoryNote(t('notices.librarySaveFailed'));
     }
   }
 
   // Forget a deleted conversation's metadata so it doesn't linger.
   function removeConversationMeta(id: string) {
-    setPinnedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
-    setArchivedPromptIds((p) => { const n = new Set(p); n.delete(id); return n; });
-    setPromptLabels((p) => { const n = { ...p }; delete n[id]; return n; });
-    setPromptGroups((p) => { const n = { ...p }; delete n[id]; return n; });
+    setPinnedPromptIds((p) => {
+      const n = new Set(p);
+      n.delete(id);
+      return n;
+    });
+    setArchivedPromptIds((p) => {
+      const n = new Set(p);
+      n.delete(id);
+      return n;
+    });
+    setPromptLabels((p) => {
+      const n = { ...p };
+      delete n[id];
+      return n;
+    });
+    setPromptGroups((p) => {
+      const n = { ...p };
+      delete n[id];
+      return n;
+    });
   }
 
-  const [historyFilter, setHistoryFilter] = useState("");
+  const [historyFilter, setHistoryFilter] = useState('');
   const historySearchInputRef = useRef<HTMLInputElement | null>(null);
   // HISTORY is a list of CONVERSATIONS (sessions/tabs), newest first — the way
   // Claude / ChatGPT show chats. Each row is one whole conversation, titled by
@@ -142,25 +172,28 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
   // every individual prompt, which read as "messages", not tasks.)
   const recentPrompts = useMemo(() => {
     const firstUserLine = (msgs: TabMessage[]): string => {
-      const u = msgs.find((m) => m.role === "user");
-      return u?.content.split("\n").map((s) => s.trim()).find(Boolean) ?? "";
+      const u = msgs.find((m) => m.role === 'user');
+      return (
+        u?.content
+          .split('\n')
+          .map((s) => s.trim())
+          .find(Boolean) ?? ''
+      );
     };
     const rows: HistoryRow[] = tabs
       .map((t) => {
         const msgs =
-          ((t.id === activeTabId ? (messages as unknown as TabMessage[]) : t.messages) ??
-            []);
+          (t.id === activeTabId ? (messages as unknown as TabMessage[]) : t.messages) ?? [];
         const fp = firstUserLine(msgs);
-        const promptCount = msgs.filter((m) => m.role === "user").length;
+        const promptCount = msgs.filter((m) => m.role === 'user').length;
         const lastTs = msgs.length
           ? Math.max(...msgs.map((m) => (m as { ts?: number }).ts ?? 0))
           : t.createdAt;
-        const fallback = fp ? (fp.length > 56 ? `${fp.slice(0, 56)}…` : fp) : "New conversation";
+        const fallback = fp ? (fp.length > 56 ? `${fp.slice(0, 56)}…` : fp) : 'New conversation';
         return {
           id: t.id,
           title: promptLabels[t.id] ?? fallback,
-          detail:
-            promptCount > 0 ? `${promptCount} message${promptCount > 1 ? "s" : ""}` : "empty",
+          detail: promptCount > 0 ? `${promptCount} message${promptCount > 1 ? 's' : ''}` : 'empty',
           time: timeLabel(lastTs),
           pinned: pinnedPromptIds.has(t.id),
           group: promptGroups[t.id] ?? null,
@@ -176,7 +209,7 @@ export function useHistoryOrganization(deps: HistoryOrganizationDeps) {
       (r) =>
         r.title.toLowerCase().includes(needle) ||
         r.detail.toLowerCase().includes(needle) ||
-        (r.group ?? "").toLowerCase().includes(needle),
+        (r.group ?? '').toLowerCase().includes(needle),
     );
   }, [
     tabs,

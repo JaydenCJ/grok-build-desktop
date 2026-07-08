@@ -28,11 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "../scripts",
-      "../docs",
-      "../THIRD_PARTY_NOTICES.md"
-    ],
+    "resources": ["../scripts", "../docs", "../THIRD_PARTY_NOTICES.md"],
     "macOS": {
       "signingIdentity": "-"
     },

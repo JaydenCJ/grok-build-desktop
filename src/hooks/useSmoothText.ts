@@ -16,8 +16,7 @@ export function useSmoothText(runId: string | null | undefined): {
 } {
   const snap = useRunSnapshot(runId);
   const full = snap?.text ?? '';
-  const ended =
-    snap?.state === 'done' || snap?.state === 'failed' || snap?.state === 'cancelled';
+  const ended = snap?.state === 'done' || snap?.state === 'failed' || snap?.state === 'cancelled';
 
   const [shown, setShown] = useState(full.length);
   // Refs so a tick reads the latest values without stale closures. shownRef
