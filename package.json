@@ -10,6 +10,10 @@
     "doctor": "python3 scripts/doctor.py",
     "build": "tsc && vite build",
     "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml",
+    "coverage": "vitest run --coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings 0",
     "test": "node scripts/smoke_test.mjs",
     "test:e2e": "node e2e/smoke.e2e.mjs",
     "test:unit": "vitest run",
@@ -36,6 +40,7 @@
     "react-virtuoso": "^4.18.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -44,9 +49,15 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
     "playwright-core": "^1.61.1",
+    "prettier": "^3.9.4",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^7.0.4",
     "vitest": "^4.1.7"
   }
