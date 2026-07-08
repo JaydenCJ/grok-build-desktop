@@ -311,10 +311,7 @@ All variables are also in [`.env.example`](.env.example). The Rust backend reads
 |---|---|---|
 | `GROK_DESKTOP_PYTHON` | `python3` | Python interpreter for the tool bridges. |
 | `GROK_DESKTOP_GROK_CMD` | `grok` | Grok CLI executable. |
-| `GROK_DESKTOP_GROK_ARGS` | see `.env.example` | Argument template; `{prompt}` and `{mode}` are substituted. |
-| `GROK_DESKTOP_GROK_CHECK` | `false` | Enable Grok's headless `--check` self-verification. |
 | `GROK_DESKTOP_COMMAND_TIMEOUT_SECS` | `240` | Per-command timeout. |
-| `GROK_DESKTOP_GROK_MAX_TURNS` | `12` | Bounded turn limit for headless runs. |
 | `GROK_DESKTOP_VERBOSE_GROK_STDERR` | `0` | `1` shows raw Grok stderr (otherwise tracing noise is filtered). |
 | `XAI_API_KEY` | — | Optional API-key auth (Grok can also use a cached `grok login`). |
 | `BROWSER_USE_API_KEY` | — | Required only for the browser-use bridge. |

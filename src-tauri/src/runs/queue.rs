@@ -11,8 +11,11 @@ use tokio::sync::{broadcast, Mutex, Notify};
 
 /// Capacity of the broadcast channel that fans queue messages out to consumers
 /// (the Tauri event forwarder and any future subscribers). Large enough to
-/// absorb a burst of streaming-json events without lag.
-const BROADCAST_CAPACITY: usize = 1024;
+/// absorb a burst of streaming-json events without lag — a lagging consumer
+/// silently DROPS the oldest messages, and dropped text chunks are
+/// unrecoverable (the Rust side stores no run text), so headroom is cheap
+/// insurance; the messages are small clones.
+const BROADCAST_CAPACITY: usize = 8192;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct QueueMessage {
@@ -213,6 +216,15 @@ impl RunQueue {
                 me.notify.notified().await;
                 while let Some(rec) = me.pop_next().await {
                     if me.inner.lock().await.cancelled.contains(&rec.id) {
+                        // A cancel that lands between pop_next() (which set
+                        // inner.active) and this check takes cancel()'s
+                        // "active" branch, which does NOT touch the DB — a
+                        // bare `continue` here left the row 'Queued' forever
+                        // (resurrected by the resume banner on next launch)
+                        // and inner.active pointing at a dead run. Finalize
+                        // so DB, active slot, and events stay consistent.
+                        me.finalize(&rec.id, RunState::Cancelled, Some("user cancelled".into()))
+                            .await;
                         continue;
                     }
                     me.run_one(rec).await;
@@ -267,6 +279,19 @@ impl RunQueue {
                 {
                     let mut inner = self.inner.lock().await;
                     inner.active_pgid = Some(spawned.pgid);
+                    // Close the second cancel window: a cancel() that landed
+                    // between process::spawn and this lock saw active_pgid ==
+                    // None and killed nothing — the freshly-spawned grok kept
+                    // running to completion after the user pressed Stop (in
+                    // Autopilot it could keep editing files). Re-check under
+                    // the same lock and kill + finalize if so.
+                    if inner.cancelled.contains(&rec.id) {
+                        drop(inner);
+                        process::kill_group(spawned.pgid).await;
+                        self.finalize(&rec.id, RunState::Cancelled, Some("user cancelled".into()))
+                            .await;
+                        return;
+                    }
                 }
                 // Drain stderr in a background task. Without this, when grok
                 // produces > 64 KB of stderr (tracing logs, debug noise) the

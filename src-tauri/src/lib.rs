@@ -34,7 +34,7 @@ use std::{
     collections::HashSet,
     env, fs,
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
@@ -234,6 +234,38 @@ fn command_path() -> String {
     }
 }
 
+/// Resolve the grok binary for the run queue. Honors GROK_DESKTOP_GROK_CMD
+/// (absolute path or bare name), otherwise searches the same augmented PATH
+/// (`command_path()`) that every status/one-shot command already uses, so
+/// "installed" in the UI and "runnable" by the queue agree. Falls back to the
+/// legacy ~/.grok/bin/grok literal if nothing is found (spawn will then
+/// report a clear not-found error).
+fn resolve_grok_binary() -> PathBuf {
+    let configured = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
+    let candidate = PathBuf::from(&configured);
+    // Absolute/relative path that exists → use as-is.
+    if candidate.exists() {
+        return candidate;
+    }
+    // Bare command name (or a missing path): search the augmented PATH for
+    // an executable file with that name.
+    let name = candidate
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or(configured);
+    for dir in command_path().split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let full = Path::new(dir).join(&name);
+        if full.is_file() {
+            return full;
+        }
+    }
+    let home = env::var("HOME").unwrap_or_default();
+    PathBuf::from(format!("{home}/.grok/bin/grok"))
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -274,14 +306,6 @@ fn command_timeout_secs(default_secs: u64) -> u64 {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(default_secs)
-}
-
-fn grok_max_turns(default_turns: u8) -> u8 {
-    env::var("GROK_DESKTOP_GROK_MAX_TURNS")
-        .ok()
-        .and_then(|value| value.parse::<u8>().ok())
-        .filter(|value| (1..=40).contains(value))
-        .unwrap_or(default_turns)
 }
 
 fn prepare_child_process(command: &mut Command) {
@@ -352,40 +376,6 @@ fn terminate_child_tree(child: &mut Child) {
     let _ = child.kill();
 }
 
-
-fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-
-    for ch in template.chars() {
-        if escaped {
-            current.push(ch);
-            escaped = false;
-            continue;
-        }
-
-        match ch {
-            '\\' => escaped = true,
-            '"' | '\'' if quote == Some(ch) => quote = None,
-            '"' | '\'' if quote.is_none() => quote = Some(ch),
-            ch if ch.is_whitespace() && quote.is_none() => {
-                if !current.is_empty() {
-                    args.push(current.replace("{prompt}", prompt).replace("{mode}", mode));
-                    current.clear();
-                }
-            }
-            _ => current.push(ch),
-        }
-    }
-
-    if !current.is_empty() {
-        args.push(current.replace("{prompt}", prompt).replace("{mode}", mode));
-    }
-
-    args
-}
 
 fn run_external_command(
     program: &str,
@@ -539,6 +529,31 @@ fn run_external_command(
     }
 }
 
+/// Run a blocking ToolRun-producing closure on the async runtime's thread
+/// pool. Non-async #[tauri::command] fns execute on the MAIN thread in
+/// Tauri 2, so a long-running child process (shell command: 600s budget)
+/// froze the entire app — window events, IPC, and run-event streaming —
+/// until it exited. `label` is the command name reported if the task fails
+/// to join.
+async fn spawn_tool_run(
+    label: &str,
+    f: impl FnOnce() -> ToolRun + Send + 'static,
+) -> ToolRun {
+    match tauri::async_runtime::spawn_blocking(f).await {
+        Ok(run) => run,
+        Err(error) => ToolRun {
+            ok: false,
+            command: label.to_string(),
+            cwd: String::new(),
+            exit_code: None,
+            duration_ms: 0,
+            timed_out: false,
+            output: String::new(),
+            stderr: error.to_string(),
+        },
+    }
+}
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -674,12 +689,30 @@ fn remove_grok_skill(slug: String) -> Result<(), String> {
 fn load_session_state() -> Result<Option<SessionState>, String> {
     let path = session_state_path();
     match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str::<SessionState>(&raw)
-            .map(Some)
-            .map_err(|error| format!("Could not parse session state: {error}")),
+        Ok(raw) => match serde_json::from_str::<SessionState>(&raw) {
+            Ok(state) => Ok(Some(state)),
+            Err(_) => {
+                // Self-heal instead of failing every launch: quarantine the
+                // corrupt file (e.g. a torn write from a crash) and start
+                // with a fresh session. Most state also lives in
+                // localStorage, so the practical loss is minimal.
+                let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+                Ok(None)
+            }
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("Could not read session state: {error}")),
     }
+}
+
+/// Atomic file write: serialize to a sibling temp file, then rename over the
+/// destination. `fs::write` truncates before writing, so a crash or power
+/// loss mid-write used to leave truncated JSON that failed to parse on every
+/// subsequent launch.
+fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, contents)?;
+    fs::rename(&tmp, path)
 }
 
 #[tauri::command]
@@ -691,7 +724,7 @@ fn save_session_state(state: SessionState) -> Result<(), String> {
     }
     let raw = serde_json::to_string_pretty(&state)
         .map_err(|error| format!("Could not serialize session state: {error}"))?;
-    fs::write(&path, raw).map_err(|error| format!("Could not save session state: {error}"))
+    write_atomic(&path, &raw).map_err(|error| format!("Could not save session state: {error}"))
 }
 
 fn preview_root(cwd: Option<String>) -> PathBuf {
@@ -851,7 +884,14 @@ fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
 }
 
 #[tauri::command]
-fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
+async fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
+    // Directory walk + asset inlining, re-invoked after cwd/run changes.
+    tauri::async_runtime::spawn_blocking(move || get_static_preview_blocking(cwd))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_static_preview_blocking(cwd: Option<String>) -> Result<StaticPreview, String> {
     let root = preview_root(cwd);
     let files = project_files(&root);
     let entry = root.join("index.html");
@@ -894,191 +934,11 @@ fn path_has_entries(path: &PathBuf) -> bool {
         .is_some()
 }
 
-fn mode_context(mode: &str) -> &'static str {
-    match mode {
-        "coding" => {
-            "Grok Desktop Grok Code Mode: act as a senior programming desktop assistant for professional engineers. Optimize for repository understanding, precise edits, terminal verification, and concise engineering judgment."
-        }
-        _ => {
-            "Grok Desktop Grok Chat Mode: answer clearly, keep practical context, and hand off to Coding Mode when the task touches a repository, terminal, or code change. In every response, the first thing your text (文字) must do is clearly 吐出 (state) this core point before proceeding with the answer to the user task."
-        }
-    }
-}
-
-fn grok_prompt(prompt: &str, mode: &str, cwd: &PathBuf) -> String {
-    format!(
-        r#"{context}
-
-You are running inside Grok Desktop, a Grok-first desktop programming environment inspired by the best parts of Claude Desktop, but optimized for the official Grok Build CLI.
-
-Workspace contract:
-- Current working directory: {cwd}
-- Treat the selected directory as the active project unless the user says otherwise.
-- Read relevant files before recommending or applying code changes.
-- Prefer small, reviewable changes over broad rewrites.
-- Use terminal commands for verification when useful, and report the exact commands.
-- Never run destructive commands or irreversible migrations unless the user explicitly asked for them.
-- If credentials, private files, or risky operations appear, pause and explain the risk.
-
-Engineering behavior:
-- For simple, short, one-sentence, read-only, or exact-format tasks, answer directly and do not perform repository mapping or use the section template.
-- For analysis tasks, produce a high-signal technical readout with file paths, risks, and next actions.
-- For implementation tasks, state the intended change, keep edits focused, and include verification.
-- For debugging tasks, distinguish evidence, hypothesis, root cause, fix, and verification.
-- For reviews, prioritize correctness, regressions, tests, security, and maintainability.
-
-Response format:
-Use `1. Summary`, `2. Files / Evidence`, `3. Changes or Recommendation`, `4. Verification commands`, and `5. Next step` for normal coding tasks only. For simple tasks, obey the user's requested format exactly.
-
-User task:
-{prompt}"#,
-        context = mode_context(mode),
-        cwd = cwd.to_string_lossy()
-    )
-}
-
-fn normalized_effort(effort: Option<String>) -> String {
-    match effort
-        .unwrap_or_else(|| "high".to_string())
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "minimal" => "minimal".to_string(),
-        "low" => "low".to_string(),
-        "medium" => "medium".to_string(),
-        "high" => "high".to_string(),
-        "xhigh" => "xhigh".to_string(),
-        "max" => "max".to_string(),
-        _ => "high".to_string(),
-    }
-}
-
-fn normalized_reasoning_effort(reasoning_effort: Option<String>) -> Option<String> {
-    match reasoning_effort
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "" | "off" | "none" => None,
-        "minimal" => Some("minimal".to_string()),
-        "low" => Some("low".to_string()),
-        "medium" => Some("medium".to_string()),
-        "high" => Some("high".to_string()),
-        // grok's --reasoning-effort has no "max"; its real maximum is "xhigh".
-        // Passing "max" makes grok exit code 2, so map the UI's Max → xhigh.
-        "xhigh" | "max" => Some("xhigh".to_string()),
-        _ => None,
-    }
-}
-
-fn normalized_model(model: Option<String>) -> String {
-    let value = model.unwrap_or_else(|| "grok-build".to_string());
-    let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed.chars().any(char::is_whitespace) {
-        "grok-build".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn normalized_best_of_n(best_of_n: Option<u8>) -> Option<u8> {
-    best_of_n.and_then(|value| match value {
-        2..=5 => Some(value),
-        _ => None,
-    })
-}
-
-fn normalized_permission_mode(permission_mode: Option<String>) -> Option<String> {
-    let value = permission_mode?;
-    match value.trim() {
-        "" | "default" => None,
-        "acceptEdits" => Some("acceptEdits".to_string()),
-        "auto" => Some("auto".to_string()),
-        "dontAsk" => Some("dontAsk".to_string()),
-        "plan" => Some("plan".to_string()),
-        "bypassPermissions" => Some("bypassPermissions".to_string()),
-        _ => None,
-    }
-}
-
-fn grok_args(
-    prompt: &str,
-    mode: &str,
-    cwd: &PathBuf,
-    model: Option<String>,
-    effort: Option<String>,
-    reasoning_effort: Option<String>,
-    permission_mode: Option<String>,
-    best_of_n: Option<u8>,
-    experimental_memory: bool,
-    web_search_enabled: bool,
-    subagents_enabled: bool,
-    self_check: bool,
-) -> Vec<String> {
-    let prepared_prompt = grok_prompt(prompt, mode, cwd);
-    if let Ok(template) = env::var("GROK_DESKTOP_GROK_ARGS") {
-        return split_template_args(&template, &prepared_prompt, mode);
-    }
-
-    let model = normalized_model(model);
-    let effort = normalized_effort(effort);
-    let mut args = vec![
-        "--no-alt-screen".to_string(),
-        "--model".to_string(),
-        model,
-        "--effort".to_string(),
-        effort,
-    ];
-
-    if let Some(permission_mode) = normalized_permission_mode(permission_mode) {
-        args.push("--permission-mode".to_string());
-        args.push(permission_mode);
-    }
-
-    if self_check
-        || matches!(
-            env::var("GROK_DESKTOP_GROK_CHECK").as_deref(),
-            Ok("1" | "true" | "yes")
-        )
-    {
-        args.push("--check".to_string());
-    }
-
-    if let Some(reasoning_effort) = normalized_reasoning_effort(reasoning_effort) {
-        args.push("--reasoning-effort".to_string());
-        args.push(reasoning_effort);
-    }
-
-    let best_of_n = normalized_best_of_n(best_of_n);
-    if let Some(n) = best_of_n {
-        args.push("--best-of-n".to_string());
-        args.push(n.to_string());
-    }
-
-    if experimental_memory {
-        args.push("--experimental-memory".to_string());
-    }
-
-    if !web_search_enabled {
-        args.push("--disable-web-search".to_string());
-    }
-
-    // grok rejects `--no-subagents` together with `--best-of-n` (best-of-n
-    // fans out to subagents). Only disable subagents when not running best-of-n.
-    if !subagents_enabled && best_of_n.is_none() {
-        args.push("--no-subagents".to_string());
-    }
-
-    args.push("--max-turns".to_string());
-    args.push(grok_max_turns(12).to_string());
-    args.push("-p".to_string());
-    args.push(prepared_prompt);
-    args.push("--output-format".to_string());
-    args.push("plain".to_string());
-    args
-}
+// (The legacy run_grok_task argument builder — grok_args, grok_prompt,
+// mode_context, split_template_args and their normalized_* helpers — was
+// removed. It was a second, divergent way of launching grok that no
+// frontend code invoked; the live path is enqueue_run + the run queue,
+// with arguments built in src/App.tsx (buildGrokArgs).
 
 fn normalized_cwd(cwd: Option<String>) -> PathBuf {
     cwd.and_then(|value| {
@@ -1180,7 +1040,11 @@ async fn get_grok_auth_status() -> GrokAuthStatus {
 }
 
 #[tauri::command]
-fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
+async fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
+    spawn_tool_run("grok login", move || start_grok_login_blocking(device_auth, cwd)).await
+}
+
+fn start_grok_login_blocking(device_auth: bool, cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let status = collect_grok_auth_status();
     let cwd = normalized_cwd(cwd);
@@ -1234,19 +1098,11 @@ async fn get_tool_statuses() -> Vec<ToolStatus> {
 }
 
 #[tauri::command]
-fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> ToolRun {
-    let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    let cwd = normalized_cwd(cwd);
-    run_external_command(
-        &program,
-        grok_args(&prompt, &mode, &cwd, None, None, None, None, None, false, true, true, false),
-        Some(cwd),
-        command_timeout_secs(240),
-    )
+async fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
+    spawn_tool_run("zsh -lc", move || run_shell_command_blocking(command, cwd)).await
 }
 
-#[tauri::command]
-fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
+fn run_shell_command_blocking(command: String, cwd: Option<String>) -> ToolRun {
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return ToolRun {
@@ -1534,7 +1390,11 @@ async fn list_grok_sessions(cwd: Option<String>) -> ToolRun {
 }
 
 #[tauri::command]
-fn run_browser_task(task: String, max_steps: u16) -> ToolRun {
+async fn run_browser_task(task: String, max_steps: u16) -> ToolRun {
+    spawn_tool_run("browser_automation.py", move || run_browser_task_blocking(task, max_steps)).await
+}
+
+fn run_browser_task_blocking(task: String, max_steps: u16) -> ToolRun {
     let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let script = script_path("browser_automation.py");
     run_external_command(
@@ -1552,7 +1412,11 @@ fn run_browser_task(task: String, max_steps: u16) -> ToolRun {
 }
 
 #[tauri::command]
-fn run_absorb_repo(repo_path: String, copy_text: bool) -> ToolRun {
+async fn run_absorb_repo(repo_path: String, copy_text: bool) -> ToolRun {
+    spawn_tool_run("absorb_repo.py", move || run_absorb_repo_blocking(repo_path, copy_text)).await
+}
+
+fn run_absorb_repo_blocking(repo_path: String, copy_text: bool) -> ToolRun {
     let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let script = script_path("absorb_repo.py");
     let mut args = vec![
@@ -1570,7 +1434,11 @@ fn run_absorb_repo(repo_path: String, copy_text: bool) -> ToolRun {
 }
 
 #[tauri::command]
-fn run_doctor() -> ToolRun {
+async fn run_doctor() -> ToolRun {
+    spawn_tool_run("doctor.py", run_doctor_blocking).await
+}
+
+fn run_doctor_blocking() -> ToolRun {
     let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let script = script_path("doctor.py");
     run_external_command(
@@ -1582,7 +1450,14 @@ fn run_doctor() -> ToolRun {
 }
 
 #[tauri::command]
-fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
+async fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
+    // osascript blocks until the dialog closes — keep it off the main thread.
+    tauri::async_runtime::spawn_blocking(move || pick_project_folder_blocking(initial))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn pick_project_folder_blocking(initial: Option<String>) -> Result<Option<String>, String> {
     let starting_dir = initial
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
@@ -1763,7 +1638,14 @@ pub struct FileEntry {
 ///   3. path contains
 /// Hard caps: scan ≤ 25_000 entries (skips the rest), return ≤ `limit`.
 #[tauri::command]
-fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
+async fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
+    // Walks up to 25k gitignore-filtered entries — off the main thread.
+    tauri::async_runtime::spawn_blocking(move || glob_files_blocking(cwd, query, limit))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn glob_files_blocking(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
     use ignore::WalkBuilder;
     let root = std::path::PathBuf::from(&cwd);
     if !root.is_dir() {
@@ -1832,7 +1714,13 @@ fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>
 /// Read a file as UTF-8 text, with a hard size cap so a 100MB file doesn't
 /// blow up the IPC channel. Returns `None` if the file is binary or oversized.
 #[tauri::command]
-fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+async fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || read_file_safe_blocking(cwd, path, max_bytes))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn read_file_safe_blocking(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
     let root = std::path::PathBuf::from(&cwd);
     let candidate = root.join(&path);
     // Path traversal guard: canonicalize and verify it's still under root.
@@ -1959,12 +1847,40 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let resource_dir = app.path().app_data_dir().expect("app_data_dir");
+            // Fall back to a temp location rather than panicking pre-WebView
+            // if the platform data dir can't be resolved.
+            let resource_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("grok-desktop"));
             std::fs::create_dir_all(&resource_dir).ok();
             let db_path = resource_dir.join("runs.sqlite");
 
             tauri::async_runtime::block_on(async {
-                let db = Db::open_at(&db_path).await.expect("open runs.sqlite");
+                // A corrupt/unopenable runs.sqlite (torn write, disk-full,
+                // downgraded schema) must not brick every launch — the old
+                // .expect() panicked before the WebView even loaded, so the
+                // frontend's own recovery UI never appeared. Quarantine the
+                // bad file and retry; fall back to an in-memory DB so the app
+                // still boots (queue history is lost, the app is usable).
+                let db = match Db::open_at(&db_path).await {
+                    Ok(db) => db,
+                    Err(first_err) => {
+                        eprintln!(
+                            "[grok-desktop] runs.sqlite failed to open ({first_err}); quarantining and retrying"
+                        );
+                        let _ = std::fs::rename(&db_path, db_path.with_extension("sqlite.bak"));
+                        match Db::open_at(&db_path).await {
+                            Ok(db) => db,
+                            Err(second_err) => {
+                                eprintln!(
+                                    "[grok-desktop] retry failed ({second_err}); using in-memory run store"
+                                );
+                                Db::open_memory().await.expect("open in-memory runs db")
+                            }
+                        }
+                    }
+                };
 
                 // One-shot migration: if session_state.json has a non-empty history array,
                 // import as Done runs in SQLite, then clear the field.
@@ -1996,33 +1912,71 @@ pub fn run() {
                                 }
                             }
                             v.as_object_mut().and_then(|o| o.remove("history"));
-                            let _ = std::fs::write(
-                                &session_path,
-                                serde_json::to_string_pretty(&v).unwrap_or_default(),
-                            );
+                            // Skip the write entirely on a serialize error —
+                            // unwrap_or_default() would have TRUNCATED the
+                            // session file to an empty string. Atomic rename
+                            // so a crash mid-write can't tear it either.
+                            if let Ok(serialized) = serde_json::to_string_pretty(&v) {
+                                let _ = write_atomic(&session_path, &serialized);
+                            }
                         }
                     }
                 }
 
-                let grok_path = std::path::PathBuf::from(
-                    std::env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| {
-                        let home = std::env::var("HOME").unwrap_or_default();
-                        format!("{}/.grok/bin/grok", home)
-                    })
-                );
+                // Resolve the grok binary the same way every other command
+                // does (augmented PATH incl. homebrew and npm global bins).
+                // The queue used to spawn a hardcoded literal path and
+                // process::spawn hard-fails when it doesn't exist — so an
+                // npm-installed grok showed "Grok ready / Connected"
+                // everywhere while every chat run failed with "binary not
+                // found". A bare name from GROK_DESKTOP_GROK_CMD (the value
+                // .env.example documents) broke the same way.
+                let grok_path = resolve_grok_binary();
                 let (queue, mut rx) = RunQueue::new(db.clone(), grok_path).await;
                 let queue = std::sync::Arc::new(queue);
                 queue.clone().spawn_worker();
 
                 // Event forwarder: queue messages → Tauri events.
                 let app_for_events = app_handle.clone();
+                let db_for_events = db.clone();
                 tauri::async_runtime::spawn(async move {
+                    use tauri::Emitter as _;
                     use tokio::sync::broadcast::error::RecvError;
+                    let mut last_run_id: Option<String> = None;
                     loop {
                         match rx.recv().await {
-                            Ok(msg) => forward_queue_message(&app_for_events, &msg),
+                            Ok(msg) => {
+                                last_run_id = Some(msg.run_id.clone());
+                                forward_queue_message(&app_for_events, &msg);
+                            }
                             Err(RecvError::Lagged(n)) => {
-                                eprintln!("[grok-desktop] tauri event forwarder lagged, dropped {n} messages");
+                                eprintln!("[grok-desktop] tauri event forwarder lagged, dropped {n} messages; resyncing");
+                                // The dropped window may have contained a
+                                // terminal StateChanged — resync from the DB
+                                // so no run stays stuck "streaming"/"working…"
+                                // in the UI until restart. (Dropped mid-stream
+                                // text chunks are unrecoverable; state is.)
+                                if let Some(id) = last_run_id.clone() {
+                                    if let Ok(Some(rec)) = db_for_events.fetch_run(&id).await {
+                                        let _ = app_for_events.emit(
+                                            "grok-desktop://run-state-changed",
+                                            serde_json::json!({
+                                                "runId": rec.id,
+                                                "state": rec.state,
+                                                "startedAt": rec.started_at,
+                                                "endedAt": rec.ended_at,
+                                                "error": rec.error,
+                                            }),
+                                        );
+                                    }
+                                }
+                                forward_queue_message(
+                                    &app_for_events,
+                                    &QueueMessage {
+                                        run_id: String::new(),
+                                        kind: QueueMessageKind::QueueChanged,
+                                    },
+                                );
                             }
                             Err(RecvError::Closed) => break,
                         }
@@ -2039,11 +1993,30 @@ pub fn run() {
                     }
                 });
 
-                // Prompt library (D) — open store next to runs.sqlite.
+                // Prompt library (D) — open store next to runs.sqlite. Same
+                // quarantine + in-memory fallback as runs.sqlite above.
                 let prompts_path = resource_dir.join("prompts.sqlite");
-                let prompts = crate::prompts::PromptStore::open_at(&prompts_path)
-                    .await
-                    .expect("open prompts.sqlite");
+                let prompts = match crate::prompts::PromptStore::open_at(&prompts_path).await {
+                    Ok(store) => store,
+                    Err(first_err) => {
+                        eprintln!(
+                            "[grok-desktop] prompts.sqlite failed to open ({first_err}); quarantining and retrying"
+                        );
+                        let _ =
+                            std::fs::rename(&prompts_path, prompts_path.with_extension("sqlite.bak"));
+                        match crate::prompts::PromptStore::open_at(&prompts_path).await {
+                            Ok(store) => store,
+                            Err(second_err) => {
+                                eprintln!(
+                                    "[grok-desktop] retry failed ({second_err}); using in-memory prompt store"
+                                );
+                                crate::prompts::PromptStore::open_memory()
+                                    .await
+                                    .expect("open in-memory prompt store")
+                            }
+                        }
+                    }
+                };
                 app_handle.manage(prompts);
 
                 app_handle.manage(queue);
@@ -2057,7 +2030,6 @@ pub fn run() {
             save_session_state,
             get_grok_auth_status,
             start_grok_login,
-            run_grok_task,
             run_shell_command,
             get_static_preview,
             inspect_grok_environment,
