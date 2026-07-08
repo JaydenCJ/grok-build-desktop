@@ -255,7 +255,7 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busyRunner, drafts, mode]);
+  }, [busyRunner, drafts, mode, switchMode]);
 
   return { paletteActions };
 }

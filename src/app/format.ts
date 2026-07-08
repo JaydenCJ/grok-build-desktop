@@ -13,7 +13,7 @@ export function parseAvailableModels(output: string): string[] {
   if (start < 0) return [];
   const models = new Set<string>();
   for (let index = start + 1; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*[\*\-•]\s*([\w./:@-]+)/);
+    const match = lines[index].match(/^\s*[*\-•]\s*([\w./:@-]+)/);
     if (!match) {
       if (models.size > 0) break;
       continue;
@@ -66,7 +66,7 @@ export function terminalClass(line: string) {
     line.includes("diff --git") ||
     line.includes("@@") ||
     /^\[out\]\s{2,}/.test(line) ||
-    /^\[out\]\s[+\-]/.test(line)
+    /^\[out\]\s[+-]/.test(line)
   ) {
     return "terminal-line terminal-code";
   }

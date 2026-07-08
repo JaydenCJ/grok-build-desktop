@@ -209,6 +209,9 @@ export function useSessionPersistence({
     return () => {
       cancelled = true;
     };
+    // Mount-only restore: `mode` is only a fallback for a corrupt snapshot,
+    // and re-running the restore on later changes would clobber live state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -261,7 +264,7 @@ export function useSessionPersistence({
     }
     window.localStorage.setItem(storageKeys.safeRuntimeDefaults, "true");
     window.localStorage.setItem(storageKeys.cleanComposer, "true");
-  }, [drafts, lastRun, mode]);
+  }, [drafts, lastRun, mode, setComposerValue]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -320,6 +323,7 @@ export function useSessionPersistence({
     messages,
     mode,
     sessionLoaded,
+    setSessionNotice,
     shellCommand,
     themeMode,
   ]);

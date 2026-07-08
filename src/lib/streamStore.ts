@@ -108,14 +108,14 @@ export const streamStore = new StreamStore();
 export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): void {
   const cur = streamStore.getRunSnapshot(runId);
   if (event.type === 'thought') {
-    const data = (event as any).data as string;
+    const { data } = event as Extract<GrokEvent, { type: 'thought' }>;
     streamStore.patchRun(runId, {
       thoughtChars: (cur?.thoughtChars ?? 0) + data.length,
       lastEventType: 'thought',
       state: cur?.state === 'queued' ? 'running' : cur?.state ?? 'running',
     });
   } else if (event.type === 'text') {
-    const data = (event as any).data as string;
+    const { data } = event as Extract<GrokEvent, { type: 'text' }>;
     const nextText = (cur?.text ?? '') + data;
     streamStore.patchRun(runId, {
       text: nextText,
@@ -239,12 +239,12 @@ export async function attachTauriListeners(): Promise<void> {
       attached.push(
         await listen<{
           runId: string;
-          state: string;
+          state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed';
           startedAt?: number;
           endedAt?: number;
           error?: string;
         }>('grok-desktop://run-state-changed', (e) =>
-          applyStateChange(e.payload.runId, e.payload as any),
+          applyStateChange(e.payload.runId, e.payload),
         ),
       );
       attached.push(

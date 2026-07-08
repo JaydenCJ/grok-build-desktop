@@ -128,11 +128,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // mode switch). Reads the current text directly from the DOM ref — no
   // dependency on React state.
   useEffect(() => {
+    const node = ref.current;
     return () => {
-      const text = ref.current?.value ?? '';
+      const text = node?.value ?? '';
       if (text && onTextChangeRef.current) onTextChangeRef.current(text);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**

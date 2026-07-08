@@ -506,6 +506,9 @@ export function useGrokRunners(deps: GrokRunnerDeps) {
     refreshGrokAuthStatus();
     refreshStaticPreview();
     refreshGrokModels();
+    // Mount-only bootstrap: the refresh helpers are plain functions recreated
+    // every render — listing them would re-probe the CLI on every re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
