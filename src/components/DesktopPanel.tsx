@@ -6,6 +6,7 @@ import {
   listDesktopApps,
   type DesktopApp,
 } from '../lib/desktop';
+import { t } from '../i18n';
 
 interface Props {
   onInsertContext: (text: string) => void;
@@ -57,7 +58,7 @@ export function DesktopPanel({ onInsertContext }: Props) {
   return (
     <div className="desktop-panel">
       <div className="desktop-head">
-        <h3 className="desktop-title">Mac desktop bridge</h3>
+        <h3 className="desktop-title">{t('desktop.title')}</h3>
         <p className="desktop-sub">
           Pull live state from whitelisted apps into your next prompt. Every
           query is read-only, allowlisted, and logged to{' '}
@@ -75,7 +76,7 @@ export function DesktopPanel({ onInsertContext }: Props) {
               <span className="desktop-app-dot" aria-hidden />
               <span className="desktop-app-name">{app.name}</span>
               <span className="desktop-app-state">
-                {app.running ? 'running' : 'not running'}
+                {app.running ? t('desktop.running') : t('desktop.notRunning')}
               </span>
               {app.running ? (
                 <button
@@ -87,13 +88,13 @@ export function DesktopPanel({ onInsertContext }: Props) {
                     );
                   }}
                 >
-                  Bring to front
+                  {t('desktop.bringToFront')}
                 </button>
               ) : null}
             </div>
             {app.capabilities.length === 0 ? (
               <div className="desktop-app-empty">
-                No read-only queries supported yet.
+                {t('desktop.noQueries')}
               </div>
             ) : (
               <div className="desktop-caps">
@@ -109,7 +110,7 @@ export function DesktopPanel({ onInsertContext }: Props) {
                       onClick={() => void runCapability(cap, app.name)}
                       title={meta?.hint ?? cap}
                     >
-                      {busy === key ? '…' : meta?.label ?? cap}
+                      {busy === key ? t('common.busy') : meta?.label ?? cap}
                     </button>
                   );
                 })}

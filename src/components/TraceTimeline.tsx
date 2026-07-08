@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTraces } from '../hooks/useTraces';
 import type { TraceEvent, TraceKind, TraceStatus } from '../lib/traceParser';
+import { t } from '../i18n';
 
 interface Props {
   runId: string;
@@ -18,7 +19,7 @@ export function TraceTimeline({ runId }: Props) {
   const traces = useTraces(runId);
   if (traces.length === 0) return null;
   return (
-    <div className="trace-timeline" aria-label="Tool and subagent activity">
+    <div className="trace-timeline" aria-label={t('message.traceAriaLabel')}>
       {traces.map((t) => (
         <TraceCard key={t.key} trace={t} />
       ))}

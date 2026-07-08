@@ -13,6 +13,7 @@ import {
 } from '../lib/streamStore';
 import { extractFileMentions, readFileSafe, type FileEntry } from '../lib/files';
 import { FilePicker } from './FilePicker';
+import { t } from '../i18n';
 
 export interface ComposerHandle {
   /** Imperatively set the textarea value (used by starter cards / history click / drafts). */
@@ -239,8 +240,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         disabled={submitting}
         placeholder={
           submitting
-            ? 'Queuing your prompt…'
-            : placeholder ?? (hasInflight ? 'Queue another prompt…' : 'Ask Grok…')
+            ? t('composer.placeholderQueuing')
+            : placeholder ??
+              (hasInflight ? t('composer.placeholderQueueAnother') : t('composer.placeholderAsk'))
         }
         onCompositionStart={() => {
           composingRef.current = true;
@@ -308,7 +310,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         disabled={submitting}
         onClick={() => void submit()}
       >
-        {submitting ? 'Queuing…' : hasInflight ? 'Enqueue' : 'Send'}
+        {submitting ? t('composer.sendQueuing') : hasInflight ? t('composer.sendEnqueue') : t('composer.send')}
       </button>
     </div>
   );
