@@ -27,7 +27,15 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
 
   if (!snap) {
     if (html) {
-      return <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+      // markdown-body scopes the chat markdown ruleset (headings, lists,
+      // links, tables, inline code). Without it the injected HTML rendered
+      // with UA defaults — blue links on the dark panel, unstyled tables.
+      return (
+        <div
+          className="message-body markdown-body"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
     }
     if (fallbackText) return <pre className="message-body">{fallbackText}</pre>;
     return null;
@@ -54,7 +62,10 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
     <>
       <TraceTimeline runId={runId} />
       {ended && html ? (
-        <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />
+        <div
+          className="message-body markdown-body"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       ) : (
         <pre className="message-body streaming-raw">
           {smooth.text || fallbackText || ''}
