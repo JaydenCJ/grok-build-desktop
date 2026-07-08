@@ -1628,6 +1628,27 @@ async fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> Too
     .await
 }
 
+/// Resolve and validate the working directory for `run_shell_command`.
+/// Unlike `run_external_command`'s generic $HOME fallback, a shell command
+/// must never silently execute somewhere other than the directory shown in
+/// the UI — a stale or mistyped path is an error, not a redirect.
+fn shell_cwd(cwd: Option<String>) -> Result<PathBuf, String> {
+    let requested = normalized_cwd(cwd);
+    let canonical = requested.canonicalize().map_err(|_| {
+        format!(
+            "Working directory {} does not exist. Pick a project folder first.",
+            requested.display()
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(format!(
+            "Working directory {} is not a directory.",
+            canonical.display()
+        ));
+    }
+    Ok(canonical)
+}
+
 #[tauri::command]
 async fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
     run_blocking_tool("zsh -lc", move || {
@@ -1645,7 +1666,21 @@ async fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
             };
         }
 
-        let cwd = normalized_cwd(cwd);
+        let cwd = match shell_cwd(cwd) {
+            Ok(cwd) => cwd,
+            Err(message) => {
+                return ToolRun {
+                    ok: false,
+                    command: command_line("zsh", &["-lc".to_string(), trimmed.to_string()]),
+                    cwd: String::new(),
+                    exit_code: None,
+                    duration_ms: 0,
+                    timed_out: false,
+                    output: String::new(),
+                    stderr: message,
+                };
+            }
+        };
         run_external_command(
             "zsh",
             vec!["-lc".to_string(), trimmed.to_string()],
@@ -2611,6 +2646,23 @@ mod tests {
         let response = preview_scheme_response(Some(&reg), "/testtoken/missing.png");
         assert_eq!(response.status(), 404);
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn shell_cwd_rejects_missing_directories() {
+        let missing = env::temp_dir().join(format!("grok-shell-missing-{}", uuid::Uuid::now_v7()));
+        let error = shell_cwd(Some(missing.to_string_lossy().to_string()))
+            .expect_err("nonexistent cwd must be rejected");
+        assert!(error.contains("does not exist"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn shell_cwd_accepts_and_canonicalizes_real_directories() {
+        let dir = env::temp_dir().join(format!("grok-shell-cwd-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let resolved = shell_cwd(Some(dir.to_string_lossy().to_string())).expect("real dir ok");
+        assert!(resolved.is_dir());
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
