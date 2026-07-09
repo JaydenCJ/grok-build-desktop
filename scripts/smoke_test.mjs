@@ -509,10 +509,12 @@ assert.ok(
   typeof csp === 'string' && csp.includes("default-src 'self'"),
   'tauri.conf.json must set a real Content-Security-Policy (not null)',
 );
-const scriptSrc = csp
-  .split(';')
-  .map((d) => d.trim())
-  .find((d) => d.startsWith('script-src'));
+const cspDirective = (policy, name) =>
+  policy
+    .split(';')
+    .map((d) => d.trim())
+    .find((d) => d === name || d.startsWith(`${name} `));
+const scriptSrc = cspDirective(csp, 'script-src');
 assert.ok(scriptSrc, 'CSP must declare an explicit script-src directive');
 assert.ok(!scriptSrc.includes("'unsafe-inline'"), "script-src must not allow 'unsafe-inline'");
 assert.ok(
@@ -520,6 +522,63 @@ assert.ok(
   'script-src must not allow remote script origins',
 );
 assert.ok(!/'unsafe-eval'/.test(scriptSrc), "script-src must not allow 'unsafe-eval'");
+// style-src must stay strict: DOMPurify keeps style="" attributes, so
+// 'unsafe-inline' would hand prompt-injected markdown a CSS exfiltration /
+// UI-spoofing primitive. The app itself is class-based (see the style={}
+// guard below), so nothing legitimate needs it.
+const styleSrc = cspDirective(csp, 'style-src');
+assert.ok(styleSrc, 'CSP must declare an explicit style-src directive');
+assert.ok(
+  !styleSrc.includes("'unsafe-inline'"),
+  "style-src must not allow 'unsafe-inline' (injected style attributes would apply)",
+);
+assert.ok(
+  !styleSrc.includes('https:') && !styleSrc.includes('http:'),
+  'style-src must not allow remote style origins',
+);
+// img-src must have NO remote origins: DOMPurify allows <img>, so a remote
+// image source is a zero-click GET exfiltration channel for prompt-injected
+// markdown (the payload rides in the URL — no script needed).
+const imgSrc = cspDirective(csp, 'img-src');
+assert.ok(imgSrc, 'CSP must declare an explicit img-src directive');
+const imgSources = imgSrc.split(/\s+/).slice(1);
+assert.ok(
+  !imgSources.includes('https:') && !imgSources.includes('http:'),
+  'img-src must not allow whole-scheme remote origins (zero-click exfiltration)',
+);
+assert.ok(
+  imgSources.every((s) => !/^https:\/\//.test(s)),
+  'img-src must not allow remote https origins',
+);
+// form-action does NOT inherit from default-src — leaving it unset lets an
+// injected <form action=...> navigate/exfiltrate on submit.
+assert.ok(
+  cspDirective(csp, 'form-action') === "form-action 'none'",
+  "CSP must set form-action 'none' (it does not inherit from default-src)",
+);
+// devCsp only relaxes what Vite HMR needs (inline scripts/styles, ws); the
+// exfiltration-relevant directives must stay as strict as production.
+const devCsp = tauriConf.app?.security?.devCsp;
+assert.ok(typeof devCsp === 'string', 'tauri.conf.json must set a devCsp');
+const devImgSrc = cspDirective(devCsp, 'img-src');
+assert.ok(
+  devImgSrc && !devImgSrc.includes('https:'),
+  'devCsp img-src must not allow remote images either',
+);
+assert.ok(
+  cspDirective(devCsp, 'form-action') === "form-action 'none'",
+  "devCsp must also set form-action 'none'",
+);
+// With style-src 'self' (no 'unsafe-inline') the codebase must carry zero
+// inline-style dependence. React style={} props would actually still work
+// (React writes styles via the CSSOM, which CSP exempts), but keeping the
+// tree free of them keeps the invariant observable and stops markup-parsed
+// style attributes creeping in via refactors. Dynamic values go through
+// element.style in an effect (see ContextMenu).
+assert.ok(
+  !app.includes('style={') && !mainTsx.includes('style={'),
+  'no React style={} props — use classes, or element.style via a ref for dynamic values',
+);
 // The preview scheme must stay frameable and nothing else remote must be.
 assert.ok(
   csp.includes('frame-src grokpreview:'),

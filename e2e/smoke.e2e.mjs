@@ -8,7 +8,7 @@
 //   2. /opt/pw-browsers/chromium (preinstalled container browser)
 //   3. playwright-core's own registry path (CI: `npx playwright-core install chromium`)
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -16,6 +16,14 @@ import { chromium } from 'playwright-core';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const PORT = 4173;
 const BASE = `http://127.0.0.1:${PORT}`;
+
+// The production Content-Security-Policy from tauri.conf.json is attached to
+// the served document below, so this whole scenario runs under the shipped
+// policy. Chromium reports every CSP violation as a console error, and step 5
+// fails on console errors — a change that starts depending on inline
+// styles/scripts, remote images, or eval dies here instead of in a release.
+const PRODUCTION_CSP = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8')).app
+  ?.security?.csp;
 
 function resolveChromium() {
   if (process.env.GROK_E2E_CHROMIUM) return process.env.GROK_E2E_CHROMIUM;
@@ -84,6 +92,17 @@ try {
   });
   const context = await browser.newContext();
   await context.addInitScript({ path: join(root, 'e2e/tauri-mock.js') });
+  if (!PRODUCTION_CSP) fail('no app.security.csp found in src-tauri/tauri.conf.json');
+  // Enforce the production CSP on the document (vite preview does not send
+  // one). The mock is CDP-injected, so it is exempt — the app bundle is not.
+  await context.route('**/*', async (route) => {
+    if (route.request().resourceType() !== 'document') return route.continue();
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: { ...response.headers(), 'content-security-policy': PRODUCTION_CSP },
+    });
+  });
   const page = await context.newPage();
 
   const consoleErrors = [];
@@ -99,7 +118,15 @@ try {
   });
   page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  const nav = await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+
+  // 0. The CSP interception must actually be in effect, or the "no console
+  // errors" assertion below silently stops covering policy violations.
+  const appliedCsp = (await nav.allHeaders())['content-security-policy'];
+  if (appliedCsp !== PRODUCTION_CSP) {
+    fail('production CSP header was not applied to the document');
+  }
+  console.log('e2e: production CSP enforced on the document');
 
   // 1. Boot: sidebar brand + composer visible, empty state showing.
   await page.getByText('Grok Build Desktop').first().waitFor({ timeout: 10_000 });
