@@ -180,6 +180,46 @@ describe('FilePicker', () => {
     });
   });
 
+  it('exposes a listbox with id-bearing options and reports the active one', async () => {
+    mockGlob();
+    const onActiveDescendant = vi.fn<(id: string | null) => void>();
+    renderPicker({ listboxId: 'test-listbox', onActiveDescendant });
+    await screen.findByText('a.ts');
+
+    expect(screen.getByRole('listbox')).toHaveAttribute('id', 'test-listbox');
+    const options = screen.getAllByRole('option');
+    expect(options.map((o) => o.id)).toEqual([
+      'test-listbox-opt-0',
+      'test-listbox-opt-1',
+      'test-listbox-opt-2',
+    ]);
+    // Initial highlight reported for aria-activedescendant…
+    expect(onActiveDescendant).toHaveBeenLastCalledWith('test-listbox-opt-0');
+    // …and it follows arrow-key navigation.
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await waitFor(() => expect(onActiveDescendant).toHaveBeenLastCalledWith('test-listbox-opt-1'));
+  });
+
+  it('reports a null active descendant when the list is empty and on unmount', async () => {
+    mockGlob([]);
+    const onActiveDescendant = vi.fn<(id: string | null) => void>();
+    const { unmount } = render(
+      <FilePicker
+        cwd="/repo"
+        query="zzz"
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+        onActiveDescendant={onActiveDescendant}
+      />,
+    );
+    await screen.findByText(/No files matched/);
+    expect(onActiveDescendant).toHaveBeenLastCalledWith(null);
+
+    onActiveDescendant.mockClear();
+    unmount();
+    expect(onActiveDescendant).toHaveBeenCalledWith(null);
+  });
+
   it('refetches when the query prop changes', async () => {
     const calls = mockGlob();
     const onSelect = vi.fn();

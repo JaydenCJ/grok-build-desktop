@@ -44,6 +44,9 @@ interface Props {
  * string-start, and runs until the caret. Whitespace inside the token closes
  * it (the user finished typing the filename).
  */
+/** Listbox id shared by the textarea (aria-controls) and the FilePicker. */
+const FILE_PICKER_LISTBOX_ID = 'composer-file-picker-listbox';
+
 function detectActiveMention(text: string, caret: number): { start: number; query: string } | null {
   if (caret <= 0) return null;
   let i = caret - 1;
@@ -74,6 +77,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [isComposing, setIsComposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  // Highlighted FilePicker option id, exposed as aria-activedescendant while
+  // the picker is open (the textarea keeps DOM focus the whole time).
+  const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
   // Primitive selector — subscribing to whole run/queue snapshots would
@@ -203,6 +209,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     }
   };
 
+  const pickerOpen = Boolean(mention && cwd.trim());
+
   return (
     <div className={`composer${submitting ? ' composer-submitting' : ''}`}>
       {mention && cwd.trim() ? (
@@ -211,11 +219,22 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           query={mention.query}
           onSelect={insertMention}
           onCancel={() => setMention(null)}
+          listboxId={FILE_PICKER_LISTBOX_ID}
+          onActiveDescendant={setActiveOptionId}
         />
       ) : null}
       <textarea
         ref={ref}
         disabled={submitting}
+        // While the @-mention picker is open the textarea drives a listbox
+        // without losing DOM focus — the ARIA combobox pattern. The role is
+        // scoped to that state so the composer stays a plain multiline
+        // textbox the rest of the time.
+        role={pickerOpen ? 'combobox' : undefined}
+        aria-expanded={pickerOpen ? true : undefined}
+        aria-controls={pickerOpen ? FILE_PICKER_LISTBOX_ID : undefined}
+        aria-activedescendant={pickerOpen ? (activeOptionId ?? undefined) : undefined}
+        aria-autocomplete={pickerOpen ? 'list' : undefined}
         placeholder={
           submitting
             ? t('composer.placeholderQueuing')

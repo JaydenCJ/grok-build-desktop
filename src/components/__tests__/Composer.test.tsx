@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { Composer } from '../Composer';
@@ -123,5 +123,54 @@ describe('Composer submit', () => {
     expect(onTextChange).not.toHaveBeenCalled();
     await user.tab(); // blur
     expect(onTextChange).toHaveBeenCalledWith('draft text');
+  });
+});
+
+describe('Composer @-mention combobox semantics', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it('is a plain multiline textbox while no mention is active', () => {
+    mockIPC(() => undefined);
+    const { textarea } = renderComposer({ cwd: '/repo' });
+    expect(textarea).not.toHaveAttribute('role');
+    expect(textarea).not.toHaveAttribute('aria-expanded');
+    expect(textarea).not.toHaveAttribute('aria-controls');
+    expect(textarea).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('becomes an expanded combobox over the file listbox while the picker is open', async () => {
+    mockIPC((cmd) =>
+      cmd === 'glob_files'
+        ? [
+            { path: 'src/a.ts', display_name: 'a.ts', size_bytes: 10 },
+            { path: 'src/b.ts', display_name: 'b.ts', size_bytes: 20 },
+          ]
+        : undefined,
+    );
+    const user = userEvent.setup();
+    const { textarea } = renderComposer({ cwd: '/repo' });
+
+    await user.type(textarea, '@src');
+    expect(await screen.findByText('a.ts')).toBeInTheDocument();
+
+    const listbox = screen.getByRole('listbox');
+    expect(textarea).toHaveAttribute('role', 'combobox');
+    expect(textarea).toHaveAttribute('aria-expanded', 'true');
+    expect(textarea).toHaveAttribute('aria-autocomplete', 'list');
+    expect(textarea).toHaveAttribute('aria-controls', listbox.id);
+    // The active descendant points at the highlighted option id…
+    const options = screen.getAllByRole('option');
+    await waitFor(() => expect(textarea).toHaveAttribute('aria-activedescendant', options[0]!.id));
+    // …and tracks arrow-key navigation.
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await waitFor(() => expect(textarea).toHaveAttribute('aria-activedescendant', options[1]!.id));
+
+    // Dismissing the picker returns the textarea to a plain textbox.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+    expect(textarea).not.toHaveAttribute('role');
+    expect(textarea).not.toHaveAttribute('aria-activedescendant');
   });
 });
