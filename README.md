@@ -117,12 +117,13 @@ cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit + integration test
 npm run doctor       # environment doctor
 ```
 
-All of the above run headlessly on any platform (CI runs them on Linux): the
-vitest suite exercises components against a mocked Tauri IPC layer, and the
-e2e test drives the built frontend in headless Chromium. Integration testing
-of the **actual Tauri binary** — launching the real app and its webview — is
-only possible at runtime on macOS or Windows, the two supported targets;
-there is no Linux binary to run.
+All of the above run headlessly on any platform. CI runs the frontend suite
+(lint, format, build, vitest, smoke) and the headless-Chromium e2e test on
+ubuntu, and the Rust suite (`cargo fmt`/`check`/`clippy`/`test`) on macOS
+plus `cargo check`/`test` on Windows. Integration testing of the **actual
+Tauri binary** — launching the real app and its webview — is only possible
+at runtime on macOS or Windows, the two supported targets; there is no
+Linux binary to run.
 
 ### Troubleshooting
 
@@ -183,8 +184,7 @@ UI で公開されるモデル経路は Grok のみです。モデルセレク�
 - **ツール & スキル ハブ** — 1 ページ 2 タブ。**MCP servers**: コミュニティ製サーバーを追加・削除(`grok mcp`)。**Skills**: 実用的なコーディングスキル(コードレビュー / テスト作成 / 原因デバッグ / コミットメッセージ / PR 説明 / コードベース解説)を `~/.grok/skills` に実際の `SKILL.md` として導入。
 - **設定** — Claude Desktop 風モーダル(General / Model & reasoning / Permissions / Workspace / About)。
 - **プロンプトライブラリ** — SQLite に保存される再利用可能なテンプレート。逐次検索とワンクリック挿入。
-- **エージェント・オーバーレイ** — クリックスルーの全画面エッジボーダー＋アニメーションするカーソル。Grok の動作を明示します。完全に視覚的で、OS への入力合成は行いません。
-- **コーディング・ワークフロー** — Analyze / Implement / Review / Debug / Tests / Refactor。アクションポリシー(Review only / Patch ready / Autopilot)は実際の Grok 権限フラグに対応します。
+- **コーディング・ワークフロー + アクションポリシー** — Analyze / Implement / Review / Debug / Tests / Refactor のスターター。アクションポリシー(Review only / Patch ready / Autopilot)は実際の Grok 権限挙動に対応し、Effort・Reasoning・Best-of-N はチャット欄のすぐ下に並びます。
 - **機能インスペクター** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions。`grok inspect` と管理系 `grok mcp` / `grok plugin` / `grok sessions` を統合。
 
 ### 必要環境
@@ -267,8 +267,7 @@ UI 中只暴露 Grok 这一条模型路径。模型选择器严格反映本机 G
 - **工具 & 技能中心** — 一页两个标签。**MCP servers**:社区服务器目录,一键增删(`grok mcp`)。**Skills**:精选编程技能(代码评审 / 写测试 / 根因调试 / 提交信息 / PR 描述 / 讲解代码库),一键把真实 `SKILL.md` 装进 `~/.grok/skills` 供 Grok 发现。
 - **设置** — Claude Desktop 风格弹窗(General / Model & reasoning / Permissions / Workspace / About)。
 - **Prompt 库** — 存于 SQLite 的可复用模板,边打边搜、一键插入。
-- **Agent 浮层** — 穿透点击的全屏边缘高亮 + 动画光标,让 Grok 正在操作时一目了然。纯视觉,不做任何操作系统级输入合成。
-- **编程工作流** — Analyze / Implement / Review / Debug / Tests / Refactor;动作策略(Review only / Patch ready / Autopilot)对应真实的 Grok 权限标志。
+- **编程工作流 + 动作策略** — Analyze / Implement / Review / Debug / Tests / Refactor 起手式;动作策略(Review only / Patch ready / Autopilot)对应真实的 Grok 权限行为,Effort、Reasoning、Best-of-N 就在聊天框下方一眼可见。
 - **能力检查器** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions,整合 `grok inspect` 与受管的 `grok mcp` / `grok plugin` / `grok sessions`。
 
 ### 环境要求
