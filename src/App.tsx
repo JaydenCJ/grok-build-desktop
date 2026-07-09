@@ -357,9 +357,6 @@ function App() {
       window.localStorage.setItem('grok-desktop-run-count-total', String(next));
       return next;
     });
-    if (info.position > 0) {
-      console.log(`[grok-desktop] queued at position ${info.position}`);
-    }
   }
 
   function togglePanel(target: 'preview' | 'context' | 'terminal' | 'tools') {
