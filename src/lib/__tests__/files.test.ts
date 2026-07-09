@@ -75,15 +75,14 @@ describe('globFiles', () => {
     expect(calls).toEqual([]);
   });
 
-  it('swallows backend errors into an empty list with a warning', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('propagates backend errors so callers can surface them', async () => {
+    // Swallowing into [] made the FilePicker render "no matches" for a broken
+    // listing — the error must reach the UI instead.
     mockIPC((cmd) => {
       if (cmd === 'glob_files') throw new Error('walk failed');
       return undefined;
     });
-    await expect(globFiles('/repo', 'src')).resolves.toEqual([]);
-    expect(warn).toHaveBeenCalledWith('[grok-desktop] glob_files failed', expect.anything());
-    warn.mockRestore();
+    await expect(globFiles('/repo', 'src')).rejects.toThrow('walk failed');
   });
 });
 
