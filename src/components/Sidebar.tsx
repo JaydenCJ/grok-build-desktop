@@ -106,8 +106,9 @@ export function Sidebar({
 
   // Claude-class right-click menu for a history row. Section header, icons,
   // shortcut accelerators, two flyout submenus (Open with / Move to group).
-  function openHistoryMenu(e: React.MouseEvent, item: HistoryPreview) {
-    e.preventDefault();
+  // Reachable via right-click AND the keyboard (Shift+F10 / the ContextMenu
+  // key on a focused row), so `at` is a caller-supplied anchor point.
+  function openHistoryMenu(item: HistoryPreview, at: { x: number; y: number }) {
     const id = item.id; // tab/session id
     const text = sessionFirstPrompt(id) ?? item.title;
     const pinned = pinnedPromptIds.has(id);
@@ -199,7 +200,7 @@ export function Sidebar({
         onClick: () => deleteSession(id),
       },
     ];
-    setContextMenu({ x: e.clientX, y: e.clientY, items });
+    setContextMenu({ x: at.x, y: at.y, items });
   }
 
   // One history row — inline rename/new-group input when being edited,
@@ -245,9 +246,22 @@ export function Sidebar({
         className={`history-row${item.pinned ? ' pinned' : ''}${item.active ? ' active' : ''}`}
         key={item.id}
         onClick={() => switchToSession(item.id)}
-        onContextMenu={(e) => openHistoryMenu(e, item)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openHistoryMenu(item, { x: e.clientX, y: e.clientY });
+        }}
+        onKeyDown={(e) => {
+          // Keyboard route to the same management menu: Shift+F10 or the
+          // dedicated ContextMenu key, anchored to the focused row.
+          if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            openHistoryMenu(item, { x: rect.left + 16, y: rect.bottom - 4 });
+          }
+        }}
         title={t('sidebar.rowTitle')}
         type="button"
+        aria-haspopup="menu"
         aria-current={item.active ? 'true' : undefined}
       >
         <span className="history-row-main">
