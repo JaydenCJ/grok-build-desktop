@@ -5458,6 +5458,78 @@ button.history-section-head.toggle:hover {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+ * Keyboard focus visibility. Only :focus-visible — mouse users keep the
+ * chromeless look the design calls for (plain :focus deliberately carries no
+ * outline anywhere in this sheet). The ring uses --accent, which resolves to
+ * a high-contrast tone against both the graphite and parchment themes.
+ * ────────────────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Full-width rows and chips that sit flush inside padded or scrolling
+   containers get an inset ring, so the outline is never clipped by the
+   container's overflow. */
+.nav-list button:focus-visible,
+.history-list button:focus-visible,
+.history-section-head.toggle:focus-visible,
+.ctx-item:focus-visible,
+.palette-row:focus-visible,
+.settings-nav-item:focus-visible,
+.queue-summary:focus-visible,
+.account-strip:focus-visible,
+.file-picker-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Restore keyboard rings on controls whose plain-:focus outline is reset
+   above (summaries, fields). Fields with their own strong focus treatment
+   (the composer textarea's accent border) keep it — these rules only win
+   where nothing else marks focus. */
+.inspector-drawer summary:focus-visible,
+.terminal-summary:focus-visible,
+.toolbelt summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Undo toast — companion to .session-toast for destructive actions
+ * (conversation delete, history clear): message + an inline Undo button.
+ * ────────────────────────────────────────────────────────────────────────── */
+.undo-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Both toasts anchor top-center; when a session notice is already showing,
+   drop the undo toast a row lower instead of overlapping it. */
+.session-toast + .undo-toast {
+  top: 52px;
+}
+.undo-toast-action {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 24px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.undo-toast-action:hover {
+  background: var(--bg-5);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
  * Reduced motion (accessibility, non-negotiable). Honors the OS "reduce
  * motion" setting: kill looping/decorative animations and movement-based
  * transitions, but keep them as instant state changes so nothing breaks.

@@ -24,6 +24,7 @@ export const en = {
   'common.disabled': 'disabled',
   'common.off': 'off',
   'common.busy': '…',
+  'common.undo': 'Undo',
 
   // ── Command palette ───────────────────────────────────────────────────────
   'palette.ariaLabel': 'Command palette',
@@ -194,7 +195,7 @@ export const en = {
   'sidebar.openSettings': 'Open settings',
   'sidebar.settingsTitle': 'Settings (⌘,)',
   'sidebar.connected': 'Connected · grok.com',
-  'sidebar.rowTitle': 'Open this conversation · right-click for actions',
+  'sidebar.rowTitle': 'Open this conversation · right-click or Shift+F10 for actions',
   'sidebar.renamePrompt': 'Rename prompt',
   'sidebar.newGroupName': 'New group name',
   'sidebar.copied': 'Copied',
@@ -418,6 +419,7 @@ export const en = {
   'notices.stopFailed': 'Stop failed: {error}',
   'notices.queueActionFailed': 'Queue action failed: {error}',
   'notices.cleared': 'Cleared conversation, run history, and terminal.',
+  'notices.conversationDeleted': 'Conversation deleted.',
   'notices.desktopContextAppended': 'Desktop context appended to your draft.',
   'notices.restored': 'Restored {count} recent {runWord}{messagePart}.',
   'notices.runWordOne': 'run',
