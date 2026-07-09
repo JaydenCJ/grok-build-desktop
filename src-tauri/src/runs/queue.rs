@@ -14,6 +14,25 @@ use tokio::sync::{broadcast, Mutex, Notify};
 /// absorb a burst of streaming-json events without lag.
 const BROADCAST_CAPACITY: usize = 1024;
 
+/// How much of grok's stderr we keep for error reporting on a non-zero exit.
+pub const STDERR_TAIL_MAX_BYTES: usize = 4096;
+
+/// Truncate `tail` in place so at most `max_bytes` bytes of its END remain.
+/// The cut is moved forward to the next `char` boundary: grok's stderr is
+/// arbitrary text (log lines can contain non-ASCII), and a naive byte slice at
+/// `len - max_bytes` would panic mid-character and silently kill the
+/// stderr-drain task.
+pub fn keep_utf8_tail(tail: &mut String, max_bytes: usize) {
+    if tail.len() <= max_bytes {
+        return;
+    }
+    let mut cut = tail.len() - max_bytes;
+    while !tail.is_char_boundary(cut) {
+        cut += 1;
+    }
+    tail.drain(..cut);
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct QueueMessage {
     pub run_id: String,
@@ -311,8 +330,9 @@ impl RunQueue {
                 // Drain stderr in a background task. Without this, when grok
                 // produces > 64 KB of stderr (tracing logs, debug noise) the
                 // pipe fills and grok BLOCKS on stderr write, which makes
-                // stdout silent and trips our 60s "no output timeout" — even
-                // though grok is alive and would have produced text just fine.
+                // stdout silent and trips our no-output watchdog (420s by
+                // default, see `no_output_secs` below) — even though grok is
+                // alive and would have produced text just fine.
                 // Keep the tail of stderr so a non-zero exit can report grok's
                 // ACTUAL error (e.g. "invalid reasoning effort: max") instead of
                 // a useless generic "likely a crash".
@@ -330,9 +350,7 @@ impl RunQueue {
                                 Ok(_) => {
                                     if let Ok(mut t) = tail.lock() {
                                         t.push_str(&line);
-                                        if t.len() > 4096 {
-                                            *t = t[t.len() - 4096..].to_string();
-                                        }
+                                        keep_utf8_tail(&mut t, STDERR_TAIL_MAX_BYTES);
                                     }
                                     // Surface unfiltered stderr to the host
                                     // process — useful when diagnosing grok
