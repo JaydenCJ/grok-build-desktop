@@ -14,14 +14,11 @@ export default defineConfig({
       // Measure the whole frontend surface, not just files imported by tests,
       // so the coverage number is honest about untested modules.
       include: ['src/**/*.{ts,tsx}'],
-      exclude: [
-        'src/**/__tests__/**',
-        'src/test/**',
-        'src/main.tsx',
-        'src/vite-env.d.ts',
-        // Runs inside a Web Worker; not loadable in the jsdom test bundle.
-        'src/lib/markdown.worker.ts',
-      ],
+      // Keep exclusions to genuine non-code: tests, test setup, and type-only
+      // declarations. Everything else in src/ counts — including files no test
+      // imports (they are statically analyzed and reported at 0%), so the
+      // number cannot be inflated by simply not testing a module.
+      exclude: ['src/**/__tests__/**', 'src/test/**', 'src/vite-env.d.ts'],
       reporter: ['text', 'text-summary'],
     },
   },
