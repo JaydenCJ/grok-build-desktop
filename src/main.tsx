@@ -60,78 +60,30 @@ class AppErrorBoundary extends React.Component<
     window.location.reload();
   };
 
+  // Styled via .boot-error* classes in App.css (loaded before render can ever
+  // throw, because main.tsx imports App eagerly). Class-based styling keeps
+  // the tree free of style attributes under the strict CSP (style-src 'self',
+  // no 'unsafe-inline').
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div
-        style={{
-          alignItems: 'center',
-          background: '#0d0f11',
-          color: '#f4f4f5',
-          display: 'flex',
-          flexDirection: 'column',
-          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-          gap: 16,
-          height: '100vh',
-          justifyContent: 'center',
-          padding: 32,
-          textAlign: 'center',
-        }}
-      >
-        <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
-          Grok Desktop hit a rendering error
-        </h2>
-        <p style={{ color: '#a1a1aa', margin: 0, maxWidth: 480 }}>
+      <div className="boot-error">
+        <h2 className="boot-error-title">Grok Desktop hit a rendering error</h2>
+        <p className="boot-error-note">
           The app crashed during startup. This is usually due to corrupted local settings from a
           previous version. You can safely reset session data and reload — no Grok CLI state is
           touched.
         </p>
-        <pre
-          style={{
-            background: '#15181c',
-            border: '1px solid #24282e',
-            borderRadius: 6,
-            color: '#ef4444',
-            fontSize: '0.78rem',
-            margin: 0,
-            maxHeight: 160,
-            maxWidth: 560,
-            overflow: 'auto',
-            padding: 12,
-            textAlign: 'left',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
+        <pre className="boot-error-stack">
           {String(this.state.error?.stack ?? this.state.error)}
         </pre>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={this.handleReload}
-            style={{
-              background: 'transparent',
-              border: '1px solid #24282e',
-              borderRadius: 6,
-              color: '#f4f4f5',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              padding: '8px 14px',
-            }}
-            type="button"
-          >
+        <div className="boot-error-actions">
+          <button className="boot-error-btn" onClick={this.handleReload} type="button">
             Reload
           </button>
           <button
+            className="boot-error-btn primary"
             onClick={this.handleResetLocalStorage}
-            style={{
-              background: '#f5f5f5',
-              border: '1px solid #f5f5f5',
-              borderRadius: 6,
-              color: '#0d0f11',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              padding: '8px 14px',
-            }}
             type="button"
           >
             Reset session and reload
