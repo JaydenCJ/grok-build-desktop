@@ -89,4 +89,22 @@ describe('classifyEvent', () => {
     if (r.kind !== 'create') return;
     expect(r.event.key).toMatch(/^trace:/);
   });
+
+  it('pairs id-less tool_start/tool_end events by name', () => {
+    const start = classifyEvent({ type: 'tool_start', name: 'bash' });
+    const end = classifyEvent({ type: 'tool_end', name: 'bash' });
+    expect(start.kind).toBe('create');
+    expect(end.kind).toBe('finish');
+    if (start.kind !== 'create' || end.kind !== 'finish') return;
+    expect(end.key).toBe(start.event.key);
+  });
+
+  it('pairs id-less tool_use/tool_result events by name', () => {
+    const start = classifyEvent({ type: 'tool_use', name: 'Read' });
+    const end = classifyEvent({ type: 'tool_result', name: 'Read', output: 'ok' });
+    expect(start.kind).toBe('create');
+    expect(end.kind).toBe('finish');
+    if (start.kind !== 'create' || end.kind !== 'finish') return;
+    expect(end.key).toBe(start.event.key);
+  });
 });

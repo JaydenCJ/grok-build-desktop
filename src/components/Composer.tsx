@@ -1,19 +1,10 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { enqueueRun } from '../lib/grok';
-import { useActiveRun } from '../hooks/useActiveRun';
-import { useQueue } from '../hooks/useQueue';
-import {
-  notePendingSubmitEnd,
-  notePendingSubmitStart,
-} from '../lib/streamStore';
+import { useHasInflight } from '../hooks/useActiveRun';
+import { notePendingSubmitEnd, notePendingSubmitStart } from '../lib/streamStore';
 import { extractFileMentions, readFileSafe, type FileEntry } from '../lib/files';
 import { FilePicker } from './FilePicker';
+import { t } from '../i18n';
 
 export interface ComposerHandle {
   /** Imperatively set the textarea value (used by starter cards / history click / drafts). */
@@ -27,17 +18,14 @@ export interface ComposerHandle {
 interface Props {
   cwd: string;
   argsBuilder: () => string[];
-  /** Optional wrapper called once before sending — used to add a coding-mode preamble etc. */
-  promptWrapper?: (raw: string) => string;
   /** Initial seed value (e.g. restored from session_state drafts). Only applied once on mount. */
   initialValue?: string;
   placeholder?: string;
-  onEnqueued?: (info: {
-    runId: string;
-    position: number;
-    prompt: string;
-    rawText: string;
-  }) => void;
+  onEnqueued?: (info: { runId: string; position: number; prompt: string; rawText: string }) => void;
+  /** Called when enqueueing the prompt fails, with a human-readable message.
+   *  The host surfaces it (session notice) — a silent console.error left the
+   *  user staring at a composer that "ate" their prompt. */
+  onError?: (message: string) => void;
   /**
    * Optional draft-persistence callback. **Called only on blur and on unmount**,
    * not on every keystroke — passing it as a per-keystroke listener would force
@@ -56,6 +44,9 @@ interface Props {
  * string-start, and runs until the caret. Whitespace inside the token closes
  * it (the user finished typing the filename).
  */
+/** Listbox id shared by the textarea (aria-controls) and the FilePicker. */
+const FILE_PICKER_LISTBOX_ID = 'composer-file-picker-listbox';
+
 function detectActiveMention(text: string, caret: number): { start: number; query: string } | null {
   if (caret <= 0) return null;
   let i = caret - 1;
@@ -75,15 +66,7 @@ function detectActiveMention(text: string, caret: number): { start: number; quer
 }
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
-  {
-    cwd,
-    argsBuilder,
-    promptWrapper,
-    initialValue,
-    placeholder,
-    onEnqueued,
-    onTextChange,
-  }: Props,
+  { cwd, argsBuilder, initialValue, placeholder, onEnqueued, onError, onTextChange }: Props,
   outerRef,
 ) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -94,10 +77,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [isComposing, setIsComposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  // Highlighted FilePicker option id, exposed as aria-activedescendant while
+  // the picker is open (the textarea keeps DOM focus the whole time).
+  const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
-  const active = useActiveRun();
-  const queue = useQueue();
+  // Primitive selector — subscribing to whole run/queue snapshots would
+  // re-render the Composer on every streamed token (see useHasInflight).
+  const hasInflight = useHasInflight();
 
   useImperativeHandle(
     outerRef,
@@ -125,15 +112,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // mode switch). Reads the current text directly from the DOM ref — no
   // dependency on React state.
   useEffect(() => {
+    const node = ref.current;
     return () => {
-      const text = ref.current?.value ?? '';
+      const text = node?.value ?? '';
       if (text && onTextChangeRef.current) onTextChangeRef.current(text);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const hasInflight =
-    Boolean(active && active.state === 'running') || queue.items.length > 0;
 
   /**
    * Re-scan the textarea for an active @mention. Called on input + caret
@@ -156,7 +140,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const caret = el.selectionStart ?? 0;
     const before = el.value.slice(0, mention.start);
     const after = el.value.slice(caret);
-    const insertion = `@${entry.path} `;
+    // Quote paths containing whitespace so extractFileMentions can parse them
+    // back out as one token ("My Project/notes.md" would otherwise become @My).
+    const insertion = /\s/.test(entry.path) ? `@"${entry.path}" ` : `@${entry.path} `;
     el.value = `${before}${insertion}${after}`;
     const newCaret = before.length + insertion.length;
     el.setSelectionRange(newCaret, newCaret);
@@ -196,26 +182,34 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setMention(null);
     notePendingSubmitStart();
     try {
-      const withFiles = await expandMentionsInPrompt(rawText);
-      const wrapped = promptWrapper ? promptWrapper(withFiles) : withFiles;
+      const prompt = await expandMentionsInPrompt(rawText);
       const args = argsBuilder();
-      args.push('-p', wrapped);
-      const result = await enqueueRun({ prompt: wrapped, cwd, args });
+      args.push('-p', prompt);
+      const result = await enqueueRun({ prompt, cwd, args });
       el.value = '';
       onTextChangeRef.current?.('');
       onEnqueued?.({
         runId: result.runId,
         position: result.position,
-        prompt: wrapped,
+        prompt,
         rawText,
       });
     } catch (err) {
       console.error('[grok-desktop] enqueue failed', err);
+      // Surface the failure — the prompt is still in the textarea, so the
+      // user can retry once the cause (e.g. backend not ready) is fixed.
+      onError?.(err instanceof Error ? err.message : String(err));
     } finally {
       notePendingSubmitEnd();
       setSubmitting(false);
+      // Disabling the textarea during submit blurs it; restore focus so the
+      // type→Enter→type flow survives every send. rAF lets the re-enable
+      // render commit first.
+      requestAnimationFrame(() => ref.current?.focus());
     }
   };
+
+  const pickerOpen = Boolean(mention && cwd.trim());
 
   return (
     <div className={`composer${submitting ? ' composer-submitting' : ''}`}>
@@ -225,15 +219,27 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           query={mention.query}
           onSelect={insertMention}
           onCancel={() => setMention(null)}
+          listboxId={FILE_PICKER_LISTBOX_ID}
+          onActiveDescendant={setActiveOptionId}
         />
       ) : null}
       <textarea
         ref={ref}
         disabled={submitting}
+        // While the @-mention picker is open the textarea drives a listbox
+        // without losing DOM focus — the ARIA combobox pattern. The role is
+        // scoped to that state so the composer stays a plain multiline
+        // textbox the rest of the time.
+        role={pickerOpen ? 'combobox' : undefined}
+        aria-expanded={pickerOpen ? true : undefined}
+        aria-controls={pickerOpen ? FILE_PICKER_LISTBOX_ID : undefined}
+        aria-activedescendant={pickerOpen ? (activeOptionId ?? undefined) : undefined}
+        aria-autocomplete={pickerOpen ? 'list' : undefined}
         placeholder={
           submitting
-            ? 'Queuing your prompt…'
-            : placeholder ?? (hasInflight ? 'Queue another prompt…' : 'Ask Grok…')
+            ? t('composer.placeholderQueuing')
+            : (placeholder ??
+              (hasInflight ? t('composer.placeholderQueueAnother') : t('composer.placeholderAsk')))
         }
         onCompositionStart={() => {
           composingRef.current = true;
@@ -268,8 +274,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           setTimeout(() => setMention(null), 100);
         }}
         onKeyDown={(e) => {
-          // When the file picker is open it owns Enter/Tab/Arrows/Esc.
-          if (mention) {
+          // When the file picker is open it owns Enter/Tab/Arrows/Esc. Mirror
+          // the render condition below (`mention && cwd.trim()`): with no cwd
+          // the picker never shows, so a trailing @word must not swallow Enter.
+          if (mention && cwd.trim()) {
             const navKeys = ['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape'];
             if (navKeys.includes(e.key)) return;
           }
@@ -282,24 +290,19 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           //   4. keyCode 229 — some browsers fire Enter as 229 mid-composition
           // Any one means "do not submit".
           const native = e.nativeEvent as KeyboardEvent;
-          if (
-            composingRef.current ||
-            isComposing ||
-            native.isComposing ||
-            native.keyCode === 229
-          ) {
+          if (composingRef.current || isComposing || native.isComposing || native.keyCode === 229) {
             return;
           }
           e.preventDefault();
           void submit();
         }}
       />
-      <button
-        className="composer-send"
-        disabled={submitting}
-        onClick={() => void submit()}
-      >
-        {submitting ? 'Queuing…' : hasInflight ? 'Enqueue' : 'Send'}
+      <button className="composer-send" disabled={submitting} onClick={() => void submit()}>
+        {submitting
+          ? t('composer.sendQueuing')
+          : hasInflight
+            ? t('composer.sendEnqueue')
+            : t('composer.send')}
       </button>
     </div>
   );

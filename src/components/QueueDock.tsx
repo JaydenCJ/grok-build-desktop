@@ -4,6 +4,7 @@ import { useElapsed } from '../hooks/useElapsed';
 import { useQueue } from '../hooks/useQueue';
 import { cancelPendingRuns, cancelRun, getQueue, resumePendingRuns } from '../lib/grok';
 import { replaceQueue } from '../lib/streamStore';
+import { t } from '../i18n';
 
 function formatElapsed(ms: number): string {
   const s = ms / 1000;
@@ -11,7 +12,15 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
 }
 
-export function QueueDock() {
+interface Props {
+  /** Called when a queue action (resume / cancel) fails, with a
+   *  human-readable message. The host surfaces it (session notice) — an
+   *  unhandled rejection here left the buttons looking like they worked while
+   *  the queue stayed exactly as it was. */
+  onError?: (message: string) => void;
+}
+
+export function QueueDock({ onError }: Props) {
   const [expanded, setExpanded] = useState(false);
   const queue = useQueue();
   const active = useActiveRun();
@@ -31,19 +40,34 @@ export function QueueDock() {
           setResumeBannerVisible(true);
         }
       })
-      .catch(() => {/* ignore: backend not ready yet */});
+      .catch(() => {
+        /* ignore: backend not ready yet */
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const surfaceError = (err: unknown) => {
+    onError?.(err instanceof Error ? err.message : String(err));
+  };
+  // On failure the banner stays up so the user can retry once the cause
+  // (e.g. backend hiccup) is gone.
   const handleResume = async () => {
-    await resumePendingRuns();
-    setResumeBannerVisible(false);
+    try {
+      await resumePendingRuns();
+      setResumeBannerVisible(false);
+    } catch (err) {
+      surfaceError(err);
+    }
   };
   const handleCancelAll = async () => {
-    await cancelPendingRuns();
-    setResumeBannerVisible(false);
+    try {
+      await cancelPendingRuns();
+      setResumeBannerVisible(false);
+    } catch (err) {
+      surfaceError(err);
+    }
   };
 
   // Only surface the dock when it has something to manage: queued tasks
@@ -56,23 +80,34 @@ export function QueueDock() {
     <div className="queue-dock">
       {resumeBannerVisible ? (
         <div className="queue-banner">
-          <span>↻ Last session had {bannerCount} pending task{bannerCount === 1 ? '' : 's'}</span>
-          <button onClick={handleResume}>Resume all</button>
-          <button onClick={handleCancelAll}>Cancel all</button>
+          <span>
+            {t(bannerCount === 1 ? 'queue.bannerOne' : 'queue.bannerMany', { count: bannerCount })}
+          </span>
+          <button onClick={handleResume}>{t('queue.resumeAll')}</button>
+          <button onClick={handleCancelAll}>{t('queue.cancelAll')}</button>
         </div>
       ) : null}
 
-      <div className="queue-summary" onClick={() => setExpanded((v) => !v)}>
+      <button
+        type="button"
+        className="queue-summary"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
         {active ? (
-          <span className="queue-active">▶ Running {elapsed != null ? formatElapsed(elapsed) : '0s'}</span>
+          <span className="queue-active">
+            {t('queue.running', { elapsed: elapsed != null ? formatElapsed(elapsed) : '0s' })}
+          </span>
         ) : (
-          <span className="queue-idle">▶ Idle</span>
+          <span className="queue-idle">{t('queue.idle')}</span>
         )}
         {queue.items.length > 0 ? (
-          <span className="queue-count">+ {queue.items.length} queued</span>
+          <span className="queue-count">
+            {t('queue.queuedCount', { count: queue.items.length })}
+          </span>
         ) : null}
-        <span className="queue-expand">{expanded ? '⤒ collapse' : '⤓ expand'}</span>
-      </div>
+        <span className="queue-expand">{expanded ? t('queue.collapse') : t('queue.expand')}</span>
+      </button>
 
       {expanded && queue.items.length > 0 ? (
         <ul className="queue-list">
@@ -80,7 +115,12 @@ export function QueueDock() {
             <li key={item.id} className="queue-item">
               <span className="queue-item-state">⏸</span>
               <span className="queue-item-prompt">{item.prompt.slice(0, 80)}</span>
-              <button onClick={() => cancelRun(item.id)} aria-label="Cancel this queued run">✕</button>
+              <button
+                onClick={() => void cancelRun(item.id).catch(surfaceError)}
+                aria-label={t('queue.cancelQueuedRun')}
+              >
+                ✕
+              </button>
             </li>
           ))}
         </ul>

@@ -32,17 +32,16 @@ Tauri 2 (Rust) + React 19 + TypeScript + Vite 7.
     App.tsx                 # the app: state, grok arg builder, history, render (~3k lines)
     App.css                 # all styles + design tokens (v0.4.0 "mono graphite")
     main.tsx                # entry + AppErrorBoundary
-    overlay.tsx             # the G2 agent-overlay window entry
     components/             # MessageList, MessageItem, StatusBar, QueueDock, Composer,
                             #   CommandPalette, ContextMenu, SettingsPage, ToolsPage,
-                            #   DesktopPanel, AgentOverlay(+Driver), TraceTimeline, PromptLibrary
+                            #   DesktopPanel, TraceTimeline, FilePicker
     hooks/                  # useActiveRun, useQueue, useRunSnapshot, useElapsed,
                             #   useSmoothText, usePendingSubmit
     lib/                    # streamStore.ts, markdown.worker.ts, grok.ts, mcp.ts,
-                            #   skills.ts, prompts.ts, tabs.ts, desktop.ts, overlay.ts
+                            #   skills.ts, prompts.ts, tabs.ts, desktop.ts
   src-tauri/                # Rust backend
     src/lib.rs              # Tauri commands, grok arg/prompt builders, session state,
-                            #   skills, MCP, inspect, folder picker, overlay (~2k lines)
+                            #   skills, MCP, inspect, folder picker (~2k lines)
     src/runs/               # db.rs, event.rs, parser.rs, process.rs, queue.rs (the run engine)
     src/prompts/mod.rs      # prompt-library SQLite store
     tauri.conf.json         # bundle config, icons, window
@@ -58,7 +57,7 @@ npm install
 npm run tauri:dev          # dev (Tauri window) — also `npm run dev` for the Vite UI in a browser
 npm run check              # tsc --noEmit && cargo check     (the fast gate)
 npm test                   # node scripts/smoke_test.mjs     (structural guards)
-npm run test:unit          # vitest (streamStore etc.)       21 tests
+npm run test:unit          # vitest (streamStore, sanitize, traces, files …)
 cargo test --manifest-path src-tauri/Cargo.toml              # Rust unit tests
 npm run tauri build        # production .app + .dmg under src-tauri/target/release/bundle/
 ```
@@ -66,7 +65,7 @@ npm run tauri build        # production .app + .dmg under src-tauri/target/relea
 **Browser preview is the reliable way to verify UI.** The React app runs in a plain
 browser on `:1420` (`npm run dev`). In a browser, Tauri `invoke` fails gracefully
 (features that need the backend show "native unavailable"), but all layout, CSS,
-menus, theming, and footer options render and are clickable. Driving the *real*
+menus, theming, and footer options render and are clickable. Driving the _real_
 Tauri window with cliclick is fragile on HiDPI/multi-monitor — prefer the browser
 for UI checks; use the real app only for grok runs (which need the CLI).
 
@@ -128,8 +127,8 @@ A single rAF loop advances a "shown" cursor toward the full text. Two cadences:
 
 ```ts
 const step = endedRef.current
-  ? Math.min(Math.max(4, Math.ceil(remaining / 20)), 120)   // ended: drain tail in ~0.3-0.5s
-  : Math.min(Math.max(1, Math.ceil(remaining / 60)), 3);    // live: calm ~60-180 cps, never "dumps"
+  ? Math.min(Math.max(4, Math.ceil(remaining / 20)), 120) // ended: drain tail in ~0.3-0.5s
+  : Math.min(Math.max(1, Math.ceil(remaining / 60)), 3); // live: calm ~60-180 cps, never "dumps"
 ```
 
 Live: caps at 3 chars/frame so a burst (best-of-n, fast model) trails the caret
@@ -138,8 +137,8 @@ types it out rather than snapping. `caretVisible = shown < full.length`.
 
 ## 5. The grok integration (the heart) — `buildGrokArgs` / `buildGrokRules` in App.tsx
 
-The user turn is **exactly what the user typed** (`buildPromptWithPreamble` returns
-`raw`). Durable guidance goes to grok's system prompt via `--rules`, not a preamble.
+The user turn is **exactly what the user typed** — no preamble is prepended.
+Durable guidance goes to grok's system prompt via `--rules`, not a preamble.
 Operational settings ride as real flags, never echoed as prose.
 
 ```ts
@@ -214,21 +213,20 @@ in `recentPrompts` so they remain searchable via the ⌘K palette.
 
 ## 7. Features & where they live
 
-| Feature | Where |
-|---|---|
+| Feature                                                        | Where                                                                                               |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Conversations sidebar (switch/rename/pin/group/archive/delete) | App.tsx: `recentPrompts`, `switchToSession`, `deleteSession`, `openHistoryMenu`, `renderHistoryRow` |
-| Non-blocking streaming + queue | `runs/queue.rs`, `streamStore.ts`, `MessageList/MessageItem`, `StatusBar`, `QueueDock` |
-| Typewriter pacing | `hooks/useSmoothText.ts` |
-| Live status (thinking…/writing…/working…) | `components/StatusBar.tsx` (`stateSuffix`) |
-| Theme toggle (sun/moon) | App.tsx titlebar (`titlebar-icon-btn theme-toggle`) + CSS; ⌘⇧L |
-| Connection pill ("● Grok"/Offline) | App.tsx `.conn-pill` + CSS |
-| Panels menu (Preview/Context/Terminal) | App.tsx `openPanelMenu` |
-| Tools & Skills hub | `components/ToolsPage.tsx` + `lib/mcp.ts` + `lib/skills.ts` |
-| Prompt library | `components/PromptLibrary.tsx` + `lib/prompts.ts` + `prompts/mod.rs` |
-| Command palette (⌘K) + search | `components/CommandPalette.tsx` (history rows searchable, IME-safe) |
-| Capability inspector | App.tsx context panel + `grok inspect` parsing |
-| Agent overlay (G2) | `overlay.tsx`, `AgentOverlay(+Driver)`, `set_agent_overlay`/`set_agent_cursor` |
-| macOS desktop bridge | `lib/desktop.ts` + `desktop_*` Tauri commands + `DesktopPanel` |
+| Non-blocking streaming + queue                                 | `runs/queue.rs`, `streamStore.ts`, `MessageList/MessageItem`, `StatusBar`, `QueueDock`              |
+| Typewriter pacing                                              | `hooks/useSmoothText.ts`                                                                            |
+| Live status (thinking…/writing…/working…)                      | `components/StatusBar.tsx` (`stateSuffix`)                                                          |
+| Theme toggle (sun/moon)                                        | App.tsx titlebar (`titlebar-icon-btn theme-toggle`) + CSS; ⌘⇧L                                      |
+| Connection pill ("● Grok"/Offline)                             | App.tsx `.conn-pill` + CSS                                                                          |
+| Panels menu (Preview/Context/Terminal)                         | App.tsx `openPanelMenu`                                                                             |
+| Tools & Skills hub                                             | `components/ToolsPage.tsx` + `lib/mcp.ts` + `lib/skills.ts`                                         |
+| Prompt library                                                 | App.tsx (`savePromptToLibrary`, inline UI) + `lib/prompts.ts` + `prompts/mod.rs`                    |
+| Command palette (⌘K) + search                                  | `components/CommandPalette.tsx` (history rows searchable, IME-safe)                                 |
+| Capability inspector                                           | App.tsx context panel + `grok inspect` parsing                                                      |
+| macOS desktop bridge                                           | `lib/desktop.ts` + `desktop_*` Tauri commands + `DesktopPanel`                                      |
 
 ### Skills hub (new) — `lib/skills.ts` + ToolsPage `[MCP servers][Skills]` tabs
 
@@ -267,10 +265,13 @@ the theme toggle to a 2px sliver (looked like a "dot").
   literally). Recent guards cover: conversations (`switchToSession`/`deleteSession`),
   streaming status, Best-of-N default, `--rules` usage, no-preamble, Skills hub,
   theme toggle (`titlebar-icon-btn theme-toggle` + `<Moon size`).
-- `vitest` — streamStore + parsing (21 tests).
+- `vitest` — streamStore, sanitization, trace/file parsing, hooks.
 - `cargo test` — runs/queue/parser + prompts.
-- Always run `npm run check && npm test` before committing; CI workflow was removed
-  (it spammed failure emails; tests run locally instead).
+- Always run `npm run check && npm test` before committing; CI
+  (`.github/workflows/ci.yml`) runs lint + format + build + vitest + smoke
+  and the headless-Chromium e2e test on ubuntu, plus the Rust suite on macOS
+  (`cargo fmt`/`check`/`clippy`/`test`) and Windows (`cargo check`/`test`)
+  for every push/PR.
 
 ## 10. Privacy / security (this is a public repo)
 
@@ -327,6 +328,5 @@ source. README header has a "Download for macOS" button → `/releases/latest`.
 - Sub-agent visualization for best-of-n / fan-out runs.
 - `@path` file references in the composer + an inline diff viewer.
 - Session pinning via `-r <sessionId>` (see §12).
-- A larger, community-driven Skills catalog; a working lightweight CI (tsc + tests
-  only, no heavy Tauri build) for a green badge.
+- A larger, community-driven Skills catalog.
 - Notarization for a friction-free macOS download; a Linux build target.

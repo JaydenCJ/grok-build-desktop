@@ -29,27 +29,22 @@ pub mod desktop {
 pub mod prompts;
 pub mod runs;
 
+use crate::runs::db::Db;
+use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::{
     collections::HashSet,
     env, fs,
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 use tauri::Manager;
-use crate::runs::db::Db;
-use crate::runs::queue::{QueueMessage, QueueMessageKind, RunQueue};
-
-#[cfg(unix)]
-extern "C" {
-    fn setpgid(pid: i32, pgid: i32) -> i32;
-}
 
 #[derive(Serialize)]
 struct ToolStatus {
@@ -120,10 +115,28 @@ struct StaticPreview {
     available: bool,
     root: String,
     entry_path: String,
-    html: String,
+    /// URL on the `grokpreview` custom scheme the iframe should load. The
+    /// document is served by `preview_scheme_response` with its own CSP, so
+    /// it does not inherit the strict app CSP (about:srcdoc would).
+    preview_url: String,
     files: Vec<StaticPreviewFile>,
     detail: String,
     updated_at: u128,
+}
+
+/// The one preview root the `grokpreview://` custom protocol may serve from.
+/// `get_static_preview` stores the canonicalized project root plus a fresh
+/// random token; the scheme handler rejects any request that does not carry
+/// the current token or that resolves outside this root, so a compromised
+/// renderer cannot use the scheme as an arbitrary-file oracle beyond the
+/// folder the user already chose for preview.
+#[derive(Default)]
+struct PreviewState(Mutex<Option<RegisteredPreview>>);
+
+struct RegisteredPreview {
+    token: String,
+    /// Canonicalized preview root; every served path must stay under it.
+    root: PathBuf,
 }
 
 fn truncate_text(value: String) -> String {
@@ -141,16 +154,14 @@ fn strip_ansi_codes(value: &str) -> String {
     let mut chars = value.chars().peekable();
 
     while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for code_ch in chars.by_ref() {
-                    if ('@'..='~').contains(&code_ch) {
-                        break;
-                    }
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for code_ch in chars.by_ref() {
+                if ('@'..='~').contains(&code_ch) {
+                    break;
                 }
-                continue;
             }
+            continue;
         }
         output.push(ch);
     }
@@ -189,8 +200,16 @@ fn verbose_grok_stderr() -> bool {
     )
 }
 
+fn redact_env_pair(pair: &str) -> String {
+    match pair.split_once('=') {
+        Some((key, _)) => format!("{key}=<redacted>"),
+        None => "<redacted>".to_string(),
+    }
+}
+
 fn command_line(program: &str, args: &[String]) -> String {
     let mut redact_next = false;
+    let mut redact_next_env = false;
     let suffix = args
         .iter()
         .map(|arg| {
@@ -199,12 +218,28 @@ fn command_line(program: &str, args: &[String]) -> String {
                 return "<prompt>".to_string();
             }
 
+            // `--env KEY=VALUE` pairs (grok mcp add) can carry API tokens;
+            // the echoed command line is persisted (session_state.json,
+            // localStorage), so never echo the value.
+            if redact_next_env {
+                redact_next_env = false;
+                return redact_env_pair(arg);
+            }
+
             if arg == "-p" || arg == "--single" {
                 redact_next = true;
             }
 
+            if arg == "--env" {
+                redact_next_env = true;
+            }
+
             if arg.starts_with("--single=") {
                 return "--single=<prompt>".to_string();
+            }
+
+            if let Some(pair) = arg.strip_prefix("--env=") {
+                return format!("--env={}", redact_env_pair(pair));
             }
 
             if arg.contains(' ') {
@@ -232,6 +267,27 @@ fn command_path() -> String {
         Ok(path) if !path.trim().is_empty() => format!("{fallback}:{path}"),
         _ => fallback,
     }
+}
+
+/// Locate the grok binary for the streaming queue when GROK_DESKTOP_GROK_CMD
+/// is unset. Every other surface resolves `grok` through `command_path()`
+/// (which covers npm-prefix and homebrew installs — the install methods the
+/// app itself recommends), so the queue must too; hardcoding
+/// `~/.grok/bin/grok` broke chat for anyone who installed grok via npm or
+/// brew even though the status panel said "installed / authenticated".
+/// Falls back to the official installer's location.
+fn default_grok_binary() -> String {
+    for dir in command_path().split(':') {
+        if dir.is_empty() || dir.starts_with('~') {
+            continue;
+        }
+        let candidate = Path::new(dir).join("grok");
+        if candidate.is_file() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
+    let home = env::var("HOME").unwrap_or_default();
+    format!("{home}/.grok/bin/grok")
 }
 
 fn shell_quote(value: &str) -> String {
@@ -288,11 +344,11 @@ fn prepare_child_process(command: &mut Command) {
     #[cfg(unix)]
     unsafe {
         command.pre_exec(|| {
-            if setpgid(0, 0) == 0 {
-                Ok(())
-            } else {
-                Err(std::io::Error::last_os_error())
-            }
+            // Become the leader of a new process group so we can kill
+            // descendants — same pattern as runs/process.rs::spawn.
+            nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
+                .map_err(std::io::Error::other)?;
+            Ok(())
         });
     }
 }
@@ -326,11 +382,17 @@ fn terminate_pid_tree(pid: u32) {
     #[cfg(unix)]
     {
         let process_group = format!("-{pid}");
-        let _ = Command::new("kill").args(["-TERM", &process_group]).status();
+        let _ = Command::new("kill")
+            .args(["-TERM", &process_group])
+            .status();
 
         let mut processes = HashSet::new();
         collect_process_tree(pid, &mut processes);
-        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+        for child_pid in processes
+            .iter()
+            .copied()
+            .filter(|child_pid| *child_pid != pid)
+        {
             let _ = Command::new("kill")
                 .args(["-TERM", &child_pid.to_string()])
                 .status();
@@ -338,12 +400,28 @@ fn terminate_pid_tree(pid: u32) {
 
         thread::sleep(Duration::from_millis(250));
 
-        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
-        for child_pid in processes.iter().copied().filter(|child_pid| *child_pid != pid) {
+        let _ = Command::new("kill")
+            .args(["-KILL", &process_group])
+            .status();
+        for child_pid in processes
+            .iter()
+            .copied()
+            .filter(|child_pid| *child_pid != pid)
+        {
             let _ = Command::new("kill")
                 .args(["-KILL", &child_pid.to_string()])
                 .status();
         }
+    }
+    #[cfg(windows)]
+    {
+        // Same approach as runs/process.rs kill_group: taskkill /T terminates
+        // the whole tree rooted at this PID. Without this the legacy command
+        // path's timeout only killed the direct child on Windows, leaking
+        // grandchildren.
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .status();
     }
 }
 
@@ -351,7 +429,6 @@ fn terminate_child_tree(child: &mut Child) {
     terminate_pid_tree(child.id());
     let _ = child.kill();
 }
-
 
 fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -387,14 +464,33 @@ fn split_template_args(template: &str, prompt: &str, mode: &str) -> Vec<String> 
     args
 }
 
+/// Run an external process to completion, capturing stdout/stderr.
+///
+/// `filter_noise` enables the grok-specific tracing-log filter
+/// (`is_noisy_grok_line`) — pass `true` ONLY for grok invocations. Arbitrary
+/// shell commands and python scripts must see their output verbatim: a user
+/// running `grep ERROR app.log` in the Terminal panel would otherwise have
+/// timestamped log lines silently vanish.
 fn run_external_command(
     program: &str,
     args: Vec<String>,
     cwd: Option<PathBuf>,
     timeout_secs: u64,
+    filter_noise: bool,
 ) -> ToolRun {
     let display_command = command_line(program, &args);
     let cwd = cwd.unwrap_or_else(project_root);
+    // project_root() is a compile-time path that only exists on the build
+    // machine, and a saved cwd may have been deleted since. Fall back to
+    // $HOME (mirroring runs/process.rs) instead of failing spawn with a
+    // misleading "grok is not installed" ENOENT.
+    let cwd = if cwd.is_dir() {
+        cwd
+    } else {
+        env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+    };
     let start = Instant::now();
     let mut command = Command::new(program);
     command
@@ -431,11 +527,11 @@ fn run_external_command(
 
     if let Some(stdout) = stdout {
         let output = Arc::clone(&output);
-        let verbose = verbose_grok_stderr();
+        let filter = filter_noise && !verbose_grok_stderr();
         reader_threads.push(thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 let cleaned = strip_ansi_codes(&line);
-                if !verbose && is_noisy_grok_line(&cleaned) {
+                if filter && is_noisy_grok_line(&cleaned) {
                     continue;
                 }
                 if let Ok(mut buffer) = output.lock() {
@@ -448,11 +544,11 @@ fn run_external_command(
 
     if let Some(stderr) = stderr {
         let error_output = Arc::clone(&error_output);
-        let verbose = verbose_grok_stderr();
+        let filter = filter_noise && !verbose_grok_stderr();
         reader_threads.push(thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 let cleaned = strip_ansi_codes(&line);
-                if !verbose && is_noisy_grok_line(&cleaned) {
+                if filter && is_noisy_grok_line(&cleaned) {
                     continue;
                 }
                 if let Ok(mut buffer) = error_output.lock() {
@@ -624,7 +720,9 @@ fn safe_skill_slug(slug: &str) -> Result<String, String> {
         || s.contains('/')
         || s.contains('\\')
         || s.contains("..")
-        || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err("invalid skill name".into());
     }
@@ -634,7 +732,10 @@ fn safe_skill_slug(slug: &str) -> Result<String, String> {
 #[tauri::command]
 fn list_grok_skills() -> Vec<String> {
     let mut out = Vec::new();
-    for base in [grok_skills_dir(), grok_home_dir().with_file_name(".claude").join("skills")] {
+    for base in [
+        grok_skills_dir(),
+        grok_home_dir().with_file_name(".claude").join("skills"),
+    ] {
         if let Ok(rd) = fs::read_dir(&base) {
             for entry in rd.flatten() {
                 if entry.path().join("SKILL.md").exists() {
@@ -671,19 +772,45 @@ fn remove_grok_skill(slug: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn load_session_state() -> Result<Option<SessionState>, String> {
+async fn load_session_state() -> Result<Option<SessionState>, String> {
+    tauri::async_runtime::spawn_blocking(load_session_state_blocking)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn load_session_state_blocking() -> Result<Option<SessionState>, String> {
     let path = session_state_path();
     match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str::<SessionState>(&raw)
-            .map(Some)
-            .map_err(|error| format!("Could not parse session state: {error}")),
+        Ok(raw) => match serde_json::from_str::<SessionState>(&raw) {
+            Ok(state) => Ok(Some(state)),
+            Err(error) => {
+                // A truncated/corrupt file (crash mid-write) must not fail
+                // EVERY future launch. Move it aside for inspection and report
+                // once; the next launch starts clean.
+                let backup = path.with_extension(format!(
+                    "json.corrupt-{}",
+                    chrono::Utc::now().timestamp_millis()
+                ));
+                let _ = fs::rename(&path, &backup);
+                Err(format!(
+                    "Could not parse session state (moved aside to {}): {error}",
+                    backup.to_string_lossy()
+                ))
+            }
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("Could not read session state: {error}")),
     }
 }
 
 #[tauri::command]
-fn save_session_state(state: SessionState) -> Result<(), String> {
+async fn save_session_state(state: SessionState) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || save_session_state_blocking(state))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn save_session_state_blocking(state: SessionState) -> Result<(), String> {
     let path = session_state_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -691,7 +818,11 @@ fn save_session_state(state: SessionState) -> Result<(), String> {
     }
     let raw = serde_json::to_string_pretty(&state)
         .map_err(|error| format!("Could not serialize session state: {error}"))?;
-    fs::write(&path, raw).map_err(|error| format!("Could not save session state: {error}"))
+    // Write atomically (tmp + rename): a crash mid-`fs::write` would leave a
+    // truncated JSON file and destroy the whole conversation history.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, raw).map_err(|error| format!("Could not save session state: {error}"))?;
+    fs::rename(&tmp, &path).map_err(|error| format!("Could not save session state: {error}"))
 }
 
 fn preview_root(cwd: Option<String>) -> PathBuf {
@@ -704,25 +835,41 @@ fn preview_root(cwd: Option<String>) -> PathBuf {
 fn html_attr_value(tag: &str, attr: &str) -> Option<String> {
     let lower = tag.to_ascii_lowercase();
     let attr_lower = attr.to_ascii_lowercase();
-    let attr_pos = lower.find(&attr_lower)?;
-    let after_attr = &tag[attr_pos + attr.len()..];
-    let after_attr = after_attr.trim_start();
-    let after_equals = after_attr.strip_prefix('=')?.trim_start();
-    let quote = after_equals.chars().next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
+    let mut search_from = 0;
+    while let Some(found) = lower[search_from..].find(&attr_lower) {
+        let attr_pos = search_from + found;
+        search_from = attr_pos + attr_lower.len();
+        // The name must start at an attribute boundary (after whitespace) —
+        // a bare find() would match `src` inside `data-src` or inside another
+        // attribute's value — and be immediately followed by (optional
+        // whitespace and) '='.
+        let preceded_by_space =
+            attr_pos > 0 && lower.as_bytes()[attr_pos - 1].is_ascii_whitespace();
+        if !preceded_by_space {
+            continue;
+        }
+        let after_attr = tag[attr_pos + attr.len()..].trim_start();
+        let Some(after_equals) = after_attr.strip_prefix('=') else {
+            continue;
+        };
+        let after_equals = after_equals.trim_start();
+        let Some(quote) = after_equals.chars().next() else {
+            continue;
+        };
+        if quote != '"' && quote != '\'' {
+            continue;
+        }
+        let rest = &after_equals[quote.len_utf8()..];
+        let Some(end) = rest.find(quote) else {
+            continue;
+        };
+        return Some(rest[..end].to_string());
     }
-    let rest = &after_equals[quote.len_utf8()..];
-    let end = rest.find(quote)?;
-    Some(rest[..end].to_string())
+    None
 }
 
-fn asset_path(root: &PathBuf, canonical_root: &PathBuf, reference: &str) -> Option<PathBuf> {
-    let clean = reference
-        .split(['?', '#'])
-        .next()
-        .unwrap_or("")
-        .trim();
+fn asset_path(root: &Path, canonical_root: &Path, reference: &str) -> Option<PathBuf> {
+    let clean = reference.split(['?', '#']).next().unwrap_or("").trim();
     if clean.is_empty()
         || clean.starts_with('/')
         || clean.starts_with("http:")
@@ -743,7 +890,33 @@ fn asset_path(root: &PathBuf, canonical_root: &PathBuf, reference: &str) -> Opti
     }
 }
 
-fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+/// Per-asset and total byte budgets for the preview inliner. Every inlined
+/// asset lands in a single srcDoc string shipped over IPC, so unbounded reads
+/// of project-local JS/CSS (e.g. a bundled multi-hundred-MB artifact) would
+/// produce a giant payload and hang the UI. Oversized assets keep their
+/// original tag (same outcome as an unreadable file) and a marker comment is
+/// appended so the user can tell why the preview is partial.
+const PREVIEW_ASSET_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const PREVIEW_TOTAL_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+fn read_asset_within_budget(path: PathBuf, used: &mut u64, skipped: &mut bool) -> Option<String> {
+    let size = fs::metadata(&path).ok()?.len();
+    if size > PREVIEW_ASSET_MAX_BYTES || *used + size > PREVIEW_TOTAL_MAX_BYTES {
+        *skipped = true;
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    *used += size;
+    Some(text)
+}
+
+fn inline_stylesheets(
+    mut html: String,
+    root: &Path,
+    canonical_root: &Path,
+    used: &mut u64,
+    skipped: &mut bool,
+) -> String {
     let mut cursor = 0;
     while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<link") {
         let start = cursor + relative_start;
@@ -766,7 +939,7 @@ fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf
             cursor = end;
             continue;
         };
-        let Ok(css) = fs::read_to_string(path) else {
+        let Some(css) = read_asset_within_budget(path, used, skipped) else {
             cursor = end;
             continue;
         };
@@ -777,7 +950,13 @@ fn inline_stylesheets(mut html: String, root: &PathBuf, canonical_root: &PathBuf
     html
 }
 
-fn inline_scripts(mut html: String, root: &PathBuf, canonical_root: &PathBuf) -> String {
+fn inline_scripts(
+    mut html: String,
+    root: &Path,
+    canonical_root: &Path,
+    used: &mut u64,
+    skipped: &mut bool,
+) -> String {
     let mut cursor = 0;
     while let Some(relative_start) = html[cursor..].to_ascii_lowercase().find("<script") {
         let start = cursor + relative_start;
@@ -801,23 +980,34 @@ fn inline_scripts(mut html: String, root: &PathBuf, canonical_root: &PathBuf) ->
             cursor = close_end;
             continue;
         };
-        let Ok(script) = fs::read_to_string(path) else {
+        let Some(script) = read_asset_within_budget(path, used, skipped) else {
             cursor = close_end;
             continue;
         };
-        let replacement = format!("<script>\n{}\n</script>", script.replace("</script", "<\\/script"));
+        let replacement = format!(
+            "<script>\n{}\n</script>",
+            script.replace("</script", "<\\/script")
+        );
         html.replace_range(start..close_end, &replacement);
         cursor = start + replacement.len();
     }
     html
 }
 
-fn inline_static_assets(html: String, root: &PathBuf) -> String {
+fn inline_static_assets(html: String, root: &Path) -> String {
     let Ok(canonical_root) = root.canonicalize() else {
         return html;
     };
-    let html = inline_stylesheets(html, root, &canonical_root);
-    inline_scripts(html, root, &canonical_root)
+    let mut used: u64 = 0;
+    let mut skipped = false;
+    let html = inline_stylesheets(html, root, &canonical_root, &mut used, &mut skipped);
+    let mut html = inline_scripts(html, root, &canonical_root, &mut used, &mut skipped);
+    if skipped {
+        html.push_str(
+            "\n<!-- grok-desktop preview: some local assets were too large to inline and were skipped -->",
+        );
+    }
+    html
 }
 
 fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
@@ -850,8 +1040,175 @@ fn project_files(root: &PathBuf) -> Vec<StaticPreviewFile> {
     files
 }
 
+const PREVIEW_SCHEME: &str = "grokpreview";
+
+/// CSP attached to every response served on the preview scheme. The preview
+/// document is arbitrary generated-site code, so this policy is deliberately
+/// permissive (inline scripts/styles and remote subresources work, matching
+/// the old srcdoc behavior); the real isolation is the sandboxed iframe
+/// without allow-same-origin (opaque origin, no Tauri IPC). The header exists
+/// so the document has an explicit policy of its own instead of relying on
+/// inheritance, and so plugins and base-URI rewrites stay disabled.
+const PREVIEW_DOCUMENT_CSP: &str = "default-src 'self' 'unsafe-inline' data: blob:; \
+    script-src 'self' 'unsafe-inline' https:; \
+    style-src 'self' 'unsafe-inline' https:; \
+    img-src 'self' data: blob: https: http:; \
+    font-src 'self' data: https:; \
+    media-src 'self' data: blob:; \
+    connect-src 'self' https:; \
+    object-src 'none'; base-uri 'none'";
+
+fn preview_scheme_url(token: &str) -> String {
+    // Windows and Android map custom schemes onto http://{scheme}.localhost;
+    // macOS/Linux WebViews load the scheme directly.
+    if cfg!(any(windows, target_os = "android")) {
+        format!("http://{PREVIEW_SCHEME}.localhost/{token}/index.html")
+    } else {
+        format!("{PREVIEW_SCHEME}://localhost/{token}/index.html")
+    }
+}
+
+fn percent_decode_path(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'%' && index + 2 < bytes.len() {
+            let hex = &value[index + 1..index + 3];
+            if let Ok(decoded) = u8::from_str_radix(hex, 16) {
+                out.push(decoded);
+                index += 3;
+                continue;
+            }
+        }
+        out.push(byte);
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn preview_content_type(rel: &str) -> &'static str {
+    let extension = rel.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match extension.as_str() {
+        "html" | "htm" => "text/html; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "json" => "application/json",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "ico" => "image/x-icon",
+        "woff2" => "font/woff2",
+        "woff" => "font/woff",
+        "txt" | "md" => "text/plain; charset=utf-8",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+fn preview_http_response(
+    status: u16,
+    content_type: &str,
+    body: Vec<u8>,
+) -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .header("Content-Security-Policy", PREVIEW_DOCUMENT_CSP)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Cache-Control", "no-store")
+        .body(body)
+        .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
+/// Constant-time byte comparison for the preview token. XOR-accumulates over
+/// every byte so a mismatch early in the string costs the same as one at the
+/// end — the comparison itself leaks nothing about how much of the token
+/// matched. Length is compared first; the token's length is not a secret.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Serve one request on the preview scheme. Expected path shape:
+/// `/{token}/{relative/path}` where an empty relative path means index.html.
+/// Everything is validated against the single registered preview root:
+/// wrong/absent token -> 404, path traversal (canonicalize + starts_with)
+/// -> 404, oversized files -> 413.
+fn preview_scheme_response(
+    registered: Option<&RegisteredPreview>,
+    request_path: &str,
+) -> tauri::http::Response<Vec<u8>> {
+    let Some(registered) = registered else {
+        return preview_http_response(404, "text/plain", b"no preview registered".to_vec());
+    };
+    let mut segments = request_path.trim_start_matches('/').splitn(2, '/');
+    let token = segments.next().unwrap_or("");
+    if token.is_empty() || !constant_time_eq(token.as_bytes(), registered.token.as_bytes()) {
+        return preview_http_response(404, "text/plain", b"unknown preview token".to_vec());
+    }
+    let rel = percent_decode_path(segments.next().unwrap_or(""));
+    let rel = rel.trim_matches('/');
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+
+    if rel == "index.html" {
+        let entry = registered.root.join("index.html");
+        return match fs::read_to_string(&entry) {
+            Ok(html) => {
+                let html = inline_static_assets(html, &registered.root);
+                preview_http_response(200, "text/html; charset=utf-8", html.into_bytes())
+            }
+            Err(_) => preview_http_response(404, "text/plain", b"index.html not found".to_vec()),
+        };
+    }
+
+    // Subresources (images, extra pages, media the inliner does not embed):
+    // asset_path re-uses the inliner's validation — relative-only references,
+    // canonicalized, and required to stay under the registered root.
+    let Some(path) = asset_path(&registered.root, &registered.root, rel) else {
+        return preview_http_response(404, "text/plain", b"not found".to_vec());
+    };
+    let size = fs::metadata(&path)
+        .map(|meta| meta.len())
+        .unwrap_or(u64::MAX);
+    if size > PREVIEW_ASSET_MAX_BYTES {
+        return preview_http_response(413, "text/plain", b"file too large for preview".to_vec());
+    }
+    match fs::read(&path) {
+        Ok(bytes) => preview_http_response(200, preview_content_type(rel), bytes),
+        Err(_) => preview_http_response(404, "text/plain", b"not found".to_vec()),
+    }
+}
+
 #[tauri::command]
-fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
+async fn get_static_preview(
+    app: tauri::AppHandle,
+    cwd: Option<String>,
+) -> Result<StaticPreview, String> {
+    // Touches the filesystem — off the main thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<PreviewState>();
+        get_static_preview_blocking(cwd, &state)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn get_static_preview_blocking(
+    cwd: Option<String>,
+    state: &PreviewState,
+) -> Result<StaticPreview, String> {
     let root = preview_root(cwd);
     let files = project_files(&root);
     let entry = root.join("index.html");
@@ -860,29 +1217,53 @@ fn get_static_preview(cwd: Option<String>) -> Result<StaticPreview, String> {
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
 
+    let unavailable = |detail: String, files: Vec<StaticPreviewFile>| StaticPreview {
+        available: false,
+        root: root.to_string_lossy().to_string(),
+        entry_path: entry.to_string_lossy().to_string(),
+        preview_url: String::new(),
+        files,
+        detail,
+        updated_at: now,
+    };
+
     if !entry.is_file() {
-        return Ok(StaticPreview {
-            available: false,
-            root: root.to_string_lossy().to_string(),
-            entry_path: entry.to_string_lossy().to_string(),
-            html: String::new(),
+        return Ok(unavailable(
+            "Create index.html in the selected project to enable preview.".to_string(),
             files,
-            detail: "Create index.html in the selected project to enable preview.".to_string(),
-            updated_at: now,
-        });
+        ));
     }
 
-    let html = fs::read_to_string(&entry)
-        .map_err(|error| format!("Could not read static preview entry: {error}"))?;
-    let html = inline_static_assets(html, &root);
+    let Ok(canonical_root) = root.canonicalize() else {
+        return Ok(unavailable(
+            "Could not resolve the project folder for preview.".to_string(),
+            files,
+        ));
+    };
+
+    // Register the root + a fresh token; the previous URL stops working,
+    // which also makes every refresh a guaranteed iframe reload.
+    let token = uuid::Uuid::now_v7().simple().to_string();
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = Some(RegisteredPreview {
+            token: token.clone(),
+            root: canonical_root,
+        });
+    } else {
+        return Ok(unavailable(
+            "Preview registry is unavailable.".to_string(),
+            files,
+        ));
+    }
 
     Ok(StaticPreview {
         available: true,
         root: root.to_string_lossy().to_string(),
         entry_path: entry.to_string_lossy().to_string(),
-        html,
+        preview_url: preview_scheme_url(&token),
         files,
-        detail: "Rendering index.html with local CSS and JavaScript inlined.".to_string(),
+        detail: "Rendering index.html in an isolated preview origin with local assets inlined."
+            .to_string(),
         updated_at: now,
     })
 }
@@ -905,7 +1286,7 @@ fn mode_context(mode: &str) -> &'static str {
     }
 }
 
-fn grok_prompt(prompt: &str, mode: &str, cwd: &PathBuf) -> String {
+fn grok_prompt(prompt: &str, mode: &str, cwd: &Path) -> String {
     format!(
         r#"{context}
 
@@ -1003,10 +1384,9 @@ fn normalized_permission_mode(permission_mode: Option<String>) -> Option<String>
     }
 }
 
-fn grok_args(
-    prompt: &str,
-    mode: &str,
-    cwd: &PathBuf,
+/// Optional run configuration for `grok_args`. Defaults mirror the composer's
+/// safe defaults: no model/effort overrides, web search and subagents on.
+struct GrokRunOptions {
     model: Option<String>,
     effort: Option<String>,
     reasoning_effort: Option<String>,
@@ -1016,7 +1396,36 @@ fn grok_args(
     web_search_enabled: bool,
     subagents_enabled: bool,
     self_check: bool,
-) -> Vec<String> {
+}
+
+impl Default for GrokRunOptions {
+    fn default() -> Self {
+        Self {
+            model: None,
+            effort: None,
+            reasoning_effort: None,
+            permission_mode: None,
+            best_of_n: None,
+            experimental_memory: false,
+            web_search_enabled: true,
+            subagents_enabled: true,
+            self_check: false,
+        }
+    }
+}
+
+fn grok_args(prompt: &str, mode: &str, cwd: &Path, options: GrokRunOptions) -> Vec<String> {
+    let GrokRunOptions {
+        model,
+        effort,
+        reasoning_effort,
+        permission_mode,
+        best_of_n,
+        experimental_memory,
+        web_search_enabled,
+        subagents_enabled,
+        self_check,
+    } = options;
     let prepared_prompt = grok_prompt(prompt, mode, cwd);
     if let Ok(template) = env::var("GROK_DESKTOP_GROK_ARGS") {
         return split_template_args(&template, &prepared_prompt, mode);
@@ -1180,7 +1589,14 @@ async fn get_grok_auth_status() -> GrokAuthStatus {
 }
 
 #[tauri::command]
-fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
+async fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
+    run_blocking_tool("grok login", move || {
+        start_grok_login_blocking(device_auth, cwd)
+    })
+    .await
+}
+
+fn start_grok_login_blocking(device_auth: bool, cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let status = collect_grok_auth_status();
     let cwd = normalized_cwd(cwd);
@@ -1218,12 +1634,37 @@ fn start_grok_login(device_auth: bool, cwd: Option<String>) -> ToolRun {
         vec!["-e".to_string(), script],
         None,
         command_timeout_secs(15),
+        false,
     )
 }
 
 fn collect_tool_statuses() -> Vec<ToolStatus> {
     let grok = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     vec![version_status("grok", "Grok Build", &grok, &["--version"])]
+}
+
+/// Run a blocking ToolRun-producing body on the blocking pool. Commands
+/// declared without `async` execute on the MAIN thread in Tauri 2, so a
+/// long-running synchronous body (shell command, python script, dialog)
+/// freezes the entire window for its duration. `command_label` names the
+/// command in the error ToolRun if the blocking task itself fails to join.
+async fn run_blocking_tool(
+    command_label: &str,
+    task: impl FnOnce() -> ToolRun + Send + 'static,
+) -> ToolRun {
+    match tauri::async_runtime::spawn_blocking(task).await {
+        Ok(run) => run,
+        Err(error) => ToolRun {
+            ok: false,
+            command: command_label.to_string(),
+            cwd: String::new(),
+            exit_code: None,
+            duration_ms: 0,
+            timed_out: false,
+            output: String::new(),
+            stderr: error.to_string(),
+        },
+    }
 }
 
 #[tauri::command]
@@ -1234,151 +1675,146 @@ async fn get_tool_statuses() -> Vec<ToolStatus> {
 }
 
 #[tauri::command]
-fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> ToolRun {
-    let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    let cwd = normalized_cwd(cwd);
-    run_external_command(
-        &program,
-        grok_args(&prompt, &mode, &cwd, None, None, None, None, None, false, true, true, false),
-        Some(cwd),
-        command_timeout_secs(240),
-    )
+async fn run_grok_task(prompt: String, mode: String, cwd: Option<String>) -> ToolRun {
+    run_blocking_tool("grok", move || {
+        let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
+        let cwd = normalized_cwd(cwd);
+        run_external_command(
+            &program,
+            grok_args(&prompt, &mode, &cwd, GrokRunOptions::default()),
+            Some(cwd),
+            command_timeout_secs(240),
+            true,
+        )
+    })
+    .await
+}
+
+/// Resolve and validate the working directory for `run_shell_command`.
+/// Unlike `run_external_command`'s generic $HOME fallback, a shell command
+/// must never silently execute somewhere other than the directory shown in
+/// the UI — a stale or mistyped path is an error, not a redirect.
+fn shell_cwd(cwd: Option<String>) -> Result<PathBuf, String> {
+    let requested = normalized_cwd(cwd);
+    let canonical = requested.canonicalize().map_err(|_| {
+        format!(
+            "Working directory {} does not exist. Pick a project folder first.",
+            requested.display()
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(format!(
+            "Working directory {} is not a directory.",
+            canonical.display()
+        ));
+    }
+    Ok(canonical)
 }
 
 #[tauri::command]
-fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
-    let trimmed = command.trim();
-    if trimmed.is_empty() {
-        return ToolRun {
-            ok: false,
-            command: "zsh -lc".to_string(),
-            cwd: normalized_cwd(cwd).to_string_lossy().to_string(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: "Enter a shell command first.".to_string(),
-        };
-    }
+async fn run_shell_command(command: String, cwd: Option<String>) -> ToolRun {
+    run_blocking_tool("zsh -lc", move || {
+        let trimmed = command.trim();
+        if trimmed.is_empty() {
+            return ToolRun {
+                ok: false,
+                command: "zsh -lc".to_string(),
+                cwd: normalized_cwd(cwd).to_string_lossy().to_string(),
+                exit_code: None,
+                duration_ms: 0,
+                timed_out: false,
+                output: String::new(),
+                stderr: "Enter a shell command first.".to_string(),
+            };
+        }
 
-    let cwd = normalized_cwd(cwd);
-    run_external_command(
-        "zsh",
-        vec!["-lc".to_string(), trimmed.to_string()],
-        Some(cwd),
-        command_timeout_secs(600),
-    )
+        let cwd = match shell_cwd(cwd) {
+            Ok(cwd) => cwd,
+            Err(message) => {
+                return ToolRun {
+                    ok: false,
+                    command: command_line("zsh", &["-lc".to_string(), trimmed.to_string()]),
+                    cwd: String::new(),
+                    exit_code: None,
+                    duration_ms: 0,
+                    timed_out: false,
+                    output: String::new(),
+                    stderr: message,
+                };
+            }
+        };
+        run_external_command(
+            "zsh",
+            vec!["-lc".to_string(), trimmed.to_string()],
+            Some(cwd),
+            command_timeout_secs(600),
+            false,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
 async fn inspect_grok_environment(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok inspect", move || {
         run_external_command(
             &program,
             vec!["inspect".to_string()],
             Some(cwd),
             command_timeout_secs(15),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok inspect".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_models() -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok models", move || {
         run_external_command(
             &program,
             vec!["models".to_string()],
             None,
             command_timeout_secs(8),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok models".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_mcp(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp list", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "list".to_string()],
             Some(cwd),
             command_timeout_secs(10),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn doctor_grok_mcp(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp doctor", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "doctor".to_string()],
             Some(cwd),
             command_timeout_secs(30),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp doctor".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 /// Add (or update) an MCP server: `grok mcp add <name> --command <cmd> --args …`
@@ -1430,159 +1866,129 @@ async fn grok_mcp_add(
         argv.push("--type".into());
         argv.push(t);
     }
-    match tauri::async_runtime::spawn_blocking(move || {
-        run_external_command(&program, argv, None, command_timeout_secs(30))
+    run_blocking_tool("grok mcp add", move || {
+        run_external_command(&program, argv, None, command_timeout_secs(30), true)
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp add".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 /// Remove a configured MCP server: `grok mcp remove <name>`.
 #[tauri::command]
 async fn grok_mcp_remove(name: String) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok mcp remove", move || {
         run_external_command(
             &program,
             vec!["mcp".to_string(), "remove".to_string(), name],
             None,
             command_timeout_secs(15),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok mcp remove".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_plugins(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok plugin list", move || {
         run_external_command(
             &program,
             vec!["plugin".to_string(), "list".to_string()],
             Some(cwd),
             command_timeout_secs(10),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok plugin list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
 async fn list_grok_sessions(cwd: Option<String>) -> ToolRun {
     let program = env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| "grok".to_string());
     let cwd = normalized_cwd(cwd);
-    match tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_tool("grok sessions list", move || {
         run_external_command(
             &program,
             vec!["sessions".to_string(), "list".to_string()],
             Some(cwd),
             command_timeout_secs(10),
+            true,
         )
     })
     .await
-    {
-        Ok(run) => run,
-        Err(error) => ToolRun {
-            ok: false,
-            command: "grok sessions list".to_string(),
-            cwd: String::new(),
-            exit_code: None,
-            duration_ms: 0,
-            timed_out: false,
-            output: String::new(),
-            stderr: error.to_string(),
-        },
-    }
 }
 
 #[tauri::command]
-fn run_browser_task(task: String, max_steps: u16) -> ToolRun {
-    let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
-    let script = script_path("browser_automation.py");
-    run_external_command(
-        &python,
-        vec![
+async fn run_browser_task(task: String, max_steps: u16) -> ToolRun {
+    run_blocking_tool("browser", move || {
+        let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let script = script_path("browser_automation.py");
+        run_external_command(
+            &python,
+            vec![
+                script.to_string_lossy().to_string(),
+                "--task".to_string(),
+                task,
+                "--max-steps".to_string(),
+                max_steps.to_string(),
+            ],
+            None,
+            command_timeout_secs(360),
+            false,
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn run_absorb_repo(repo_path: String, copy_text: bool) -> ToolRun {
+    run_blocking_tool("absorb", move || {
+        let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let script = script_path("absorb_repo.py");
+        let mut args = vec![
             script.to_string_lossy().to_string(),
-            "--task".to_string(),
-            task,
-            "--max-steps".to_string(),
-            max_steps.to_string(),
-        ],
-        None,
-        command_timeout_secs(360),
-    )
+            repo_path,
+            "--output".to_string(),
+            absorbed_output_root().to_string_lossy().to_string(),
+        ];
+
+        if copy_text {
+            args.push("--copy-text".to_string());
+        }
+
+        run_external_command(&python, args, None, command_timeout_secs(360), false)
+    })
+    .await
 }
 
 #[tauri::command]
-fn run_absorb_repo(repo_path: String, copy_text: bool) -> ToolRun {
-    let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
-    let script = script_path("absorb_repo.py");
-    let mut args = vec![
-        script.to_string_lossy().to_string(),
-        repo_path,
-        "--output".to_string(),
-        absorbed_output_root().to_string_lossy().to_string(),
-    ];
-
-    if copy_text {
-        args.push("--copy-text".to_string());
-    }
-
-    run_external_command(&python, args, None, command_timeout_secs(360))
+async fn run_doctor() -> ToolRun {
+    run_blocking_tool("doctor", move || {
+        let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let script = script_path("doctor.py");
+        run_external_command(
+            &python,
+            vec![script.to_string_lossy().to_string()],
+            None,
+            command_timeout_secs(60),
+            false,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn run_doctor() -> ToolRun {
-    let python = env::var("GROK_DESKTOP_PYTHON").unwrap_or_else(|_| "python3".to_string());
-    let script = script_path("doctor.py");
-    run_external_command(
-        &python,
-        vec![script.to_string_lossy().to_string()],
-        None,
-        command_timeout_secs(60),
-    )
+async fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
+    // The AppleScript dialog blocks until dismissed — keep it off the main
+    // thread or the whole window beachballs behind the picker.
+    tauri::async_runtime::spawn_blocking(move || pick_project_folder_blocking(initial))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
-#[tauri::command]
-fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String> {
+fn pick_project_folder_blocking(initial: Option<String>) -> Result<Option<String>, String> {
     let starting_dir = initial
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
@@ -1596,7 +2002,10 @@ fn pick_project_folder(initial: Option<String>) -> Result<Option<String>, String
         });
 
     let default_clause = match starting_dir {
-        Some(path) => format!(" default location (POSIX file {})", applescript_quote(&path)),
+        Some(path) => format!(
+            " default location (POSIX file {})",
+            applescript_quote(&path)
+        ),
         None => String::new(),
     };
 
@@ -1666,9 +2075,7 @@ async fn get_queue(
 }
 
 #[tauri::command]
-async fn clear_queue(
-    queue: tauri::State<'_, std::sync::Arc<RunQueue>>,
-) -> Result<u64, String> {
+async fn clear_queue(queue: tauri::State<'_, std::sync::Arc<RunQueue>>) -> Result<u64, String> {
     queue.clear_waiting().await.map_err(|e| e.to_string())
 }
 
@@ -1750,8 +2157,8 @@ async fn delete_prompt(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
-    pub path: String,           // path relative to cwd
-    pub display_name: String,   // basename for the picker UI
+    pub path: String,         // path relative to cwd
+    pub display_name: String, // basename for the picker UI
     pub size_bytes: u64,
 }
 
@@ -1763,7 +2170,14 @@ pub struct FileEntry {
 ///   3. path contains
 /// Hard caps: scan ≤ 25_000 entries (skips the rest), return ≤ `limit`.
 #[tauri::command]
-fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
+async fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
+    // Walks up to 25k directory entries — off the main thread.
+    tauri::async_runtime::spawn_blocking(move || glob_files_blocking(cwd, query, limit))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn glob_files_blocking(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>, String> {
     use ignore::WalkBuilder;
     let root = std::path::PathBuf::from(&cwd);
     if !root.is_dir() {
@@ -1791,7 +2205,9 @@ fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>
             continue;
         }
         let abs = entry.path();
-        let Ok(rel) = abs.strip_prefix(&root) else { continue };
+        let Ok(rel) = abs.strip_prefix(&root) else {
+            continue;
+        };
         let rel_str = rel.to_string_lossy().to_string();
         let base = abs
             .file_name()
@@ -1832,7 +2248,21 @@ fn glob_files(cwd: String, query: String, limit: usize) -> Result<Vec<FileEntry>
 /// Read a file as UTF-8 text, with a hard size cap so a 100MB file doesn't
 /// blow up the IPC channel. Returns `None` if the file is binary or oversized.
 #[tauri::command]
-fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<String>, String> {
+async fn read_file_safe(
+    cwd: String,
+    path: String,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || read_file_safe_blocking(cwd, path, max_bytes))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn read_file_safe_blocking(
+    cwd: String,
+    path: String,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
     let root = std::path::PathBuf::from(&cwd);
     let candidate = root.join(&path);
     // Path traversal guard: canonicalize and verify it's still under root.
@@ -1861,93 +2291,53 @@ fn read_file_safe(cwd: String, path: String, max_bytes: usize) -> Result<Option<
     }
 }
 
-// ── Agent overlay (G2) ──────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OverlayState {
-    visible: bool,
-    label: Option<String>,
-    mode: Option<String>,
-    action: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OverlayCursor {
-    x: f64,
-    y: f64,
-    label: Option<String>,
-    action: Option<String>,
-}
-
-/// Show or hide the always-on-top agent overlay window and push state to it.
-#[tauri::command]
-async fn set_agent_overlay(
-    app: tauri::AppHandle,
-    payload: OverlayState,
-) -> Result<(), String> {
-    use tauri::{Emitter as _, Manager as _};
-    let window = app
-        .get_webview_window("agent-overlay")
-        .ok_or_else(|| "agent-overlay window not configured".to_string())?;
-
-    if payload.visible {
-        window.show().map_err(|e| e.to_string())?;
-        let _ = window.set_ignore_cursor_events(true);
-    } else {
-        window.hide().map_err(|e| e.to_string())?;
-    }
-
-    let _ = window.emit("grok-desktop://overlay-state", &payload);
-    Ok(())
-}
-
-/// Update the position/label/action of the agent cursor sprite in the overlay.
-#[tauri::command]
-async fn set_agent_cursor(
-    app: tauri::AppHandle,
-    payload: OverlayCursor,
-) -> Result<(), String> {
-    use tauri::{Emitter as _, Manager as _};
-    let window = app
-        .get_webview_window("agent-overlay")
-        .ok_or_else(|| "agent-overlay window not configured".to_string())?;
-    let _ = window.emit("grok-desktop://overlay-cursor", &payload);
-    Ok(())
-}
-
 // ── Event forwarder ─────────────────────────────────────────────────────────
 
 fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
     use tauri::Emitter as _;
     match &msg.kind {
         QueueMessageKind::Event { event, raw } => {
-            let _ = app.emit("grok-desktop://run-event", serde_json::json!({
-                "runId": msg.run_id,
-                "event": event,
-                "raw": raw,
-            }));
+            let _ = app.emit(
+                "grok-desktop://run-event",
+                serde_json::json!({
+                    "runId": msg.run_id,
+                    "event": event,
+                    "raw": raw,
+                }),
+            );
         }
-        QueueMessageKind::StateChanged { state, started_at, ended_at, error } => {
-            let _ = app.emit("grok-desktop://run-state-changed", serde_json::json!({
-                "runId": msg.run_id,
-                "state": state,
-                "startedAt": started_at,
-                "endedAt": ended_at,
-                "error": error,
-            }));
+        QueueMessageKind::StateChanged {
+            state,
+            started_at,
+            ended_at,
+            error,
+        } => {
+            let _ = app.emit(
+                "grok-desktop://run-state-changed",
+                serde_json::json!({
+                    "runId": msg.run_id,
+                    "state": state,
+                    "startedAt": started_at,
+                    "endedAt": ended_at,
+                    "error": error,
+                }),
+            );
         }
         QueueMessageKind::QueueChanged => {
             let q = app.state::<std::sync::Arc<RunQueue>>().inner().clone();
             let app_cloned = app.clone();
             tauri::async_runtime::spawn(async move {
                 let (active, waiting) = q.snapshot().await;
-                let _ = app_cloned.emit("grok-desktop://queue-changed", serde_json::json!({
-                    "active": active,
-                    "queue": waiting.iter().map(|r| serde_json::json!({
-                        "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
-                        "state": r.state, "enqueuedAt": r.enqueued_at,
-                    })).collect::<Vec<_>>(),
-                }));
+                let _ = app_cloned.emit(
+                    "grok-desktop://queue-changed",
+                    serde_json::json!({
+                        "active": active,
+                        "queue": waiting.iter().map(|r| serde_json::json!({
+                            "id": r.id, "prompt": r.prompt, "cwd": r.cwd,
+                            "state": r.state, "enqueuedAt": r.enqueued_at,
+                        })).collect::<Vec<_>>(),
+                    }),
+                );
             });
         }
     }
@@ -1957,14 +2347,51 @@ fn forward_queue_message(app: &tauri::AppHandle, msg: &QueueMessage) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(PreviewState::default())
+        // The static-site preview iframe loads from this scheme instead of
+        // srcdoc: the served document carries its own (permissive) CSP, so
+        // the app CSP can stay strict (script-src 'self') without breaking
+        // the preview. Requests are token-gated and path-validated against
+        // the single registered preview root.
+        .register_uri_scheme_protocol(PREVIEW_SCHEME, |ctx, request| {
+            let state = ctx.app_handle().state::<PreviewState>();
+            let guard = state
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            preview_scheme_response(guard.as_ref(), request.uri().path())
+        })
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let resource_dir = app.path().app_data_dir().expect("app_data_dir");
+            let resource_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| app_support_dir());
             std::fs::create_dir_all(&resource_dir).ok();
             let db_path = resource_dir.join("runs.sqlite");
 
             tauri::async_runtime::block_on(async {
-                let db = Db::open_at(&db_path).await.expect("open runs.sqlite");
+                // A corrupted runs.sqlite (disk full, power loss mid-write)
+                // must not brick every launch: move it aside, retry with a
+                // fresh file, and fall back to in-memory as a last resort.
+                let db = match Db::open_at(&db_path).await {
+                    Ok(db) => db,
+                    Err(error) => {
+                        eprintln!("[grok-desktop] open runs.sqlite failed: {error}; moving it aside");
+                        let backup = resource_dir.join(format!(
+                            "runs.sqlite.corrupt-{}",
+                            chrono::Utc::now().timestamp_millis()
+                        ));
+                        let _ = std::fs::rename(&db_path, &backup);
+                        match Db::open_at(&db_path).await {
+                            Ok(db) => db,
+                            Err(retry_error) => {
+                                eprintln!("[grok-desktop] reopen failed: {retry_error}; using in-memory runs db");
+                                Db::open_memory().await.expect("open in-memory runs db")
+                            }
+                        }
+                    }
+                };
 
                 // One-shot migration: if session_state.json has a non-empty history array,
                 // import as Done runs in SQLite, then clear the field.
@@ -1996,19 +2423,21 @@ pub fn run() {
                                 }
                             }
                             v.as_object_mut().and_then(|o| o.remove("history"));
-                            let _ = std::fs::write(
-                                &session_path,
-                                serde_json::to_string_pretty(&v).unwrap_or_default(),
-                            );
+                            // Atomic tmp+rename, and never clobber the file
+                            // with an empty string on serialization failure.
+                            if let Ok(serialized) = serde_json::to_string_pretty(&v) {
+                                let tmp = session_path.with_extension("json.tmp");
+                                if std::fs::write(&tmp, serialized).is_ok() {
+                                    let _ = std::fs::rename(&tmp, &session_path);
+                                }
+                            }
                         }
                     }
                 }
 
                 let grok_path = std::path::PathBuf::from(
-                    std::env::var("GROK_DESKTOP_GROK_CMD").unwrap_or_else(|_| {
-                        let home = std::env::var("HOME").unwrap_or_default();
-                        format!("{}/.grok/bin/grok", home)
-                    })
+                    std::env::var("GROK_DESKTOP_GROK_CMD")
+                        .unwrap_or_else(|_| default_grok_binary()),
                 );
                 let (queue, mut rx) = RunQueue::new(db.clone(), grok_path).await;
                 let queue = std::sync::Arc::new(queue);
@@ -2039,11 +2468,29 @@ pub fn run() {
                     }
                 });
 
-                // Prompt library (D) — open store next to runs.sqlite.
+                // Prompt library (D) — open store next to runs.sqlite, with
+                // the same corruption-recovery path as runs.sqlite above.
                 let prompts_path = resource_dir.join("prompts.sqlite");
-                let prompts = crate::prompts::PromptStore::open_at(&prompts_path)
-                    .await
-                    .expect("open prompts.sqlite");
+                let prompts = match crate::prompts::PromptStore::open_at(&prompts_path).await {
+                    Ok(store) => store,
+                    Err(error) => {
+                        eprintln!("[grok-desktop] open prompts.sqlite failed: {error}; moving it aside");
+                        let backup = resource_dir.join(format!(
+                            "prompts.sqlite.corrupt-{}",
+                            chrono::Utc::now().timestamp_millis()
+                        ));
+                        let _ = std::fs::rename(&prompts_path, &backup);
+                        match crate::prompts::PromptStore::open_at(&prompts_path).await {
+                            Ok(store) => store,
+                            Err(retry_error) => {
+                                eprintln!("[grok-desktop] reopen failed: {retry_error}; using in-memory prompt store");
+                                crate::prompts::PromptStore::open_memory()
+                                    .await
+                                    .expect("open in-memory prompt store")
+                            }
+                        }
+                    }
+                };
                 app_handle.manage(prompts);
 
                 app_handle.manage(queue);
@@ -2088,10 +2535,269 @@ pub fn run() {
             read_file_safe,
             desktop::desktop_list_apps,
             desktop::desktop_query,
-            desktop::desktop_activate,
-            set_agent_overlay,
-            set_agent_cursor
+            desktop::desktop_activate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_line_redacts_prompt_and_env_values() {
+        let args = vec![
+            "mcp".to_string(),
+            "add".to_string(),
+            "github".to_string(),
+            "--env".to_string(),
+            "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_secret".to_string(),
+            "--env=BRAVE_API_KEY=abc123".to_string(),
+            "-p".to_string(),
+            "hello world".to_string(),
+        ];
+        let line = command_line("grok", &args);
+        assert!(!line.contains("ghp_secret"), "env value leaked: {line}");
+        assert!(!line.contains("abc123"), "env= value leaked: {line}");
+        assert!(line.contains("--env GITHUB_PERSONAL_ACCESS_TOKEN=<redacted>"));
+        assert!(line.contains("--env=BRAVE_API_KEY=<redacted>"));
+        assert!(line.contains("-p <prompt>"));
+    }
+
+    #[test]
+    fn command_line_keeps_ordinary_args() {
+        let args = vec![
+            "models".to_string(),
+            "--cwd".to_string(),
+            "/tmp/x".to_string(),
+        ];
+        assert_eq!(command_line("grok", &args), "grok models --cwd /tmp/x");
+    }
+
+    #[test]
+    fn html_attr_value_ignores_prefixed_attribute_names() {
+        // data-src must NOT satisfy a lookup for src.
+        let tag = r#"<script data-src="lazy.js" src="app.js">"#;
+        assert_eq!(html_attr_value(tag, "src").as_deref(), Some("app.js"));
+
+        let link = r#"<link rel="stylesheet" data-href="lazy.css" href="app.css">"#;
+        assert_eq!(html_attr_value(link, "href").as_deref(), Some("app.css"));
+
+        // No real src attribute at all → None, even with a decoy.
+        let decoy = r#"<script data-src="lazy.js">"#;
+        assert_eq!(html_attr_value(decoy, "src"), None);
+    }
+
+    #[test]
+    fn noisy_line_filter_only_targets_timestamped_log_lines() {
+        assert!(is_noisy_grok_line(
+            "2026-07-08T10:00:00Z  INFO grok_core: starting"
+        ));
+        assert!(!is_noisy_grok_line("plain command output"));
+        assert!(!is_noisy_grok_line("ERROR: something broke")); // no ISO stamp
+    }
+
+    #[test]
+    fn inline_static_assets_skips_oversized_assets() {
+        let root = env::temp_dir().join(format!("grok-preview-test-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&root).expect("create temp preview root");
+        fs::write(root.join("small.js"), "console.log('ok');").expect("write small.js");
+        fs::write(
+            root.join("big.js"),
+            "x".repeat((PREVIEW_ASSET_MAX_BYTES + 1) as usize),
+        )
+        .expect("write big.js");
+
+        let html = concat!(
+            r#"<script src="small.js"></script>"#,
+            r#"<script src="big.js"></script>"#
+        )
+        .to_string();
+        let out = inline_static_assets(html, &root);
+
+        assert!(
+            out.contains("console.log('ok');"),
+            "small asset must inline"
+        );
+        assert!(
+            out.contains(r#"src="big.js""#),
+            "oversized asset must keep its tag"
+        );
+        assert!(
+            out.contains("too large to inline"),
+            "must append truncation marker"
+        );
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    fn temp_preview_root() -> PathBuf {
+        let root = env::temp_dir().join(format!("grok-preview-scheme-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&root).expect("create temp preview root");
+        root
+    }
+
+    fn registered(root: &Path) -> RegisteredPreview {
+        RegisteredPreview {
+            token: "testtoken".to_string(),
+            root: root.canonicalize().expect("canonicalize temp root"),
+        }
+    }
+
+    fn header<'a>(response: &'a tauri::http::Response<Vec<u8>>, name: &str) -> Option<&'a str> {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+    }
+
+    #[test]
+    fn preview_scheme_rejects_when_nothing_registered() {
+        let response = preview_scheme_response(None, "/anytoken/index.html");
+        assert_eq!(response.status(), 404);
+    }
+
+    #[test]
+    fn preview_scheme_rejects_wrong_token() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        let reg = registered(&root);
+        let response = preview_scheme_response(Some(&reg), "/wrongtoken/index.html");
+        assert_eq!(response.status(), 404);
+        let response = preview_scheme_response(Some(&reg), "/index.html");
+        assert_eq!(
+            response.status(),
+            404,
+            "missing token segment must not serve"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_serves_inlined_index_with_own_csp() {
+        let root = temp_preview_root();
+        fs::write(root.join("app.js"), "console.log('inlined');").expect("write app.js");
+        fs::write(
+            root.join("index.html"),
+            r#"<html><body><script src="app.js"></script></body></html>"#,
+        )
+        .expect("write index");
+        let reg = registered(&root);
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/index.html");
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            header(&response, "Content-Type"),
+            Some("text/html; charset=utf-8")
+        );
+        let csp = header(&response, "Content-Security-Policy").expect("preview CSP header");
+        assert!(
+            csp.contains("object-src 'none'"),
+            "preview CSP must pin object-src"
+        );
+        let body = String::from_utf8_lossy(response.body());
+        assert!(
+            body.contains("console.log('inlined');"),
+            "local JS must be inlined"
+        );
+
+        // Bare /{token}/ and /{token} must also resolve to index.html.
+        let response = preview_scheme_response(Some(&reg), "/testtoken/");
+        assert_eq!(response.status(), 200);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_blocks_path_traversal() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        let outside = root
+            .parent()
+            .expect("temp root parent")
+            .join(format!("grok-preview-outside-{}", uuid::Uuid::now_v7()));
+        fs::write(&outside, "secret").expect("write outside file");
+        let reg = registered(&root);
+
+        let outside_name = outside.file_name().unwrap().to_string_lossy();
+        for path in [
+            format!("/testtoken/../{outside_name}"),
+            // URL-encoded traversal must decode and then still be rejected.
+            format!("/testtoken/%2e%2e/{outside_name}"),
+            "/testtoken//etc/hosts".to_string(),
+            "/testtoken/..%5c..%5cwindows".to_string(),
+        ] {
+            let response = preview_scheme_response(Some(&reg), &path);
+            assert_eq!(response.status(), 404, "must reject {path}");
+            assert!(
+                !String::from_utf8_lossy(response.body()).contains("secret"),
+                "must not leak file content for {path}"
+            );
+        }
+
+        fs::remove_file(&outside).ok();
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn preview_scheme_serves_assets_inside_root_only() {
+        let root = temp_preview_root();
+        fs::write(root.join("index.html"), "<h1>hi</h1>").expect("write index");
+        fs::create_dir_all(root.join("img")).expect("create img dir");
+        fs::write(root.join("img/logo.svg"), "<svg></svg>").expect("write svg");
+        fs::write(
+            root.join("big.bin"),
+            vec![0_u8; (PREVIEW_ASSET_MAX_BYTES + 1) as usize],
+        )
+        .expect("write big.bin");
+        let reg = registered(&root);
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/img/logo.svg");
+        assert_eq!(response.status(), 200);
+        assert_eq!(header(&response, "Content-Type"), Some("image/svg+xml"));
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/big.bin");
+        assert_eq!(response.status(), 413, "oversized files must be refused");
+
+        let response = preview_scheme_response(Some(&reg), "/testtoken/missing.png");
+        assert_eq!(response.status(), 404);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn shell_cwd_rejects_missing_directories() {
+        let missing = env::temp_dir().join(format!("grok-shell-missing-{}", uuid::Uuid::now_v7()));
+        let error = shell_cwd(Some(missing.to_string_lossy().to_string()))
+            .expect_err("nonexistent cwd must be rejected");
+        assert!(
+            error.contains("does not exist"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn shell_cwd_accepts_and_canonicalizes_real_directories() {
+        let dir = env::temp_dir().join(format!("grok-shell-cwd-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let resolved = shell_cwd(Some(dir.to_string_lossy().to_string())).expect("real dir ok");
+        assert!(resolved.is_dir());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn preview_scheme_url_embeds_token() {
+        let url = preview_scheme_url("abc123");
+        assert!(
+            url.contains("/abc123/index.html"),
+            "url must carry the token: {url}"
+        );
+    }
+
+    #[test]
+    fn percent_decode_path_decodes_and_tolerates_junk() {
+        assert_eq!(percent_decode_path("a%20b"), "a b");
+        assert_eq!(percent_decode_path("%2e%2e"), "..");
+        assert_eq!(percent_decode_path("100%"), "100%");
+        assert_eq!(percent_decode_path("%zz"), "%zz");
+    }
 }

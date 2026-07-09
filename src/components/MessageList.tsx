@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { MessageItem } from './MessageItem';
 import { useActiveRun } from '../hooks/useActiveRun';
@@ -37,15 +37,18 @@ export function MessageList({ messages, focusId, focusNonce }: Props) {
   const prevLenRef = useRef(messages.length);
   const active = useActiveRun();
 
-  const scrollToLast = (smooth = false) => {
-    const lastIndex = messages.length - 1;
-    if (lastIndex < 0) return;
-    ref.current?.scrollToIndex({
-      index: lastIndex,
-      align: 'end',
-      behavior: smooth ? 'smooth' : 'auto',
-    });
-  };
+  const scrollToLast = useCallback(
+    (smooth = false) => {
+      const lastIndex = messages.length - 1;
+      if (lastIndex < 0) return;
+      ref.current?.scrollToIndex({
+        index: lastIndex,
+        align: 'end',
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+    },
+    [messages.length],
+  );
 
   // A NEW message arrived (user pressed Enter, or the assistant placeholder
   // was appended) → ALWAYS jump to the latest line, even if the user had
@@ -79,7 +82,7 @@ export function MessageList({ messages, focusId, focusNonce }: Props) {
       if (atBottomRef.current) scrollToLast(false);
     }, 180);
     return () => window.clearInterval(id);
-  }, [active?.state]);
+  }, [active?.state, scrollToLast]);
 
   // History-click jump: scroll the requested message into view (centered) and
   // flash it for ~1.3s so the user sees exactly which task they returned to.
@@ -107,7 +110,10 @@ export function MessageList({ messages, focusId, focusNonce }: Props) {
       atBottomStateChange={(bottom) => {
         atBottomRef.current = bottom;
       }}
-      style={{ height: '100%' }}
+      // No inline style prop for height: Virtuoso's scroller defaults already
+      // include height 100% (applied via the CSSOM, so it works under the
+      // strict no-'unsafe-inline' style-src), and the codebase stays free of
+      // inline-style props (guarded in scripts/smoke_test.mjs).
       increaseViewportBy={{ top: 200, bottom: 600 }}
       itemContent={(_, msg) => {
         const flash = msg.id && msg.id === flashId ? ' message-flash' : '';

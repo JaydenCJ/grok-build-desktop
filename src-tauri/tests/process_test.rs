@@ -5,7 +5,14 @@ use tokio::io::AsyncBufReadExt;
 fn fake_grok_path() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.pop(); // up from src-tauri/
-    p.push("scripts/fake-grok.sh");
+
+    // Windows cannot exec a shell script; use the batch twin (which also
+    // matches production, where the grok CLI is an npm .cmd shim).
+    if cfg!(windows) {
+        p.push("scripts/fake-grok.cmd");
+    } else {
+        p.push("scripts/fake-grok.sh");
+    }
     p
 }
 
@@ -14,7 +21,7 @@ async fn spawns_and_reads_lines() {
     let path = fake_grok_path();
     let cwd = std::env::temp_dir();
     let mut spawned = process::spawn(&path, &["--ok".into()], &cwd).expect("spawn");
-    let mut reader = process::read_stdout_lines(&mut spawned.child);
+    let mut reader = process::read_stdout_lines(&mut spawned.child).expect("stdout piped");
 
     let mut lines = Vec::new();
     let mut buf = String::new();

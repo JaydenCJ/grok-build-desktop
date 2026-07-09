@@ -1,46 +1,92 @@
-# Grok Desktop Architecture
+# Grok Build Desktop Architecture
 
-Grok Desktop is a Tauri 2 desktop shell with a React workbench and Rust command bridge.
+Grok Build Desktop is a Tauri 2 desktop shell with a React workbench and a Rust
+command bridge. It never talks to a model API directly — every run shells out to
+the user's locally installed `grok` CLI.
 
 ## Runtime Layers
 
-- React renders the mode switch, task runner, Grok command bar, capability inspector, tool health, and script entry points.
-- The React shell is organized as a Grok/xAI-style developer workbench: dark left workspace navigation, top model/effort/permission controls, center Grok task conversation, right capability inspector, terminal dock, and toolbelt.
-- Tauri commands in `src-tauri/src/lib.rs` call local subprocesses.
-- Grok Build runs through `grok -p`, or through `GROK_DESKTOP_GROK_CMD` and `GROK_DESKTOP_GROK_ARGS`.
-- Coding Mode calls Grok through `src/lib/grok.ts::callGrokCLI(prompt, options)`, which listens to Tauri `grok-desktop://grok-stream` events while the Rust bridge owns the subprocess.
-- The Grok runner forwards selected model, effort, reasoning effort, Best-of-N, memory, web search, subagents, permission mode, and self-check settings unless `GROK_DESKTOP_GROK_ARGS` is used as a full argument-template override.
-- Grok auth status is detected without reading secrets: Grok Desktop checks installation, `XAI_API_KEY`, and whether `~/.grok/auth` contains cached login data.
-- Grok login starts in Terminal through `start_grok_login`, keeping the official CLI authorization flow outside the app.
-- Grok ecosystem discovery runs through `grok inspect`, while managed capability commands use `grok mcp list`, `grok mcp doctor`, `grok plugin list`, and `grok sessions list`.
-- The right inspector separates Context, Skills, MCP, Agents, Plugins, Hooks, and Permissions so discovered Claude-compatible skills/plugins and active Grok-managed resources are both visible.
-- Browser automation runs through `scripts/browser_automation.py` and the `browser-use` Python package.
-- Repository absorption starts with `scripts/absorb_repo.py` and writes manifests under `absorbed/`.
-- The Absorb Repo panel calls the same script through the Rust bridge, so terminal and desktop behavior stay aligned.
-- The Mac app persists session state through `load_session_state` and `save_session_state` at `~/Library/Application Support/Grok Desktop/session_state.json`.
-- External commands are wrapped with a timeout so missing or stuck CLIs do not permanently block the app.
-- Grok streaming uses a selected working directory so future ACP, Plan Mode, or sub-agent backends can preserve the same prompt/cwd contract.
-- The current visual direction is captured in `docs/design/grok-desktop-uiux-concept.png`, the Grok/xAI iteration in `docs/design/grok-desktop-grok-style-uiux-v2.png`, the restrained pure dark/light system in `docs/design/grok-desktop-restrained-dark-light-uiux.png`, and the latest power-clean 10-point direction in `docs/design/grok-desktop-10pt-power-clean-ui.png`.
-
-## Platform Adapter Shape
-
-- `AgentBackend`: subprocess or API caller such as Grok Build or browser-use.
-- `DeviceAdapter`: reserved for scrcpy/scrcpy-mcp now, with iOS/Android app bridges planned as separate adapters.
+- React (`src/`) renders the workbench: conversations sidebar, composer with
+  workflow/effort/action-policy controls, streaming conversation, capability
+  inspector, Tools & Skills hub, settings, terminal dock, and static preview.
+- Tauri commands in `src-tauri/src/lib.rs` call local subprocesses; the run
+  engine lives in `src-tauri/src/runs/` (db, event, parser, process, queue).
+- A streaming Grok run flows:
+  1. The frontend builds the argument list (`buildGrokArgs` in `src/App.tsx`)
+     and calls `invoke('enqueue_run', { prompt, cwd, args })`.
+  2. `RunQueue` (`src-tauri/src/runs/queue.rs`) persists the run to
+     `runs.sqlite` (FIFO, survives restart) and spawns
+     `grok … --output-format streaming-json -p …` in its own process group.
+  3. Stdout is parsed line-by-line (`runs/parser.rs`) and broadcast; `lib.rs`
+     forwards it as Tauri events (`grok-desktop://run-event`,
+     `grok-desktop://run-state-changed`, `grok-desktop://queue-changed`).
+  4. `src/lib/streamStore.ts` accumulates a `RunSnapshot` consumed via
+     `useSyncExternalStore` hooks; markdown is rendered off-thread by a Web
+     Worker (`marked` + `highlight.js`) and sanitized with DOMPurify before
+     injection.
+- The grok binary is resolved from `GROK_DESKTOP_GROK_CMD`, else the first
+  `grok` found on the app's fixed search path (`~/.local/bin`, `~/.grok/bin`,
+  `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, system dirs).
+- Grok auth status is detected without reading secrets: Grok Build Desktop
+  checks installation, `XAI_API_KEY` / `GROK_CODE_XAI_API_KEY`, and whether
+  `~/.grok/auth.json` (or `~/.grok/auth`) contains cached login data.
+- Grok login starts in Terminal through `start_grok_login`, keeping the
+  official CLI authorization flow outside the app.
+- Grok ecosystem discovery runs through `grok inspect`, while managed
+  capability commands use `grok mcp list`, `grok mcp doctor`, `grok plugin
+list`, and `grok sessions list`. The right inspector separates Context,
+  Skills, MCP, Agents, Plugins, Hooks, Permissions, and Desktop.
+- The Skills hub installs curated skills as real `SKILL.md` files under
+  `~/.grok/skills` for the CLI to discover.
+- The macOS desktop bridge (`src-tauri/src/desktop.rs`) is read-only:
+  allowlisted apps, hard-coded AppleScript with no interpolated input, and an
+  audit log under `~/.grok-desktop/audit/`.
+- Browser automation runs through `scripts/browser_automation.py` and the
+  `browser-use` Python package (requires `BROWSER_USE_API_KEY`).
+- Repository absorption runs through `scripts/absorb_repo.py` and writes
+  manifests under `absorbed/`; the Absorb Repo panel calls the same script
+  through the Rust bridge.
+- Persistence: conversations/tabs and UI preferences live in `localStorage`;
+  `~/Library/Application Support/Grok Desktop/session_state.json` is
+  round-tripped by `load_session_state`/`save_session_state` (written
+  atomically); the run queue and prompt library live in
+  `~/Library/Application Support/com.grok.desktop/runs.sqlite` and
+  `prompts.sqlite`.
+- Auxiliary external commands are wrapped with a timeout so missing or stuck
+  CLIs do not permanently block the app; streaming runs instead use a
+  no-output watchdog that only fires when grok is truly silent.
+- The current visual direction is captured under `docs/design/` (latest:
+  `grok-desktop-10pt-power-clean-ui.png`).
 
 ## Environment Overrides
 
 - `GROK_DESKTOP_PYTHON`: Python executable for scripts and package checks.
-- `GROK_DESKTOP_GROK_CMD`: Grok CLI executable.
-- `GROK_DESKTOP_GROK_ARGS`: whitespace-split Grok arguments. Use `{prompt}` and `{mode}` placeholders.
-- `GROK_DESKTOP_GROK_STARTUP_TIMEOUT_SECS`: startup watchdog for streaming Grok runs with no stdout/stderr activity. Defaults to 240 seconds.
-- `GROK_DESKTOP_GROK_SILENT_ANSWER_TIMEOUT_SECS`: watchdog for Grok runs that keep logging internally but produce no user-visible answer. Defaults to 180 seconds.
-- `GROK_DESKTOP_GROK_MAX_TURNS`: default headless turn cap. Defaults to 12.
+- `GROK_DESKTOP_GROK_CMD`: Grok CLI executable (overrides path search).
+- `GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS`: streaming watchdog — how long a run
+  may go without printing anything to stdout before it is killed as wedged.
+  The timer resets on every line, so an actively thinking grok never trips it.
+  Defaults to 420 seconds.
+- `GROK_DESKTOP_QUIET_GROK_STDERR`: set to `1` to stop mirroring grok's
+  stderr lines (prefixed `[grok stderr]`) to the host process during
+  streaming runs. Off by default.
+- `GROK_DESKTOP_COMMAND_TIMEOUT_SECS`: timeout for auxiliary commands
+  (inspect, mcp, login, scripts) — not streaming runs. Defaults to 240.
+- `GROK_DESKTOP_VERBOSE_GROK_STDERR`: set to `1` to show raw grok stderr in
+  auxiliary command output instead of filtering tracing noise.
+- `GROK_DESKTOP_GROK_ARGS`: whitespace-split argument template with `{prompt}`
+  and `{mode}` placeholders. Only affects the legacy non-streaming
+  `run_grok_task` path — streaming runs get their arguments from the UI.
+- `GROK_DESKTOP_GROK_CHECK`: enable `--check` on the legacy path.
+- `GROK_DESKTOP_GROK_MAX_TURNS`: headless turn cap on the legacy path.
+  Defaults to 12 (the streaming UI always sends `--max-turns 12`).
 - `XAI_API_KEY`: optional Grok API key auth visible to the spawned CLI process.
 
 ## Next Integration Targets
 
-- Promote the session JSON store into a local SQLite conversation store with searchable transcripts.
-- Promote Grok MCP add/remove, plugin install/update, and sessions search into safe UI flows.
-- Package `scripts/` as Tauri resources for release builds.
-- Add direct app-to-extension command routing with explicit user approval controls.
-- Add scrcpy and scrcpy-mcp task controls beyond status detection.
+- Plan Mode view: separate "plan" from "apply" (the raw
+  `--permission-mode plan` primitive is already exposed in Settings).
+- Sub-agent visualization for best-of-n / fan-out runs.
+- Session pinning: capture the `sessionId` from the `end` event and resume
+  with `-r <sessionId>` instead of `-c`.
+- A larger, community-driven Skills catalog.
+- Notarized macOS builds and a Linux build target.

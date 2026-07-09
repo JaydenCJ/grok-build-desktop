@@ -100,10 +100,18 @@ export function classifyEvent(raw: unknown): TraceParseResult {
   // Plan / task events
   const isTask = lower.includes('task') || lower.includes('plan');
 
-  // Try to extract a stable key so START and END pair up.
+  // Try to extract a stable key so START and END pair up. When the schema has
+  // no id field, the fallback key must be IDENTICAL for the start and end
+  // events of the same tool — so strip the start/end suffix off the type and
+  // never mix randomness in (a `tool_start`/`tool_end` pair keyed by type
+  // verbatim would never match and the card would pulse "running" forever).
+  const baseType = lower.replace(
+    /_(start|begin|use|call|end|complete|done|result|error|fail|failed)$/,
+    '',
+  );
   const id =
     readField(obj, 'id', 'tool_use_id', 'tool_id', 'call_id', 'invocation_id', 'request_id') ??
-    `${type}-${asString(obj.name) ?? asString(obj.tool_name) ?? Math.random().toString(36).slice(2)}`;
+    `${baseType}-${asString(obj.name) ?? asString(obj.tool_name) ?? 'anon'}`;
   const key = `trace:${id}`;
 
   // Pick a human-readable label.
@@ -122,8 +130,7 @@ export function classifyEvent(raw: unknown): TraceParseResult {
     return undefined;
   })();
   const outputSummary = (() => {
-    const out =
-      readObj(obj, 'output') ?? readObj(obj, 'result') ?? readObj(obj, 'response');
+    const out = readObj(obj, 'output') ?? readObj(obj, 'result') ?? readObj(obj, 'response');
     if (out) return shortenJson(out);
     const outStr = readField(obj, 'output', 'result', 'response', 'text', 'content');
     if (outStr) return shortenJson(outStr);

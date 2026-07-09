@@ -53,7 +53,6 @@ Grok is the only model path exposed in the UI. The model selector reflects exact
 - **Coding workflows + action policy** — Analyze / Implement / Review / Debug / Tests / Refactor starters, with an action policy (Review only / Patch ready / Autopilot) that maps to real Grok permission behaviour. Effort, reasoning effort, and best-of-N are one glance below the chat box.
 - **Settings** — a Claude-Desktop-style modal (General / Model & reasoning / Permissions / Workspace / About).
 - **Prompt library** — reusable prompt templates in SQLite with search-as-you-type and one-click insert.
-- **Agent overlay** — a click-through, full-display edge border + animated cursor sprite that makes it obvious when Grok is acting. Strictly visual — no OS input synthesis.
 - **Capability inspector** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions, combining `grok inspect` with managed `grok mcp` / `grok plugin` / `grok sessions`.
 
 ### Requirements
@@ -61,7 +60,7 @@ Grok is the only model path exposed in the UI. The model selector reflects exact
 - **Node.js** 18+ and **npm**
 - **Rust** (stable) + the Tauri prerequisites for your OS — see <https://tauri.app/start/prerequisites/>
 - **Grok Build CLI** installed and logged in (`grok login`) — the primary runner
-- macOS is the primary target; a Windows build target exists (`npm run tauri build` → MSI on `windows-latest`). Optional tools (browser-use, scrcpy) install separately.
+- macOS is the primary target; a Windows build target exists (`npm run tauri build` → MSI on `windows-latest`). Linux is not an official target yet — building there additionally needs the Tauri Linux system libraries (`webkit2gtk-4.1`, GTK 3, …). Optional tools (browser-use, scrcpy) install separately.
 
 ### Quick Start
 
@@ -108,10 +107,31 @@ More in [`docs/architecture.md`](docs/architecture.md), [`docs/setup.md`](docs/s
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build (production)
-npm test             # smoke test (scripts/smoke_test.mjs)
-npm run test:unit    # vitest
+npm test             # smoke test (scripts/smoke_test.mjs; needs a prior build)
+npm run test:unit    # vitest (unit + component tests)
+npm run test:e2e     # headless-Chromium end-to-end test (needs a prior build)
+npm run coverage     # vitest with V8 coverage report
+npm run lint         # eslint (CI gate; warnings fail)
+npm run format:check # prettier check (CI gate; `npm run format` fixes)
+cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit + integration tests
 npm run doctor       # environment doctor
 ```
+
+All of the above run headlessly on any platform. CI runs the frontend suite
+(lint, format, build, vitest, smoke) and the headless-Chromium e2e test on
+ubuntu, and the Rust suite (`cargo fmt`/`check`/`clippy`/`test`) on macOS
+plus `cargo check`/`test` on Windows. Integration testing of the **actual
+Tauri binary** — launching the real app and its webview — is only possible
+at runtime on macOS or Windows, the two supported targets; there is no
+Linux binary to run.
+
+### Troubleshooting
+
+- **macOS blocks the downloaded app ("damaged" / unidentified developer).** The release build is ad-hoc signed, not notarized. Right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Grok Build Desktop.app"` once.
+- **"Grok CLI not found" in the app.** The app searches `~/.local/bin`, `~/.grok/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and the system dirs. If your `grok` lives elsewhere, export `GROK_DESKTOP_GROK_CMD=/full/path/to/grok` before launching.
+- **A run fails with "no output for 420s — grok went silent."** Usually a macOS permission prompt is waiting behind the window — grant or deny it. Lower Effort/Reasoning for faster first output, or tune `GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS`.
+- **`npm run tauri:dev` fails on Linux with pkg-config errors** (`glib-2.0`, `gdk-3.0`, webkit not found). Install the Tauri Linux prerequisites (`webkit2gtk-4.1`, GTK 3, etc.) — see <https://tauri.app/start/prerequisites/>. Linux is not an official target yet.
+- **Not sure what's installed?** `npm run doctor` prints a JSON health report covering `grok`, Grok auth, `node`, `cargo`, `git`, and the optional tools.
 
 ### Roadmap
 
@@ -164,8 +184,7 @@ UI で公開されるモデル経路は Grok のみです。モデルセレク�
 - **ツール & スキル ハブ** — 1 ページ 2 タブ。**MCP servers**: コミュニティ製サーバーを追加・削除(`grok mcp`)。**Skills**: 実用的なコーディングスキル(コードレビュー / テスト作成 / 原因デバッグ / コミットメッセージ / PR 説明 / コードベース解説)を `~/.grok/skills` に実際の `SKILL.md` として導入。
 - **設定** — Claude Desktop 風モーダル(General / Model & reasoning / Permissions / Workspace / About)。
 - **プロンプトライブラリ** — SQLite に保存される再利用可能なテンプレート。逐次検索とワンクリック挿入。
-- **エージェント・オーバーレイ** — クリックスルーの全画面エッジボーダー＋アニメーションするカーソル。Grok の動作を明示します。完全に視覚的で、OS への入力合成は行いません。
-- **コーディング・ワークフロー** — Analyze / Implement / Review / Debug / Tests / Refactor。アクションポリシー(Review only / Patch ready / Autopilot)は実際の Grok 権限フラグに対応します。
+- **コーディング・ワークフロー + アクションポリシー** — Analyze / Implement / Review / Debug / Tests / Refactor のスターター。アクションポリシー(Review only / Patch ready / Autopilot)は実際の Grok 権限挙動に対応し、Effort・Reasoning・Best-of-N はチャット欄のすぐ下に並びます。
 - **機能インスペクター** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions。`grok inspect` と管理系 `grok mcp` / `grok plugin` / `grok sessions` を統合。
 
 ### 必要環境
@@ -173,7 +192,7 @@ UI で公開されるモデル経路は Grok のみです。モデルセレク�
 - **Node.js** 18 以上 と **npm**
 - **Rust**(stable)+ OS ごとの Tauri 前提条件 — <https://tauri.app/start/prerequisites/>
 - **Grok Build CLI**(インストール済み・`grok login` 済み)— 主要なランナー
-- 主対象は macOS。Windows ビルドターゲットも存在します(`npm run tauri build` → `windows-latest` で MSI)。任意ツール(browser-use, scrcpy)は別途インストール。
+- 主対象は macOS。Windows ビルドターゲットも存在します(`npm run tauri build` → `windows-latest` で MSI)。Linux は正式対応前です — ビルドには Tauri の Linux 系ライブラリ(`webkit2gtk-4.1`、GTK 3 など)が別途必要です。任意ツール(browser-use, scrcpy)は別途インストール。
 
 ### クイックスタート
 
@@ -211,8 +230,13 @@ Tauri dev は `.env` を自動読み込み**しません** — 起動前にシ�
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build(本番)
-npm test             # スモークテスト
-npm run test:unit    # vitest
+npm test             # スモークテスト(事前に build が必要)
+npm run test:unit    # vitest(ユニット + コンポーネントテスト)
+npm run test:e2e     # ヘッドレス Chromium E2E テスト(事前に build が必要)
+npm run coverage     # vitest + V8 カバレッジレポート
+npm run lint         # eslint(CI ゲート。警告も失敗扱い)
+npm run format:check # prettier チェック(CI ゲート。`npm run format` で修正)
+cargo test --manifest-path src-tauri/Cargo.toml   # Rust テスト
 npm run doctor       # 環境ドクター
 ```
 
@@ -243,8 +267,7 @@ UI 中只暴露 Grok 这一条模型路径。模型选择器严格反映本机 G
 - **工具 & 技能中心** — 一页两个标签。**MCP servers**:社区服务器目录,一键增删(`grok mcp`)。**Skills**:精选编程技能(代码评审 / 写测试 / 根因调试 / 提交信息 / PR 描述 / 讲解代码库),一键把真实 `SKILL.md` 装进 `~/.grok/skills` 供 Grok 发现。
 - **设置** — Claude Desktop 风格弹窗(General / Model & reasoning / Permissions / Workspace / About)。
 - **Prompt 库** — 存于 SQLite 的可复用模板,边打边搜、一键插入。
-- **Agent 浮层** — 穿透点击的全屏边缘高亮 + 动画光标,让 Grok 正在操作时一目了然。纯视觉,不做任何操作系统级输入合成。
-- **编程工作流** — Analyze / Implement / Review / Debug / Tests / Refactor;动作策略(Review only / Patch ready / Autopilot)对应真实的 Grok 权限标志。
+- **编程工作流 + 动作策略** — Analyze / Implement / Review / Debug / Tests / Refactor 起手式;动作策略(Review only / Patch ready / Autopilot)对应真实的 Grok 权限行为,Effort、Reasoning、Best-of-N 就在聊天框下方一眼可见。
 - **能力检查器** — Context / Skills / MCP / Agents / Plugins / Hooks / Permissions,整合 `grok inspect` 与受管的 `grok mcp` / `grok plugin` / `grok sessions`。
 
 ### 环境要求
@@ -252,7 +275,7 @@ UI 中只暴露 Grok 这一条模型路径。模型选择器严格反映本机 G
 - **Node.js** 18+ 与 **npm**
 - **Rust**(stable)+ 对应系统的 Tauri 前置依赖 — 见 <https://tauri.app/start/prerequisites/>
 - 已安装并登录(`grok login`)的 **Grok Build CLI** — 主运行器
-- 主目标平台为 macOS;同时存在 Windows 构建目标(`npm run tauri build` → 在 `windows-latest` 产出 MSI)。可选工具(browser-use、scrcpy)需另行安装。
+- 主目标平台为 macOS;同时存在 Windows 构建目标(`npm run tauri build` → 在 `windows-latest` 产出 MSI)。Linux 尚未正式支持 — 在 Linux 上构建还需安装 Tauri 的系统依赖(`webkit2gtk-4.1`、GTK 3 等)。可选工具(browser-use、scrcpy)需另行安装。
 
 ### 快速开始
 
@@ -290,8 +313,13 @@ Tauri dev **不会**自动加载 `.env` — 启动前请在 shell 里 export。�
 ```bash
 npm run check        # tsc --noEmit && cargo check
 npm run build        # tsc && vite build(生产)
-npm test             # 冒烟测试
-npm run test:unit    # vitest
+npm test             # 冒烟测试(需要先执行 build)
+npm run test:unit    # vitest(单元 + 组件测试)
+npm run test:e2e     # 无头 Chromium 端到端测试(需要先执行 build)
+npm run coverage     # vitest + V8 覆盖率报告
+npm run lint         # eslint(CI 门禁,警告也视为失败)
+npm run format:check # prettier 检查(CI 门禁,用 `npm run format` 修复)
+cargo test --manifest-path src-tauri/Cargo.toml   # Rust 测试
 npm run doctor       # 环境体检
 ```
 
@@ -307,14 +335,16 @@ npm run doctor       # 环境体检
 
 All variables are also in [`.env.example`](.env.example). The Rust backend reads the `GROK_DESKTOP_*` names below (not any other prefix).
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `GROK_DESKTOP_PYTHON` | `python3` | Python interpreter for the tool bridges. |
-| `GROK_DESKTOP_GROK_CMD` | `grok` | Grok CLI executable. |
-| `GROK_DESKTOP_GROK_ARGS` | see `.env.example` | Argument template; `{prompt}` and `{mode}` are substituted. |
-| `GROK_DESKTOP_GROK_CHECK` | `false` | Enable Grok's headless `--check` self-verification. |
-| `GROK_DESKTOP_COMMAND_TIMEOUT_SECS` | `240` | Per-command timeout. |
-| `GROK_DESKTOP_GROK_MAX_TURNS` | `12` | Bounded turn limit for headless runs. |
-| `GROK_DESKTOP_VERBOSE_GROK_STDERR` | `0` | `1` shows raw Grok stderr (otherwise tracing noise is filtered). |
-| `XAI_API_KEY` | — | Optional API-key auth (Grok can also use a cached `grok login`). |
-| `BROWSER_USE_API_KEY` | — | Required only for the browser-use bridge. |
+| Variable                              | Default            | Purpose                                                                                                                                          |
+| ------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GROK_DESKTOP_PYTHON`                 | `python3`          | Python interpreter for the tool bridges.                                                                                                         |
+| `GROK_DESKTOP_GROK_CMD`               | `grok`             | Grok CLI executable.                                                                                                                             |
+| `GROK_DESKTOP_GROK_ARGS`              | see `.env.example` | Argument template; `{prompt}` and `{mode}` are substituted (legacy non-streaming path only — streaming runs get their args from the UI).         |
+| `GROK_DESKTOP_GROK_CHECK`             | `false`            | Enable Grok's headless `--check` self-verification (legacy path).                                                                                |
+| `GROK_DESKTOP_NO_OUTPUT_TIMEOUT_SECS` | `420`              | Streaming watchdog: kill a run after this many seconds with no stdout output. Resets on every line, so an actively thinking Grok never trips it. |
+| `GROK_DESKTOP_QUIET_GROK_STDERR`      | `0`                | `1` stops mirroring Grok's stderr (`[grok stderr] …`) to the host process during streaming runs.                                                 |
+| `GROK_DESKTOP_COMMAND_TIMEOUT_SECS`   | `240`              | Timeout for auxiliary commands (inspect, mcp, login, scripts) — streaming runs use the no-output watchdog instead.                               |
+| `GROK_DESKTOP_GROK_MAX_TURNS`         | `12`               | Bounded turn limit for headless runs on the legacy path (the streaming UI always sends `--max-turns 12`).                                        |
+| `GROK_DESKTOP_VERBOSE_GROK_STDERR`    | `0`                | `1` shows raw Grok stderr in auxiliary command output (otherwise tracing noise is filtered).                                                     |
+| `XAI_API_KEY`                         | —                  | Optional API-key auth (Grok can also use a cached `grok login`).                                                                                 |
+| `BROWSER_USE_API_KEY`                 | —                  | Required only for the browser-use bridge.                                                                                                        |

@@ -38,10 +38,18 @@ interface Props {
  */
 export function ContextMenu({ menu, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState({ x: menu?.x ?? 0, y: menu?.y ?? 0 });
   const [openSub, setOpenSub] = useState<number | null>(null);
+  // Mirror openSub into a ref so the window keydown listener (whose effect
+  // only re-runs on menu/onClose changes) always reads the current value.
+  const openSubRef = useRef(openSub);
+  openSubRef.current = openSub;
 
-  // Clamp into the viewport once measured.
+  // Position at the cursor, clamped into the viewport once measured. Written
+  // through the CSSOM (element.style) instead of a React style prop: the
+  // shipped CSP is `style-src 'self'` with no 'unsafe-inline', and while CSP
+  // only blocks style ATTRIBUTES parsed from markup (CSSOM writes are exempt
+  // by spec), keeping the tree free of style props keeps that invariant
+  // grep-able. Runs in a layout effect, so it lands before first paint.
   useLayoutEffect(() => {
     if (!menu) return;
     setOpenSub(null);
@@ -51,7 +59,20 @@ export function ContextMenu({ menu, onClose }: Props) {
     const pad = 8;
     const x = Math.min(menu.x, window.innerWidth - width - pad);
     const y = Math.min(menu.y, window.innerHeight - height - pad);
-    setPos({ x: Math.max(pad, x), y: Math.max(pad, y) });
+    el.style.left = `${Math.max(pad, x)}px`;
+    el.style.top = `${Math.max(pad, y)}px`;
+  }, [menu]);
+
+  // Focus management: move focus into the menu on open (so arrow keys,
+  // accelerators, and Escape work without an intervening Tab stop) and hand
+  // it back to whatever had it when the menu closes.
+  useEffect(() => {
+    if (!menu) return;
+    const previous = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    return () => {
+      previous?.focus?.();
+    };
   }, [menu]);
 
   useEffect(() => {
@@ -74,9 +95,59 @@ export function ContextMenu({ menu, onClose }: Props) {
       onClose();
       queueMicrotask(() => item.onClick?.());
     };
+    // Every enabled menu item currently in the tree (submenu items included
+    // while their flyout is open), in document order.
+    const focusableItems = () =>
+      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []).filter(
+        (el) => !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true',
+      );
+    // Open a submenu from the keyboard and move focus to its first item once
+    // React has rendered the flyout.
+    const openSubmenuAndFocus = (index: number) => {
+      setOpenSub(index);
+      requestAnimationFrame(() => {
+        ref.current
+          ?.querySelector<HTMLElement>('.ctx-submenu [role="menuitem"]:not(:disabled)')
+          ?.focus();
+      });
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+      // Arrow navigation across menu items (menus are not Tab stops).
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        const els = focusableItems();
+        if (els.length === 0) return;
+        const idx = els.indexOf(document.activeElement as HTMLElement);
+        const next =
+          idx === -1
+            ? e.key === 'ArrowDown'
+              ? els[0]
+              : els[els.length - 1]
+            : els[(idx + (e.key === 'ArrowDown' ? 1 : els.length - 1)) % els.length];
+        next?.focus();
+        return;
+      }
+      // Enter / ArrowRight on a submenu parent opens the flyout; ArrowLeft
+      // closes it and returns focus to the parent row.
+      const active = document.activeElement as HTMLElement | null;
+      const subIndex = active?.dataset.submenuIndex;
+      if ((e.key === 'Enter' || e.key === 'ArrowRight' || e.key === ' ') && subIndex != null) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSubmenuAndFocus(Number(subIndex));
+        return;
+      }
+      if (e.key === 'ArrowLeft' && openSubRef.current !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        const parentIndex = openSubRef.current;
+        setOpenSub(null);
+        ref.current?.querySelector<HTMLElement>(`[data-submenu-index="${parentIndex}"]`)?.focus();
         return;
       }
       // Live accelerators: a letter shortcut, or Delete/Backspace → "⌫"/"D".
@@ -97,7 +168,7 @@ export function ContextMenu({ menu, onClose }: Props) {
         e.preventDefault();
         e.stopPropagation();
         if (hit.submenu) {
-          setOpenSub(menu.items.indexOf(hit));
+          openSubmenuAndFocus(menu.items.indexOf(hit));
         } else {
           run(hit);
         }
@@ -148,8 +219,8 @@ export function ContextMenu({ menu, onClose }: Props) {
     <div
       ref={ref}
       className="ctx-menu"
-      style={{ left: pos.x, top: pos.y }}
       role="menu"
+      tabIndex={-1}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
       onMouseLeave={() => setOpenSub(null)}
@@ -170,12 +241,16 @@ export function ContextMenu({ menu, onClose }: Props) {
                 tabIndex={0}
                 aria-haspopup="menu"
                 aria-expanded={openSub === i}
+                aria-disabled={item.disabled ? 'true' : undefined}
+                data-submenu-index={i}
                 className={`ctx-item has-sub${openSub === i ? ' open' : ''}${item.disabled ? ' is-disabled' : ''}`}
               >
                 {item.icon ? <span className="ctx-icon">{item.icon}</span> : null}
                 <span className="ctx-label">{item.label}</span>
                 {item.shortcut ? <span className="ctx-shortcut">{item.shortcut}</span> : null}
-                <span className="ctx-chevron" aria-hidden>›</span>
+                <span className="ctx-chevron" aria-hidden>
+                  ›
+                </span>
               </div>
               {openSub === i ? (
                 <div className="ctx-menu ctx-submenu" role="menu">

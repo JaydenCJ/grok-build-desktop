@@ -21,17 +21,22 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; frame-src grokpreview: http://grokpreview.localhost; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 ws:; frame-src grokpreview: http://grokpreview.localhost; object-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/JaydenCJ/grok-build-desktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBKEY"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "../scripts",
-      "../docs",
-      "../THIRD_PARTY_NOTICES.md"
-    ],
+    "resources": ["../scripts", "../docs", "../THIRD_PARTY_NOTICES.md"],
     "macOS": {
       "signingIdentity": "-"
     },

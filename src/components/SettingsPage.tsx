@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { useRef } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { t } from '../i18n';
 
 type ThemeMode = 'dark' | 'light';
 type DockPosition = 'right' | 'bottom';
@@ -44,7 +46,12 @@ export interface SettingsPageProps {
   setExperimentalMemory: (v: boolean) => void;
 
   // Permissions & policy
-  actionPolicyOptions: { value: string; label: string; detail: string; risk: 'none' | 'low' | 'high' }[];
+  actionPolicyOptions: {
+    value: string;
+    label: string;
+    detail: string;
+    risk: 'none' | 'low' | 'high';
+  }[];
   actionPolicy: string;
   setActionPolicy: (v: string) => void;
   permissionOptions: Option[];
@@ -68,15 +75,23 @@ export interface SettingsPageProps {
 }
 
 const NAV: { id: SettingsSection; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'model', label: 'Model & reasoning' },
-  { id: 'permissions', label: 'Permissions & policy' },
-  { id: 'integrations', label: 'Workspace' },
-  { id: 'about', label: 'About' },
+  { id: 'general', label: t('settings.nav.general') },
+  { id: 'model', label: t('settings.nav.model') },
+  { id: 'permissions', label: t('settings.nav.permissions') },
+  { id: 'integrations', label: t('settings.nav.workspace') },
+  { id: 'about', label: t('settings.nav.about') },
 ];
 
 /** A labelled row: title + description on the left, control on the right. */
-function Row({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Row({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="set-row">
       <div className="set-row-text">
@@ -88,7 +103,15 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
   return (
     <button
       type="button"
@@ -110,26 +133,31 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
  */
 export function SettingsPage(props: SettingsPageProps) {
   const { open, section, onSection, onClose } = props;
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  // Focus trap: Tab/Shift+Tab cycle inside the card, Escape closes, focus
+  // returns to the opener on close.
+  useModalFocus(open, modalRef, { initialFocus: closeRef, onEscape: onClose });
 
   if (!open) return null;
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="settings-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('settings.title')}
+      onClick={onClose}
+    >
+      <div
+        className="settings-modal"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <aside className="settings-nav">
-          <div className="settings-nav-head">Settings</div>
+          <div className="settings-nav-head">{t('settings.title')}</div>
           {NAV.map((n) => (
             <button
               key={n.id}
@@ -143,48 +171,72 @@ export function SettingsPage(props: SettingsPageProps) {
         </aside>
 
         <div className="settings-content">
-          <button type="button" className="settings-close" aria-label="Close settings" onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className="settings-close"
+            aria-label={t('settings.close')}
+            onClick={onClose}
+          >
             ✕
           </button>
 
           {section === 'general' ? (
             <section className="settings-section">
-              <h2>General</h2>
-              <Row title="Appearance" hint="Light uses a warm parchment palette; dark is graphite.">
+              <h2>{t('settings.nav.general')}</h2>
+              <Row title={t('settings.appearance')} hint={t('settings.appearanceHint')}>
                 <div className="set-segmented">
                   <button
                     type="button"
                     className={props.themeMode === 'dark' ? 'is-active' : ''}
                     onClick={() => props.setThemeMode('dark')}
                   >
-                    Dark
+                    {t('common.dark')}
                   </button>
                   <button
                     type="button"
                     className={props.themeMode === 'light' ? 'is-active' : ''}
                     onClick={() => props.setThemeMode('light')}
                   >
-                    Light
+                    {t('common.light')}
                   </button>
                 </div>
               </Row>
-              <Row title="Dock position" hint="Where the Tools / Terminal docks attach.">
-                <select value={props.dockPosition} onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}>
-                  <option value="right">Right</option>
-                  <option value="bottom">Bottom</option>
+              <Row title={t('settings.dockPosition')} hint={t('settings.dockPositionHint')}>
+                <select
+                  aria-label={t('settings.dockPosition')}
+                  value={props.dockPosition}
+                  onChange={(e) => props.setDockPosition(e.currentTarget.value as DockPosition)}
+                >
+                  <option value="right">{t('common.right')}</option>
+                  <option value="bottom">{t('common.bottom')}</option>
                 </select>
               </Row>
-              <Row title="Collapse sidebar by default" hint="Hide the left rail to focus on the conversation (⌘B toggles).">
-                <Toggle checked={props.sidebarCollapsed} onChange={props.setSidebarCollapsed} label="Collapse sidebar" />
+              <Row
+                title={t('settings.collapseSidebarTitle')}
+                hint={t('settings.collapseSidebarHint')}
+              >
+                <Toggle
+                  checked={props.sidebarCollapsed}
+                  onChange={props.setSidebarCollapsed}
+                  label={t('settings.collapseSidebar')}
+                />
               </Row>
             </section>
           ) : null}
 
           {section === 'model' ? (
             <section className="settings-section">
-              <h2>Model &amp; reasoning</h2>
-              <Row title="Model" hint={`Active engine: ${props.activeModel}`}>
-                <select value={props.modelPreset} onChange={(e) => props.onModelPreset(e.currentTarget.value)}>
+              <h2>{t('settings.nav.model')}</h2>
+              <Row
+                title={t('settings.model')}
+                hint={t('settings.modelHint', { model: props.activeModel })}
+              >
+                <select
+                  aria-label={t('settings.model')}
+                  value={props.modelPreset}
+                  onChange={(e) => props.onModelPreset(e.currentTarget.value)}
+                >
                   {props.modelOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -193,16 +245,21 @@ export function SettingsPage(props: SettingsPageProps) {
                 </select>
               </Row>
               {props.modelPreset === 'custom' ? (
-                <Row title="Custom model id" hint="Any model id your Grok CLI accepts.">
+                <Row title={t('settings.customModelId')} hint={t('settings.customModelIdHint')}>
                   <input
+                    aria-label={t('settings.customModelId')}
                     value={props.customModel}
-                    placeholder="e.g. grok-4.3-latest"
+                    placeholder={t('settings.customModelIdPlaceholder')}
                     onChange={(e) => props.setCustomModel(e.currentTarget.value)}
                   />
                 </Row>
               ) : null}
-              <Row title="Effort" hint="How hard Grok works per turn.">
-                <select value={props.effortLevel} onChange={(e) => props.setEffortLevel(e.currentTarget.value)}>
+              <Row title={t('settings.effort')} hint={t('settings.effortHint')}>
+                <select
+                  aria-label={t('settings.effort')}
+                  value={props.effortLevel}
+                  onChange={(e) => props.setEffortLevel(e.currentTarget.value)}
+                >
                   {props.effortOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -210,8 +267,12 @@ export function SettingsPage(props: SettingsPageProps) {
                   ))}
                 </select>
               </Row>
-              <Row title="Reasoning effort" hint="Extra thinking budget on hard code paths.">
-                <select value={props.reasoningEffort} onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}>
+              <Row title={t('settings.reasoningEffort')} hint={t('settings.reasoningEffortHint')}>
+                <select
+                  aria-label={t('settings.reasoningEffort')}
+                  value={props.reasoningEffort}
+                  onChange={(e) => props.setReasoningEffort(e.currentTarget.value)}
+                >
                   {props.reasoningOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -219,26 +280,37 @@ export function SettingsPage(props: SettingsPageProps) {
                   ))}
                 </select>
               </Row>
-              <Row title="Best-of-N" hint="Run the task N ways in parallel and keep the best (headless).">
+              <Row title={t('settings.bestOfN')} hint={t('settings.bestOfNHint')}>
                 <input
+                  aria-label={t('settings.bestOfN')}
                   type="number"
                   min={1}
                   max={5}
                   value={props.bestOfN}
-                  onChange={(e) => props.setBestOfN(Math.max(1, Math.min(5, Number(e.currentTarget.value) || 1)))}
+                  onChange={(e) =>
+                    props.setBestOfN(Math.max(1, Math.min(5, Number(e.currentTarget.value) || 1)))
+                  }
                 />
               </Row>
-              <Row title="Cross-session memory" hint="Experimental: let Grok remember across sessions.">
-                <Toggle checked={props.experimentalMemory} onChange={props.setExperimentalMemory} label="Experimental memory" />
+              <Row title={t('settings.memoryTitle')} hint={t('settings.memoryHint')}>
+                <Toggle
+                  checked={props.experimentalMemory}
+                  onChange={props.setExperimentalMemory}
+                  label={t('settings.memoryToggle')}
+                />
               </Row>
             </section>
           ) : null}
 
           {section === 'permissions' ? (
             <section className="settings-section">
-              <h2>Permissions &amp; policy</h2>
-              <Row title="Action policy" hint="How much Grok is allowed to do on its own.">
-                <select value={props.actionPolicy} onChange={(e) => props.setActionPolicy(e.currentTarget.value)}>
+              <h2>{t('settings.nav.permissions')}</h2>
+              <Row title={t('settings.actionPolicy')} hint={t('settings.actionPolicyHint')}>
+                <select
+                  aria-label={t('settings.actionPolicy')}
+                  value={props.actionPolicy}
+                  onChange={(e) => props.setActionPolicy(e.currentTarget.value)}
+                >
                   {props.actionPolicyOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -256,8 +328,12 @@ export function SettingsPage(props: SettingsPageProps) {
                   </p>
                 );
               })()}
-              <Row title="Permission mode" hint="Advanced: maps to grok --permission-mode (Plan/Autopilot override this).">
-                <select value={props.permissionMode} onChange={(e) => props.setPermissionMode(e.currentTarget.value)}>
+              <Row title={t('settings.permissionMode')} hint={t('settings.permissionModeHint')}>
+                <select
+                  aria-label={t('settings.permissionMode')}
+                  value={props.permissionMode}
+                  onChange={(e) => props.setPermissionMode(e.currentTarget.value)}
+                >
                   {props.permissionOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -265,30 +341,43 @@ export function SettingsPage(props: SettingsPageProps) {
                   ))}
                 </select>
               </Row>
-              <Row title="Web search" hint="Allow Grok to fetch current docs / version-sensitive facts.">
-                <Toggle checked={props.webSearchEnabled} onChange={props.setWebSearchEnabled} label="Web search" />
+              <Row title={t('settings.webSearch')} hint={t('settings.webSearchHint')}>
+                <Toggle
+                  checked={props.webSearchEnabled}
+                  onChange={props.setWebSearchEnabled}
+                  label={t('settings.webSearch')}
+                />
               </Row>
-              <Row title="Subagents" hint="Let Grok fan work out to parallel subagents.">
-                <Toggle checked={props.subagentsEnabled} onChange={props.setSubagentsEnabled} label="Subagents" />
+              <Row title={t('settings.subagents')} hint={t('settings.subagentsHint')}>
+                <Toggle
+                  checked={props.subagentsEnabled}
+                  onChange={props.setSubagentsEnabled}
+                  label={t('settings.subagents')}
+                />
               </Row>
-              <Row title="Self-check" hint="Append grok --check self-verification loop (headless).">
-                <Toggle checked={props.selfCheck} onChange={props.setSelfCheck} label="Self-check" />
+              <Row title={t('settings.selfCheck')} hint={t('settings.selfCheckHint')}>
+                <Toggle
+                  checked={props.selfCheck}
+                  onChange={props.setSelfCheck}
+                  label={t('settings.selfCheck')}
+                />
               </Row>
             </section>
           ) : null}
 
           {section === 'integrations' ? (
             <section className="settings-section">
-              <h2>Workspace</h2>
-              <Row title="Project folder" hint="Working directory Grok runs in (coding mode).">
+              <h2>{t('settings.nav.workspace')}</h2>
+              <Row title={t('settings.projectFolder')} hint={t('settings.projectFolderHint')}>
                 <div className="set-inline">
                   <input
+                    aria-label={t('settings.projectFolder')}
                     value={props.codingCwd}
-                    placeholder="/path/to/your/project"
+                    placeholder={t('settings.projectFolderPlaceholder')}
                     onChange={(e) => props.setCodingCwd(e.currentTarget.value)}
                   />
                   <button type="button" onClick={props.onPickFolder}>
-                    Pick…
+                    {t('settings.pickFolder')}
                   </button>
                 </div>
               </Row>
@@ -297,19 +386,18 @@ export function SettingsPage(props: SettingsPageProps) {
 
           {section === 'about' ? (
             <section className="settings-section">
-              <h2>About</h2>
+              <h2>{t('settings.nav.about')}</h2>
               <div className="set-about">
                 <div className="set-about-mark">G</div>
                 <div>
-                  <div className="set-about-name">Grok Build Desktop</div>
-                  <div className="set-about-ver">v{props.appVersion}</div>
+                  <div className="set-about-name">{t('settings.aboutName')}</div>
+                  <div className="set-about-ver">
+                    {t('settings.aboutVersion', { version: props.appVersion })}
+                  </div>
                   <div className="set-about-grok">{props.grokVersionLine}</div>
                 </div>
               </div>
-              <p className="set-about-blurb">
-                A premium desktop client for the Grok Build CLI — non-blocking streaming, multi-session
-                tabs, and a prompt library.
-              </p>
+              <p className="set-about-blurb">{t('settings.aboutBlurb')}</p>
             </section>
           ) : null}
         </div>

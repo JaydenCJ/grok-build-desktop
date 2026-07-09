@@ -53,6 +53,36 @@ pub struct Db {
     pool: SqlitePool,
 }
 
+/// Raw `runs` row as selected by `fetch_run`/`list_by_state`, in column order.
+type RunRow = (
+    String,         // id
+    String,         // prompt
+    String,         // cwd
+    String,         // args_json
+    String,         // state
+    i64,            // enqueued_at
+    Option<i64>,    // started_at
+    Option<i64>,    // ended_at
+    Option<String>, // stop_reason
+    Option<String>, // error
+);
+
+fn run_record(row: RunRow) -> RunRecord {
+    let (id, prompt, cwd, args_json, state, eq, st, en, sr, err) = row;
+    RunRecord {
+        id,
+        prompt,
+        cwd,
+        args_json,
+        state: RunState::parse(&state).unwrap_or(RunState::Failed),
+        enqueued_at: eq,
+        started_at: st,
+        ended_at: en,
+        stop_reason: sr,
+        error: err,
+    }
+}
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
@@ -73,8 +103,9 @@ CREATE INDEX IF NOT EXISTS idx_runs_enqueued_at ON runs(enqueued_at);
 /// Execute every `;`-delimited DDL statement in `schema` against the given
 /// pool. sqlx::query() prepares a single statement at a time, so the CREATE
 /// INDEX bodies in a multi-line SCHEMA string would silently be ignored if
-/// passed to a single query(). This helper avoids that footgun.
-async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
+/// passed to a single query(). This helper avoids that footgun. Shared with
+/// the prompt-library store (prompts/mod.rs), which bootstraps the same way.
+pub(crate) async fn run_schema(pool: &SqlitePool, schema: &str) -> Result<(), sqlx::Error> {
     for stmt in schema.split(';') {
         let trimmed = stmt.trim();
         if !trimmed.is_empty() {
@@ -136,44 +167,38 @@ impl Db {
         sqlx::query(
             "UPDATE runs SET state = ?, started_at = COALESCE(?, started_at),
              ended_at = COALESCE(?, ended_at), stop_reason = COALESCE(?, stop_reason),
-             error = COALESCE(?, error) WHERE id = ?"
+             error = COALESCE(?, error) WHERE id = ?",
         )
         .bind(state.as_str())
-        .bind(started_at).bind(ended_at).bind(stop_reason).bind(error)
+        .bind(started_at)
+        .bind(ended_at)
+        .bind(stop_reason)
+        .bind(error)
         .bind(id)
-        .execute(&self.pool).await?;
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     pub async fn fetch_run(&self, id: &str) -> Result<Option<RunRecord>, sqlx::Error> {
-        let row: Option<(String, String, String, String, String, i64, Option<i64>, Option<i64>, Option<String>, Option<String>)> =
+        let row: Option<RunRow> =
             sqlx::query_as(
                 "SELECT id, prompt, cwd, args_json, state, enqueued_at, started_at, ended_at, stop_reason, error FROM runs WHERE id = ?"
             )
             .bind(id)
             .fetch_optional(&self.pool).await?;
-        Ok(row.map(|(id, prompt, cwd, args_json, state, eq, st, en, sr, err)| RunRecord {
-            id, prompt, cwd, args_json,
-            state: RunState::parse(&state).unwrap_or(RunState::Failed),
-            enqueued_at: eq, started_at: st, ended_at: en,
-            stop_reason: sr, error: err,
-        }))
+        Ok(row.map(run_record))
     }
 
     pub async fn list_by_state(&self, state: RunState) -> Result<Vec<RunRecord>, sqlx::Error> {
-        let rows: Vec<(String, String, String, String, String, i64, Option<i64>, Option<i64>, Option<String>, Option<String>)> =
+        let rows: Vec<RunRow> =
             sqlx::query_as(
                 "SELECT id, prompt, cwd, args_json, state, enqueued_at, started_at, ended_at, stop_reason, error
                  FROM runs WHERE state = ? ORDER BY enqueued_at ASC"
             )
             .bind(state.as_str())
             .fetch_all(&self.pool).await?;
-        Ok(rows.into_iter().map(|(id, prompt, cwd, args_json, state, eq, st, en, sr, err)| RunRecord {
-            id, prompt, cwd, args_json,
-            state: RunState::parse(&state).unwrap_or(RunState::Failed),
-            enqueued_at: eq, started_at: st, ended_at: en,
-            stop_reason: sr, error: err,
-        }).collect())
+        Ok(rows.into_iter().map(run_record).collect())
     }
 
     /// Delete finished runs older than `retention_ms`. Returns count deleted.
@@ -191,10 +216,12 @@ impl Db {
     pub async fn cancel_orphans(&self, reason: &str) -> Result<u64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp_millis();
         let result = sqlx::query(
-            "UPDATE runs SET state = 'Cancelled', ended_at = ?, error = ? WHERE state = 'Running'"
+            "UPDATE runs SET state = 'Cancelled', ended_at = ?, error = ? WHERE state = 'Running'",
         )
-        .bind(now).bind(reason)
-        .execute(&self.pool).await?;
+        .bind(now)
+        .bind(reason)
+        .execute(&self.pool)
+        .await?;
         Ok(result.rows_affected())
     }
 }

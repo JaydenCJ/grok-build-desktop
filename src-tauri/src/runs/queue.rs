@@ -14,6 +14,25 @@ use tokio::sync::{broadcast, Mutex, Notify};
 /// absorb a burst of streaming-json events without lag.
 const BROADCAST_CAPACITY: usize = 1024;
 
+/// How much of grok's stderr we keep for error reporting on a non-zero exit.
+pub const STDERR_TAIL_MAX_BYTES: usize = 4096;
+
+/// Truncate `tail` in place so at most `max_bytes` bytes of its END remain.
+/// The cut is moved forward to the next `char` boundary: grok's stderr is
+/// arbitrary text (log lines can contain non-ASCII), and a naive byte slice at
+/// `len - max_bytes` would panic mid-character and silently kill the
+/// stderr-drain task.
+pub fn keep_utf8_tail(tail: &mut String, max_bytes: usize) {
+    if tail.len() <= max_bytes {
+        return;
+    }
+    let mut cut = tail.len() - max_bytes;
+    while !tail.is_char_boundary(cut) {
+        cut += 1;
+    }
+    tail.drain(..cut);
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct QueueMessage {
     pub run_id: String,
@@ -115,11 +134,11 @@ impl RunQueue {
         {
             let mut inner = self.inner.lock().await;
             inner.waiting.push_back(rec);
-            position = if inner.active.is_none() {
-                0
-            } else {
-                inner.waiting.len()
-            };
+            // Number of runs ahead of the new one: everything already waiting
+            // (e.g. recovered-but-not-resumed Queued rows after a restart)
+            // plus the active run if any. The old `active.is_none() → 0`
+            // branch reported "runs next" even with recovered runs in front.
+            position = inner.waiting.len() - 1 + usize::from(inner.active.is_some());
         }
 
         let _ = self.tx.send(QueueMessage {
@@ -132,10 +151,11 @@ impl RunQueue {
 
     pub async fn cancel(&self, run_id: &str) -> Result<bool, sqlx::Error> {
         let mut inner = self.inner.lock().await;
-        // If in waiting queue: remove.
+        // If in waiting queue: remove. (No `cancelled` mark needed — once out
+        // of `waiting` the worker can never pop it, and stale marks would
+        // grow the set for the process lifetime.)
         if let Some(pos) = inner.waiting.iter().position(|r| r.id == run_id) {
             inner.waiting.remove(pos);
-            inner.cancelled.insert(run_id.into());
             drop(inner);
             self.db
                 .update_state(
@@ -194,7 +214,10 @@ impl RunQueue {
 
     pub async fn snapshot(&self) -> (Option<String>, Vec<RunRecord>) {
         let inner = self.inner.lock().await;
-        (inner.active.clone(), inner.waiting.iter().cloned().collect())
+        (
+            inner.active.clone(),
+            inner.waiting.iter().cloned().collect(),
+        )
     }
 
     pub async fn pending_count(&self) -> usize {
@@ -212,27 +235,52 @@ impl RunQueue {
             loop {
                 me.notify.notified().await;
                 while let Some(rec) = me.pop_next().await {
-                    if me.inner.lock().await.cancelled.contains(&rec.id) {
-                        continue;
-                    }
                     me.run_one(rec).await;
                 }
             }
         });
     }
 
+    /// Pop the next runnable record, doing the cancelled check UNDER the same
+    /// lock that publishes `active`. A cancel that lands between pop and spawn
+    /// used to leave the run neither killed nor finalized: `active` pointed at
+    /// a skipped run forever and the DB row stayed Queued, resurrecting the
+    /// cancelled run on the next launch. Skipped runs are finalized as
+    /// Cancelled here instead.
     async fn pop_next(&self) -> Option<RunRecord> {
-        let mut inner = self.inner.lock().await;
-        let rec = inner.waiting.pop_front()?;
-        inner.active = Some(rec.id.clone());
-        Some(rec)
+        loop {
+            let skipped_id;
+            {
+                let mut inner = self.inner.lock().await;
+                let rec = inner.waiting.pop_front()?;
+                if inner.cancelled.remove(&rec.id) {
+                    skipped_id = rec.id;
+                } else {
+                    inner.active = Some(rec.id.clone());
+                    return Some(rec);
+                }
+            }
+            self.finalize(
+                &skipped_id,
+                RunState::Cancelled,
+                Some("user cancelled".into()),
+            )
+            .await;
+        }
     }
 
     async fn run_one(&self, rec: RunRecord) {
         let started_at = chrono::Utc::now().timestamp_millis();
         let _ = self
             .db
-            .update_state(&rec.id, RunState::Running, Some(started_at), None, None, None)
+            .update_state(
+                &rec.id,
+                RunState::Running,
+                Some(started_at),
+                None,
+                None,
+                None,
+            )
             .await;
         // Emit QueueChanged BEFORE StateChanged so the frontend's queue.active
         // flips from None → Some(rec.id) before any text events arrive. The
@@ -260,19 +308,31 @@ impl RunQueue {
         let spawn_result = process::spawn(&grok_path, &args, &cwd);
         match spawn_result {
             Err(e) => {
-                self.finalize(&rec.id, RunState::Failed, Some(format!("spawn failed: {e}")))
-                    .await;
+                self.finalize(
+                    &rec.id,
+                    RunState::Failed,
+                    Some(format!("spawn failed: {e}")),
+                )
+                .await;
             }
             Ok(mut spawned) => {
-                {
+                let cancel_requested = {
                     let mut inner = self.inner.lock().await;
                     inner.active_pgid = Some(spawned.pgid);
+                    // A cancel may have landed between pop and spawn — its
+                    // `active_pgid` read saw None, so nothing was killed.
+                    // Honor it now that the pgid exists.
+                    inner.cancelled.contains(&rec.id)
+                };
+                if cancel_requested {
+                    process::kill_group(spawned.pgid).await;
                 }
                 // Drain stderr in a background task. Without this, when grok
                 // produces > 64 KB of stderr (tracing logs, debug noise) the
                 // pipe fills and grok BLOCKS on stderr write, which makes
-                // stdout silent and trips our 60s "no output timeout" — even
-                // though grok is alive and would have produced text just fine.
+                // stdout silent and trips our no-output watchdog (420s by
+                // default, see `no_output_secs` below) — even though grok is
+                // alive and would have produced text just fine.
                 // Keep the tail of stderr so a non-zero exit can report grok's
                 // ACTUAL error (e.g. "invalid reasoning effort: max") instead of
                 // a useless generic "likely a crash".
@@ -290,9 +350,7 @@ impl RunQueue {
                                 Ok(_) => {
                                     if let Ok(mut t) = tail.lock() {
                                         t.push_str(&line);
-                                        if t.len() > 4096 {
-                                            *t = t[t.len() - 4096..].to_string();
-                                        }
+                                        keep_utf8_tail(&mut t, STDERR_TAIL_MAX_BYTES);
                                     }
                                     // Surface unfiltered stderr to the host
                                     // process — useful when diagnosing grok
@@ -311,7 +369,19 @@ impl RunQueue {
                         }
                     });
                 }
-                let mut reader = process::read_stdout_lines(&mut spawned.child);
+                let mut reader = match process::read_stdout_lines(&mut spawned.child) {
+                    Ok(reader) => reader,
+                    Err(e) => {
+                        process::kill_group(spawned.pgid).await;
+                        self.finalize(
+                            &rec.id,
+                            RunState::Failed,
+                            Some(format!("stdout unavailable: {e}")),
+                        )
+                        .await;
+                        return;
+                    }
+                };
                 let mut line = String::new();
                 let mut consecutive_fail = 0u32;
 
@@ -330,8 +400,11 @@ impl RunQueue {
                 loop {
                     line.clear();
                     let read_fut = reader.read_line(&mut line);
-                    let outcome =
-                        tokio::time::timeout(std::time::Duration::from_secs(no_output_secs), read_fut).await;
+                    let outcome = tokio::time::timeout(
+                        std::time::Duration::from_secs(no_output_secs),
+                        read_fut,
+                    )
+                    .await;
                     match outcome {
                         Err(_) => {
                             // N seconds with zero output and not exited → wedged.
@@ -362,8 +435,7 @@ impl RunQueue {
                             // frontend can introspect tool/subagent events
                             // without us touching Rust for every new type).
                             let raw_value: serde_json::Value =
-                                serde_json::from_str(&trimmed)
-                                    .unwrap_or(serde_json::Value::Null);
+                                serde_json::from_str(&trimmed).unwrap_or(serde_json::Value::Null);
                             match parse_line(&trimmed) {
                                 Ok(ev) => {
                                     consecutive_fail = 0;
@@ -401,14 +473,38 @@ impl RunQueue {
                         }
                     }
                 }
-                // Wait exit.
-                let status = spawned.child.wait().await;
+                // Wait exit — bounded. Every other stall path has a watchdog;
+                // without one here a grok that closes stdout but never exits
+                // would leave the run Running forever and wedge the queue.
+                let mut forced_exit = false;
+                let status = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    spawned.child.wait(),
+                )
+                .await
+                {
+                    Ok(status) => status,
+                    Err(_) => {
+                        forced_exit = true;
+                        process::kill_group(spawned.pgid).await;
+                        // kill_group escalates TERM→KILL, so this reap returns
+                        // promptly.
+                        spawned.child.wait().await
+                    }
+                };
                 let cancelled = self.inner.lock().await.cancelled.contains(&rec.id);
                 let (final_state, fail_err) = if cancelled {
                     (RunState::Cancelled, None)
                 } else {
                     match status {
                         Ok(s) if s.success() => (RunState::Done, None),
+                        Ok(_) if forced_exit => (
+                            RunState::Failed,
+                            Some(
+                                "grok did not exit after closing its output stream; terminated"
+                                    .to_string(),
+                            ),
+                        ),
                         // grok exited non-zero. Surface the code/signal so the
                         // failure isn't a bare "error" — grok 0.2.x sometimes
                         // crashes mid-run, and a clear message tells the user
@@ -439,14 +535,19 @@ impl RunQueue {
                                         })
                                 })
                                 .map(|l| format!(" — {l}"))
-                                .unwrap_or_else(|| " — likely a grok CLI crash, try again".to_string());
+                                .unwrap_or_else(|| {
+                                    " — likely a grok CLI crash, try again".to_string()
+                                });
                             let msg = match s.code() {
                                 Some(c) => format!("grok exited with code {c}{detail}"),
                                 None => format!("grok was terminated by a signal{detail}"),
                             };
                             (RunState::Failed, Some(msg))
                         }
-                        Err(e) => (RunState::Failed, Some(format!("could not wait on grok: {e}"))),
+                        Err(e) => (
+                            RunState::Failed,
+                            Some(format!("could not wait on grok: {e}")),
+                        ),
                     }
                 };
                 self.finalize(&rec.id, final_state, fail_err).await;
@@ -466,6 +567,9 @@ impl RunQueue {
             .await;
         {
             let mut inner = self.inner.lock().await;
+            // Prune the cancel mark so the set doesn't grow for the process
+            // lifetime (and a recycled id could never be mis-skipped).
+            inner.cancelled.remove(id);
             if inner.active.as_deref() == Some(id) {
                 inner.active = None;
                 inner.active_pgid = None;

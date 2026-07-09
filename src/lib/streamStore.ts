@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { classifyEvent, type TraceEvent } from './traceParser';
+import { hasTauriRuntime } from './runtime';
 
 export type GrokEvent =
   | { type: 'thought'; data: string }
@@ -83,12 +84,17 @@ class StreamStore {
 
   private makeEmpty(id: string): RunSnapshot {
     return {
-      id, state: 'queued',
-      startedAt: null, endedAt: null,
-      thoughtChars: 0, textChars: 0,
-      lastEventType: null, text: '',
+      id,
+      state: 'queued',
+      startedAt: null,
+      endedAt: null,
+      thoughtChars: 0,
+      textChars: 0,
+      lastEventType: null,
+      text: '',
       htmlVersion: 0,
-      stopReason: null, error: null,
+      stopReason: null,
+      error: null,
       traces: [],
     };
   }
@@ -107,31 +113,37 @@ export const streamStore = new StreamStore();
 export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): void {
   const cur = streamStore.getRunSnapshot(runId);
   if (event.type === 'thought') {
-    const data = (event as any).data as string;
+    const { data } = event as Extract<GrokEvent, { type: 'thought' }>;
     streamStore.patchRun(runId, {
       thoughtChars: (cur?.thoughtChars ?? 0) + data.length,
       lastEventType: 'thought',
-      state: cur?.state === 'queued' ? 'running' : cur?.state ?? 'running',
+      state: cur?.state === 'queued' ? 'running' : (cur?.state ?? 'running'),
     });
   } else if (event.type === 'text') {
-    const data = (event as any).data as string;
+    const { data } = event as Extract<GrokEvent, { type: 'text' }>;
     const nextText = (cur?.text ?? '') + data;
     streamStore.patchRun(runId, {
       text: nextText,
       textChars: (cur?.textChars ?? 0) + data.length,
       lastEventType: 'text',
-      state: cur?.state === 'queued' ? 'running' : cur?.state ?? 'running',
+      state: cur?.state === 'queued' ? 'running' : (cur?.state ?? 'running'),
     });
     // Lazy-import to keep the worker out of unit-test bundles (vitest jsdom).
-    import('./markdownWorker').then(({ scheduleMarkdownParse }) => {
-      scheduleMarkdownParse(runId, nextText);
-    }).catch(() => {/* worker unavailable; MessageItem will render raw text */});
+    import('./markdownWorker')
+      .then(({ scheduleMarkdownParse }) => {
+        scheduleMarkdownParse(runId, nextText);
+      })
+      .catch(() => {
+        /* worker unavailable; MessageItem will render raw text */
+      });
   } else if (event.type === 'end') {
     // Also schedule a final parse so the post-stream HTML matches the last text.
     if (cur?.text) {
-      import('./markdownWorker').then(({ scheduleMarkdownParse }) => {
-        scheduleMarkdownParse(runId, cur.text);
-      }).catch(() => {});
+      import('./markdownWorker')
+        .then(({ scheduleMarkdownParse }) => {
+          scheduleMarkdownParse(runId, cur.text);
+        })
+        .catch(() => {});
     }
     const e = event as Extract<GrokEvent, { type: 'end' }>;
     streamStore.patchRun(runId, {
@@ -169,7 +181,12 @@ export function applyRunEvent(runId: string, event: GrokEvent, raw?: unknown): v
 
 export function applyStateChange(
   runId: string,
-  payload: { state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed'; startedAt?: number | null; endedAt?: number | null; error?: string | null }
+  payload: {
+    state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed';
+    startedAt?: number | null;
+    endedAt?: number | null;
+    error?: string | null;
+  },
 ): void {
   streamStore.patchRun(runId, {
     state: payload.state.toLowerCase() as RunState,
@@ -212,43 +229,47 @@ let unlistenFns: UnlistenFn[] = [];
 let attachInflight: Promise<void> | null = null;
 let attachUnavailable = false;
 
-function hasTauriRuntime(): boolean {
-  // Tauri 2 injects __TAURI_INTERNALS__ on window.
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
 export async function attachTauriListeners(): Promise<void> {
   if (unlistenFns.length > 0 || attachUnavailable) return;
   if (!hasTauriRuntime()) {
     // Running in vite browser preview without the Tauri shell: skip silently.
+    // This is the only permanent latch — a failed listen() below must NOT
+    // latch, otherwise one transient IPC hiccup at startup leaves the app
+    // permanently deaf to run events with no way to retry.
     attachUnavailable = true;
     return;
   }
   // De-dupe parallel callers and StrictMode double-mounts.
   if (attachInflight) return attachInflight;
   attachInflight = (async () => {
+    // Collect as we go so a mid-sequence failure can detach the listeners
+    // that DID attach — a later retry must not stack duplicate handlers.
+    const attached: UnlistenFn[] = [];
     try {
-      const u1 = await listen<{ runId: string; event: GrokEvent; raw?: unknown }>(
-        'grok-desktop://run-event',
-        (e) => applyRunEvent(e.payload.runId, e.payload.event, e.payload.raw),
+      attached.push(
+        await listen<{ runId: string; event: GrokEvent; raw?: unknown }>(
+          'grok-desktop://run-event',
+          (e) => applyRunEvent(e.payload.runId, e.payload.event, e.payload.raw),
+        ),
       );
-      const u2 = await listen<{
-        runId: string;
-        state: string;
-        startedAt?: number;
-        endedAt?: number;
-        error?: string;
-      }>('grok-desktop://run-state-changed', (e) =>
-        applyStateChange(e.payload.runId, e.payload as any),
+      attached.push(
+        await listen<{
+          runId: string;
+          state: 'Queued' | 'Running' | 'Done' | 'Cancelled' | 'Failed';
+          startedAt?: number;
+          endedAt?: number;
+          error?: string;
+        }>('grok-desktop://run-state-changed', (e) => applyStateChange(e.payload.runId, e.payload)),
       );
-      const u3 = await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
-        'grok-desktop://queue-changed',
-        (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
+      attached.push(
+        await listen<{ active: string | null; queue: QueuedRunMeta[] }>(
+          'grok-desktop://queue-changed',
+          (e) => replaceQueue({ active: e.payload.active, items: e.payload.queue }),
+        ),
       );
-      unlistenFns = [u1, u2, u3];
+      unlistenFns = attached;
     } catch (err) {
-      // First failure latches "unavailable" so we don't keep spamming the console.
-      attachUnavailable = true;
+      attached.forEach((fn) => fn());
       throw err;
     } finally {
       attachInflight = null;

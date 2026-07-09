@@ -1,8 +1,9 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useRunHtml, useRunSnapshot } from '../hooks/useRunSnapshot';
 import { useSmoothText } from '../hooks/useSmoothText';
-import { scheduleMarkdownParse } from '../lib/markdownWorker';
+import { sanitizeHtml } from '../lib/sanitizeHtml';
 import { TraceTimeline } from './TraceTimeline';
+import { t } from '../i18n';
 
 interface Props {
   runId: string;
@@ -14,27 +15,36 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   const html = useRunHtml(runId);
   const smooth = useSmoothText(runId);
 
+  // marked does not sanitize; strip scripts/handlers before injecting.
+  const safeHtml = useMemo(() => (html ? sanitizeHtml(html) : html), [html]);
+
   // Restored/legacy assistant messages (loaded from storage after a restart)
   // have stored text but no live run snapshot. Render them through the SAME
   // off-thread markdown worker so code blocks and formatting survive a restart
   // instead of showing raw ``` text. Falls back to plain text if the worker is
   // unavailable. Keyed by the message's stable synthetic runId (msg:<id>).
+  // Lazy-import like streamStore does — markdownWorker's only other importers
+  // are dynamic, and mixing a static import here would fold the module into
+  // the main chunk (Vite warns about exactly that).
   useEffect(() => {
     if (!snap && runId && fallbackText && html === undefined) {
-      scheduleMarkdownParse(runId, fallbackText);
+      import('../lib/markdownWorker')
+        .then(({ scheduleMarkdownParse }) => scheduleMarkdownParse(runId, fallbackText))
+        .catch(() => {
+          /* worker unavailable; the plain-text fallback below renders */
+        });
     }
   }, [snap, runId, fallbackText, html]);
 
   if (!snap) {
-    if (html) {
-      return <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />;
+    if (safeHtml) {
+      return <div className="message-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
     }
     if (fallbackText) return <pre className="message-body">{fallbackText}</pre>;
     return null;
   }
 
-  const ended =
-    snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
+  const ended = snap.state === 'done' || snap.state === 'failed' || snap.state === 'cancelled';
 
   // While the run is streaming, render the typewriter-paced raw text (smooth,
   // Claude-like cadence). Once it settles, swap to the fully-parsed markdown
@@ -43,14 +53,27 @@ function MessageItemImpl({ runId, fallbackText }: Props) {
   return (
     <>
       <TraceTimeline runId={runId} />
-      {ended && html ? (
-        <div className="message-body" dangerouslySetInnerHTML={{ __html: html }} />
+      {ended && safeHtml ? (
+        <div className="message-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
       ) : (
         <pre className="message-body streaming-raw">
           {smooth.text || fallbackText || ''}
           {smooth.caretVisible ? <span className="stream-caret">▋</span> : null}
         </pre>
       )}
+      {/* A failed/cancelled run must say so in the message area — the only
+          other surface (StatusBar suffix) resets to "idle" as soon as the
+          queue moves on, leaving a silent empty bubble. */}
+      {snap.state === 'failed' ? (
+        <div className="message-error" role="alert">
+          {snap.error
+            ? t('message.runFailedWithError', { error: snap.error })
+            : t('message.runFailed')}
+        </div>
+      ) : null}
+      {snap.state === 'cancelled' ? (
+        <div className="message-error message-cancelled">{t('message.stopped')}</div>
+      ) : null}
     </>
   );
 }

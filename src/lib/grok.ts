@@ -1,11 +1,9 @@
-// src/lib/grok.ts — F task 11: real wrappers around the new enqueue/cancel commands
+// src/lib/grok.ts — wrappers around the enqueue/cancel run-queue commands
 import { invoke } from '@tauri-apps/api/core';
+import { retryWithBackoff } from './retry';
 import { attachTauriListeners } from './streamStore';
 
-// --- Type re-exports kept for App.tsx compatibility ---
-// These are stub types matching the legacy shape. They will be removed when
-// App.tsx is rewritten in Task 21.
-// NOTE: fields kept required so App.tsx local ToolRun (also required) stays assignable.
+/** Result shape of the ToolRun-producing Tauri commands (shell, inspect, mcp, …). */
 export type ToolRun = {
   ok: boolean;
   command: string;
@@ -17,48 +15,24 @@ export type ToolRun = {
   stderr: string;
 };
 
-export type GrokStreamEvent = {
-  runId: string;
-  stream: 'stdout' | 'stderr' | 'system';
-  line: string;
-  done: boolean;
-  ok: boolean | null;
-  exitCode: number | null;
-  durationMs: number | null;
-  cwd: string;
-  command: string;
-};
-
-export type CallGrokOptions = {
-  mode?: 'standard' | 'coding';
-  cwd?: string;
-  model?: string;
-  effort?: string;
-  reasoningEffort?: string;
-  permissionMode?: string;
-  bestOfN?: number;
-  experimentalMemory?: boolean;
-  webSearchEnabled?: boolean;
-  subagentsEnabled?: boolean;
-  selfCheck?: boolean;
-  onRunId?: (runId: string) => void;
-  onEvent?: (event: GrokStreamEvent) => void;
-  [k: string]: unknown;
-};
-
-// --- Throwing stubs for legacy call-sites (FIXME(F-task21) markers in App.tsx) ---
-export async function callGrokCLI(_prompt: string, _options?: CallGrokOptions): Promise<ToolRun> {
-  throw new Error('legacy callGrokCLI removed; use enqueueRun (wiring in Task 21)');
-}
-
-export async function cancelGrokCLI(_runId?: string): Promise<boolean> {
-  throw new Error('legacy cancelGrokCLI removed; use cancelRun (wiring in Task 21)');
-}
-
-// --- New API ---
-
+/**
+ * Attach the run-event / run-state / queue Tauri listeners, retrying with
+ * exponential backoff (500ms → 8s, 5 attempts). Without a working
+ * subscription every streamed reply renders as dead silence, so a transient
+ * startup failure must not be terminal. Rejects only once all attempts are
+ * exhausted — callers surface that to the user.
+ */
 export async function ensureStreamListenersAttached(): Promise<void> {
-  await attachTauriListeners();
+  await retryWithBackoff(() => attachTauriListeners(), {
+    attempts: 5,
+    baseDelayMs: 500,
+    onRetry: (error, attempt, delayMs) => {
+      console.warn(
+        `[grok-desktop] stream listener attach failed (attempt ${attempt}, retrying in ${delayMs}ms)`,
+        error,
+      );
+    },
+  });
 }
 
 export async function enqueueRun(opts: {

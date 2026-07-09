@@ -34,20 +34,19 @@ Hardware target: macOS first (Apple Silicon + Intel). Windows / Linux are stretc
 
 ## What the app does
 
-| Surface | Function |
-|---|---|
-| **Composer** (bottom) | Type a prompt, hit Enter (or Shift+Enter for newline). Send / Enqueue button. |
-| **MessageList** (center) | Streaming chat — user messages + Grok responses with markdown rendering. |
-| **StatusBar** (under chat) | `✦ 7m 48s · ≈2.1k tokens · thinking…` (Claude-Code-style). |
-| **QueueDock** (above status) | When run in progress: `▶ Running 1m 24s · +N queued`. Click to expand the queue with per-item cancel. |
-| **Sidebar** (left) | New Session, Search, Tools, Settings + history of past prompts. |
-| **Workspace toolbar** (top) | Repo picker, Grok model selector, panels (Preview/Context/Terminal/Tools), dock position, Dark/Light theme, Connected badge. |
-| **Workspace statusbar** (bottom-bottom) | `/path · grok-build · Patch ready · Last run ok · N runs · Clear`. |
-| **Empty state** | Starter card grid: "Review this repo / Explain this codebase / Add a failing test / Suggest the next change". |
-| **Chrome extension overlay** | When extension is in "controlling" mode, browser tabs show a Grok badge + orange viewport frame. |
-| **(Future) Plan Mode** | When run has `--permission-mode plan`, show plan steps + Accept/Reject buttons (not yet built). |
-| **(Future) Sub-agent visualization** | DAG / timeline of sub-agents (not yet built — most "soul"-defining feature in the roadmap). |
-| **(Future) File / editor integration** | @file mentions, Monaco editor, diff viewer (not yet built). |
+| Surface                                 | Function                                                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Composer** (bottom)                   | Type a prompt, hit Enter (or Shift+Enter for newline). Send / Enqueue button.                                                |
+| **MessageList** (center)                | Streaming chat — user messages + Grok responses with markdown rendering.                                                     |
+| **StatusBar** (under chat)              | `✦ 7m 48s · ≈2.1k tokens · thinking…` (Claude-Code-style).                                                                   |
+| **QueueDock** (above status)            | When run in progress: `▶ Running 1m 24s · +N queued`. Click to expand the queue with per-item cancel.                        |
+| **Sidebar** (left)                      | New Session, Search, Tools, Settings + history of past prompts.                                                              |
+| **Workspace toolbar** (top)             | Repo picker, Grok model selector, panels (Preview/Context/Terminal/Tools), dock position, Dark/Light theme, Connected badge. |
+| **Workspace statusbar** (bottom-bottom) | `/path · grok-build · Patch ready · Last run ok · N runs · Clear`.                                                           |
+| **Empty state**                         | Starter card grid: "Review this repo / Explain this codebase / Add a failing test / Suggest the next change".                |
+| **(Future) Plan Mode**                  | When run has `--permission-mode plan`, show plan steps + Accept/Reject buttons (not yet built).                              |
+| **(Future) Sub-agent visualization**    | DAG / timeline of sub-agents (not yet built — most "soul"-defining feature in the roadmap).                                  |
+| **(Future) File / editor integration**  | @file mentions, Monaco editor, diff viewer (not yet built).                                                                  |
 
 ---
 
@@ -58,37 +57,38 @@ These CSS variables drive every surface — please **respect / extend, don't rep
 ```css
 :root {
   /* xAI dark base */
-  --grok-bg-0: #0b0e13;          /* deepest, app background */
-  --grok-bg-1: #11151c;          /* surface 1 */
-  --grok-bg-2: #161b24;          /* surface 2 (panels) */
-  --grok-bg-3: #1d2330;          /* surface 3 (cards) */
-  --grok-bg-4: #252b3a;          /* hover */
+  --grok-bg-0: #0b0e13; /* deepest, app background */
+  --grok-bg-1: #11151c; /* surface 1 */
+  --grok-bg-2: #161b24; /* surface 2 (panels) */
+  --grok-bg-3: #1d2330; /* surface 3 (cards) */
+  --grok-bg-4: #252b3a; /* hover */
 
   --grok-border-1: rgba(255, 255, 255, 0.06);
   --grok-border-2: rgba(255, 255, 255, 0.12);
-  --grok-border-3: rgba(255, 255, 255, 0.20);
+  --grok-border-3: rgba(255, 255, 255, 0.2);
 
-  --grok-text-1: #e8ecf4;        /* primary */
-  --grok-text-2: #b6bdcc;        /* secondary */
-  --grok-text-3: #828aa0;        /* tertiary */
-  --grok-text-4: #525a72;        /* faint */
+  --grok-text-1: #e8ecf4; /* primary */
+  --grok-text-2: #b6bdcc; /* secondary */
+  --grok-text-3: #828aa0; /* tertiary */
+  --grok-text-4: #525a72; /* faint */
 
   /* Brand warm-orange (Grok / xAI vibe) */
-  --grok-accent:    #ff7a45;     /* primary action / active state */
-  --grok-accent-hi: #ff9466;     /* hover */
-  --grok-accent-lo: #d65a2a;     /* pressed */
+  --grok-accent: #ff7a45; /* primary action / active state */
+  --grok-accent-hi: #ff9466; /* hover */
+  --grok-accent-lo: #d65a2a; /* pressed */
 
   /* Semantic */
   --grok-success: #4ade80;
   --grok-warning: #facc15;
-  --grok-danger:  #f87171;
-  --grok-info:    #60a5fa;
+  --grok-danger: #f87171;
+  --grok-info: #60a5fa;
 }
 ```
 
 Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 
 **Fonts:**
+
 - UI: Inter (with `cv11 / cv05 / ss01` features for tabular nums + clean lowercase)
 - Mono (code blocks, status bar timing): JetBrains Mono, SF Mono fallback
 - Code highlighting: Catppuccin-inspired palette already wired into `highlight.js`
@@ -99,13 +99,13 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 
 ## Brand direction — what Grok should FEEL like
 
-| Feel like | Don't feel like |
-|---|---|
-| **xAI** — angular, technical, confident, fast | Claude — soft, conversational, lavender |
-| **Codex** — power user, no-bullshit | GitHub Copilot — friendly assistant |
-| **Cursor** — dense info, every pixel earns its place | ChatGPT — chatty, emoji-heavy |
-| Burnt orange `#ff7a45` accent, sparingly used | Blue/teal everywhere |
-| Dark by default; light is a serious mode, not an afterthought | Off-white "creamy" |
+| Feel like                                                     | Don't feel like                         |
+| ------------------------------------------------------------- | --------------------------------------- |
+| **xAI** — angular, technical, confident, fast                 | Claude — soft, conversational, lavender |
+| **Codex** — power user, no-bullshit                           | GitHub Copilot — friendly assistant     |
+| **Cursor** — dense info, every pixel earns its place          | ChatGPT — chatty, emoji-heavy           |
+| Burnt orange `#ff7a45` accent, sparingly used                 | Blue/teal everywhere                    |
+| Dark by default; light is a serious mode, not an afterthought | Off-white "creamy"                      |
 
 **One-liner for the brand:** "Grok Build is a senior engineer's pair programmer. Don't decorate, just deliver."
 
@@ -116,6 +116,7 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 ### 🔴 P0 — first impression / daily friction
 
 #### 1. **Empty state / starter cards** (`src/App.tsx` — search `starter-grid`)
+
 - 4 cards in a 2×2 grid: "Review this repository / Explain this codebase / Add a failing test / Suggest the next change"
 - Currently functional but generic. Need:
   - Distinctive iconography per card (not stock lucide icons — something Grok-specific)
@@ -123,6 +124,7 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
   - Better "Grok-introduces-itself" heading copy
 
 #### 2. **Sidebar nav** (`src/App.tsx` — `Primary navigation` region)
+
 - New Session / Search / Tools / Settings stacked vertically
 - "Grok Desktop" + "Grok desktop for engineers" header
 - "Grok Developer · Local workspace" footer card
@@ -130,10 +132,12 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 - Current: looks like a generic admin sidebar. Should feel like a code editor's gutter.
 
 #### 3. **Top workspace toolbar** (`src/App.tsx` — search `workspace-statusbar` / header buttons)
+
 - Current row: `Repo` picker · `grok-build` model dropdown · `Preview` · `Context` · `Terminal` · `Tools` · `Right` (dock pos) · `Dark` / `Light` · `Connected` · `Ask Grok` button (legacy, mostly removed)
 - Too crowded. Designer should propose a **simplification** — maybe a unified left-section "where am I working" + right-section "system status", with overflow → menu.
 
 #### 4. **Composer area** (`src/components/Composer.tsx` + composer footer dropdowns in App.tsx)
+
 - Textarea + Send / Enqueue button on the right
 - Footer row: `Grok Chat / Analyze / Patch ready` + helper text `↵ Send · ⇧↵ Newline · ⌘↵ Force`
 - Current: textarea is fine, button is the orange gradient, but the **footer dropdowns look bolted on**. Could be more unified.
@@ -141,6 +145,7 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
 ### 🟡 P1 — secondary surfaces
 
 #### 5. **Message bubbles** (`src/components/MessageItem.tsx`, CSS in `src/App.css` near `.message.message-user`)
+
 - Current: `YOU` / `GROK` labels in caps + body below
 - Works but is **plain**. Designer could add:
   - Avatar for user (initial / photo) and Grok (logo mark)
@@ -149,37 +154,41 @@ Light theme is `data-theme="light"` on `<body>`. Same token names, light values.
   - Better diff between streaming vs done states
 
 #### 6. **StatusBar + QueueDock detail**
+
 - Already Claude-Code-style. Open to refinement — better proportions, animated states, queue-item expand animation.
 
 #### 7. **Settings panel** (when user clicks Settings in sidebar — currently a placeholder)
+
 - Where Grok options live: model / effort / reasoning / permission-mode / Best-of-N / memory / web search / subagents / self-check
 - Should be a proper drawer or modal, not a buried form
 
-#### 8. **Prompt Library** (`src/components/PromptLibrary.tsx`)
+#### 8. **Prompt Library** (wired inline in the app shell; SQLite store in `src-tauri/src/prompts/mod.rs`)
+
 - SQLite-backed CRUD: list with search, edit modal with name/category/body
 - Currently functional, basic styling. Designer to propose richer affordances — maybe a categorical color stripe per prompt.
 
 ### 🟢 P2 — feature surfaces still being built (design for them in parallel)
 
 #### 9. **Plan Mode UX (`C`)** — when grok runs with `--permission-mode plan`, model proposes numbered steps. Need a panel with:
+
 - Step list (numbered, can-collapse)
 - Accept / Reject / Edit buttons
 - Live "step N is running" indicator
 
 #### 10. **Sub-agent visualization (`A`)** — most "soul" of the app. When grok spawns sub-agents (`--agents <JSON>`), we want:
+
 - DAG or timeline view showing each sub-agent's lifecycle
 - Per-sub-agent message panel (what each one was doing)
 - Aggregate progress (X of N sub-agents done)
 - This is **3-4 weeks of engineering**; designer can do mood boards / wireframes for now
 
 #### 11. **File / editor integration (`B`)**
+
 - `@file` mention in composer → autocompletes from repo
 - Inline file preview / diff viewer
 - Maybe a Monaco editor for quick edits without leaving the app
 
 #### 12. **Light theme** — exists as a toggle but never properly designed. Needs its own pass with the same tokens but light-friendly values.
-
-#### 13. **Chrome extension overlay** — currently a small G badge + animated agent cursor + orange viewport frame when controlling. Designer can propose a more refined "AI is here" indicator.
 
 ---
 
@@ -242,14 +251,14 @@ If Grok Build Desktop ends up halfway between **Cursor's density** and **Linear'
 
 ## Repo / branch / commit map (so the designer doesn't get lost)
 
-| Path | What's there |
-|---|---|
-| `main` | Stable. F + E + G1 already merged (PR #1, #2, #3 squashed). |
-| `feature/v0.3.0-polish-and-features` ✱ | All the latest polish: theme tokens, prompt library, StatusBar rewrite, IME / jam / stale-lock fixes. **Designer should look here.** |
-| `src/App.tsx` | Main React tree. 3300+ lines, but the layout structure (sidebar / workspace / composer / status) is clear. |
-| `src/components/*` | Composer, MessageList, MessageItem, StatusBar, QueueDock, PromptLibrary, AgentOverlay. |
-| `src/App.css` | All styling — single file. New v0.3.0 section near the bottom (search `===== F: Non-blocking UI`). |
-| `docs/architecture.md` | Architecture overview — useful background on how the pieces fit together. |
+| Path                                   | What's there                                                                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                                 | Stable. F + E + G1 already merged (PR #1, #2, #3 squashed).                                                                              |
+| `feature/v0.3.0-polish-and-features` ✱ | All the latest polish: theme tokens, prompt library, StatusBar rewrite, IME / jam / stale-lock fixes. **Designer should look here.**     |
+| `src/App.tsx`                          | Main React tree. 3300+ lines, but the layout structure (sidebar / workspace / composer / status) is clear.                               |
+| `src/components/*`                     | Composer, MessageList, MessageItem, StatusBar, QueueDock, Sidebar, InspectorDrawer, PreviewPanel, TerminalDock, SettingsPage, ToolsPage. |
+| `src/App.css`                          | All styling — single file. New v0.3.0 section near the bottom (search `===== F: Non-blocking UI`).                                       |
+| `docs/architecture.md`                 | Architecture overview — useful background on how the pieces fit together.                                                                |
 
 ✱ = active design target
 

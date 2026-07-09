@@ -19,7 +19,12 @@ fn parses_text_event() {
 fn parses_end_event() {
     let line = r#"{"type":"end","stopReason":"EndTurn","sessionId":"abc","requestId":"xyz"}"#;
     let event = parse_line(line).expect("should parse");
-    if let GrokEvent::End { stop_reason, session_id, request_id } = event {
+    if let GrokEvent::End {
+        stop_reason,
+        session_id,
+        request_id,
+    } = event
+    {
         assert_eq!(stop_reason, "EndTurn");
         assert_eq!(session_id, "abc");
         assert_eq!(request_id, "xyz");

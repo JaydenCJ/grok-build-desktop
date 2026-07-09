@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { t } from '../i18n';
 import {
+  FOLDER_PLACEHOLDER,
   MCP_CATALOG,
   addMcpServer,
   listMcpServers,
+  pickExposedFolder,
   removeMcpServer,
   previewAddCommand,
   type McpCatalogEntry,
@@ -19,6 +23,8 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Currently selected project folder — starting point for the folder picker. */
+  cwd?: string;
 }
 
 /**
@@ -27,17 +33,25 @@ interface Props {
  * search, etc. — so Grok can call them. Each catalog entry maps to a
  * `grok mcp add` invocation; "Connected" reflects `grok mcp list`.
  */
-export function ToolsPage({ open, onClose }: Props) {
+export function ToolsPage({ open, onClose, cwd }: Props) {
   const [tab, setTab] = useState<'mcp' | 'skills'>('mcp');
   const [listOutput, setListOutput] = useState<string>('');
   const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [query, setQuery] = useState('');
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+
+  // Focus trap: Tab/Shift+Tab cycle inside the card, Escape closes, focus
+  // returns to the opener on close.
+  useModalFocus(open, modalRef, { initialFocus: closeRef, onEscape: onClose });
 
   const refresh = async () => {
     const run = await listMcpServers();
-    if (run) setListOutput(`${run.output}\n${run.stderr}`.trim());
+    // Match against stdout only — stderr warnings mentioning e.g. "fetch"
+    // must not flip catalog cards to Connected.
+    if (run) setListOutput(run.output);
   };
   const refreshSkills = async () => {
     setInstalledSkills(new Set(await listInstalledSkills()));
@@ -47,20 +61,20 @@ export function ToolsPage({ open, onClose }: Props) {
     if (!open) return;
     void refresh();
     void refreshSkills();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  }, [open]);
 
-  // Which catalog ids already appear in `grok mcp list` output.
+  // Which catalog ids already appear in `grok mcp list` output. Match ids as
+  // whole tokens, not substrings — the catalog has both 'git' and 'github',
+  // so a plain includes() marked Git "Connected" whenever GitHub was (and the
+  // only offered action, Remove, then targeted a server that never existed).
   const connectedIds = useMemo(() => {
     const lower = listOutput.toLowerCase();
-    return new Set(MCP_CATALOG.filter((e) => lower.includes(e.id.toLowerCase())).map((e) => e.id));
+    return new Set(
+      MCP_CATALOG.filter((e) => {
+        const escaped = e.id.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^a-z0-9_-])${escaped}([^a-z0-9_-]|$)`).test(lower);
+      }).map((e) => e.id),
+    );
   }, [listOutput]);
 
   const filtered = useMemo(() => {
@@ -90,7 +104,7 @@ export function ToolsPage({ open, onClose }: Props) {
     setNotice(null);
     try {
       await installSkill(entry);
-      setNotice({ kind: 'ok', text: `Installed "${entry.name}". Grok will pick it up on its next run.` });
+      setNotice({ kind: 'ok', text: t('tools.installedSkill', { name: entry.name }) });
       await refreshSkills();
     } catch (e) {
       setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -104,7 +118,7 @@ export function ToolsPage({ open, onClose }: Props) {
     setNotice(null);
     try {
       await removeSkill(entry.slug);
-      setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
+      setNotice({ kind: 'ok', text: t('tools.removedEntry', { name: entry.name }) });
       await refreshSkills();
     } catch (e) {
       setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -119,18 +133,44 @@ export function ToolsPage({ open, onClose }: Props) {
     setBusy(entry.id);
     setNotice(null);
     try {
+      // Never install a directory-scoped server (filesystem, git) pointed at
+      // the placeholder — that would silently expose the whole home folder.
+      // Make the user pick the directory explicitly, defaulting to the
+      // currently selected project.
+      let args = entry.args;
+      if (args.includes(FOLDER_PLACEHOLDER)) {
+        // A picker rejection (e.g. non-mac dev build) propagates to the outer
+        // catch, which surfaces it as the same error notice.
+        const folder = await pickExposedFolder(cwd);
+        if (!folder) {
+          setNotice({
+            kind: 'err',
+            text: t('tools.needsFolder', { name: entry.name }),
+          });
+          return;
+        }
+        args = args.map((a) => (a === FOLDER_PLACEHOLDER ? folder : a));
+      }
       const run: ToolRun | null = await addMcpServer({
         name: entry.id,
         command: entry.command,
-        args: entry.args,
+        args,
         envPairs: entry.requiredEnv?.map((e) => `${e.key}=`),
       });
       if (run?.ok) {
-        setNotice({ kind: 'ok', text: `Added "${entry.name}". ${entry.requiredEnv?.length ? 'Set its API key/env in ~/.grok/config.toml, then restart Grok.' : ''}` });
+        setNotice({
+          kind: 'ok',
+          text: t('tools.addedEntry', {
+            name: entry.name,
+            envHint: entry.requiredEnv?.length ? t('tools.envHint') : '',
+          }),
+        });
       } else {
-        setNotice({ kind: 'err', text: run?.stderr || run?.output || 'grok mcp add failed' });
+        setNotice({ kind: 'err', text: run?.stderr || run?.output || t('tools.addFailed') });
       }
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -141,20 +181,33 @@ export function ToolsPage({ open, onClose }: Props) {
     setNotice(null);
     try {
       const run = await removeMcpServer(entry.id);
-      if (run?.ok) setNotice({ kind: 'ok', text: `Removed "${entry.name}".` });
-      else setNotice({ kind: 'err', text: run?.stderr || 'grok mcp remove failed' });
+      if (run?.ok) setNotice({ kind: 'ok', text: t('tools.removedEntry', { name: entry.name }) });
+      else setNotice({ kind: 'err', text: run?.stderr || t('tools.removeFailed') });
       await refresh();
+    } catch (e) {
+      setNotice({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label="Tools" onClick={onClose}>
-      <div className="tools-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="settings-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('tools.ariaLabel')}
+      onClick={onClose}
+    >
+      <div
+        className="tools-modal"
+        ref={modalRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="tools-head">
           <div>
-            <h2>Tools &amp; Skills</h2>
+            <h2>{t('tools.title')}</h2>
             <p>
               {tab === 'mcp' ? (
                 <>
@@ -171,7 +224,13 @@ export function ToolsPage({ open, onClose }: Props) {
               )}
             </p>
           </div>
-          <button type="button" className="settings-close" aria-label="Close" onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            className="settings-close"
+            aria-label={t('common.close')}
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
@@ -184,7 +243,7 @@ export function ToolsPage({ open, onClose }: Props) {
             className={`tools-tab${tab === 'mcp' ? ' active' : ''}`}
             onClick={() => setTab('mcp')}
           >
-            MCP servers
+            {t('tools.tabMcp')}
           </button>
           <button
             type="button"
@@ -193,7 +252,7 @@ export function ToolsPage({ open, onClose }: Props) {
             className={`tools-tab${tab === 'skills' ? ' active' : ''}`}
             onClick={() => setTab('skills')}
           >
-            Skills
+            {t('tools.tabSkills')}
           </button>
         </div>
 
@@ -201,7 +260,9 @@ export function ToolsPage({ open, onClose }: Props) {
 
         <input
           className="tools-search"
-          placeholder={tab === 'mcp' ? 'Search tools (github, postgres, search…)' : 'Search skills (review, tests, debug…)'}
+          placeholder={
+            tab === 'mcp' ? t('tools.searchMcpPlaceholder') : t('tools.searchSkillsPlaceholder')
+          }
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
         />
@@ -211,7 +272,10 @@ export function ToolsPage({ open, onClose }: Props) {
             {filteredSkills.map((entry) => {
               const installed = installedSkills.has(entry.slug);
               return (
-                <div key={entry.slug} className={`tool-mcp-card${installed ? ' is-connected' : ''}`}>
+                <div
+                  key={entry.slug}
+                  className={`tool-mcp-card${installed ? ' is-connected' : ''}`}
+                >
                   <div className="tool-mcp-top">
                     <span className="tool-mcp-name">{entry.name}</span>
                     <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
@@ -223,14 +287,14 @@ export function ToolsPage({ open, onClose }: Props) {
                   <div className="tool-mcp-actions">
                     {installed ? (
                       <>
-                        <span className="tool-mcp-badge">✓ Installed</span>
+                        <span className="tool-mcp-badge">{t('tools.installedBadge')}</span>
                         <button
                           type="button"
                           className="tool-mcp-remove"
                           disabled={busy !== null}
                           onClick={() => void handleRemoveSkill(entry)}
                         >
-                          {busy === entry.slug ? '…' : 'Remove'}
+                          {busy === entry.slug ? t('common.busy') : t('common.remove')}
                         </button>
                       </>
                     ) : (
@@ -240,7 +304,7 @@ export function ToolsPage({ open, onClose }: Props) {
                         disabled={busy !== null}
                         onClick={() => void handleInstallSkill(entry)}
                       >
-                        {busy === entry.slug ? 'Installing…' : 'Install'}
+                        {busy === entry.slug ? t('tools.installing') : t('tools.install')}
                       </button>
                     )}
                   </div>
@@ -249,53 +313,53 @@ export function ToolsPage({ open, onClose }: Props) {
             })}
           </div>
         ) : (
-        <div className="tools-grid">
-          {filtered.map((entry) => {
-            const connected = connectedIds.has(entry.id);
-            return (
-              <div key={entry.id} className={`tool-mcp-card${connected ? ' is-connected' : ''}`}>
-                <div className="tool-mcp-top">
-                  <span className="tool-mcp-name">{entry.name}</span>
-                  <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
-                </div>
-                <p className="tool-mcp-desc">{entry.description}</p>
-                {entry.requiredEnv?.length ? (
-                  <p className="tool-mcp-env">
-                    Needs: {entry.requiredEnv.map((e) => e.key).join(', ')}
-                  </p>
-                ) : null}
-                {entry.argHint ? <p className="tool-mcp-hint">{entry.argHint}</p> : null}
-                <code className="tool-mcp-cmd" title={previewAddCommand(entry)}>
-                  {previewAddCommand(entry)}
-                </code>
-                <div className="tool-mcp-actions">
-                  {connected ? (
-                    <>
-                      <span className="tool-mcp-badge">✓ Connected</span>
+          <div className="tools-grid">
+            {filtered.map((entry) => {
+              const connected = connectedIds.has(entry.id);
+              return (
+                <div key={entry.id} className={`tool-mcp-card${connected ? ' is-connected' : ''}`}>
+                  <div className="tool-mcp-top">
+                    <span className="tool-mcp-name">{entry.name}</span>
+                    <span className={`tool-mcp-cat cat-${entry.category}`}>{entry.category}</span>
+                  </div>
+                  <p className="tool-mcp-desc">{entry.description}</p>
+                  {entry.requiredEnv?.length ? (
+                    <p className="tool-mcp-env">
+                      {t('tools.needs', { keys: entry.requiredEnv.map((e) => e.key).join(', ') })}
+                    </p>
+                  ) : null}
+                  {entry.argHint ? <p className="tool-mcp-hint">{entry.argHint}</p> : null}
+                  <code className="tool-mcp-cmd" title={previewAddCommand(entry)}>
+                    {previewAddCommand(entry)}
+                  </code>
+                  <div className="tool-mcp-actions">
+                    {connected ? (
+                      <>
+                        <span className="tool-mcp-badge">{t('tools.connectedBadge')}</span>
+                        <button
+                          type="button"
+                          className="tool-mcp-remove"
+                          disabled={busy !== null}
+                          onClick={() => void handleRemove(entry)}
+                        >
+                          {busy === entry.id ? t('common.busy') : t('common.remove')}
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        className="tool-mcp-remove"
+                        className="tool-mcp-add"
                         disabled={busy !== null}
-                        onClick={() => void handleRemove(entry)}
+                        onClick={() => void handleAdd(entry)}
                       >
-                        {busy === entry.id ? '…' : 'Remove'}
+                        {busy === entry.id ? t('tools.adding') : t('tools.add')}
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="tool-mcp-add"
-                      disabled={busy !== null}
-                      onClick={() => void handleAdd(entry)}
-                    >
-                      {busy === entry.id ? 'Adding…' : 'Add'}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         )}
 
         <div className="tools-foot">
@@ -311,7 +375,7 @@ export function ToolsPage({ open, onClose }: Props) {
             </span>
           )}
           <button type="button" onClick={() => void (tab === 'mcp' ? refresh() : refreshSkills())}>
-            Refresh
+            {t('common.refresh')}
           </button>
         </div>
       </div>

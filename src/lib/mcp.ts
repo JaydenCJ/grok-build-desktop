@@ -4,21 +4,10 @@
 // remove`. This module wraps those commands and ships a curated catalog of
 // popular community servers so the user can one-click install them.
 import { invoke } from '@tauri-apps/api/core';
+import type { ToolRun } from './grok';
+import { hasTauriRuntime as hasTauri } from './runtime';
 
-export interface ToolRun {
-  ok: boolean;
-  command: string;
-  cwd: string;
-  exit_code: number | null;
-  duration_ms: number;
-  timed_out: boolean;
-  output: string;
-  stderr: string;
-}
-
-function hasTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
+export type { ToolRun };
 
 export async function listMcpServers(cwd?: string): Promise<ToolRun | null> {
   if (!hasTauri()) return null;
@@ -54,6 +43,20 @@ export async function removeMcpServer(name: string): Promise<ToolRun | null> {
   return invoke<ToolRun>('grok_mcp_remove', { name });
 }
 
+/**
+ * Placeholder used in catalog args for a directory the USER must choose.
+ * Entries carrying it must never be installed verbatim — the folder picker
+ * runs first so exposing a directory to a server is an explicit choice
+ * (never silently the whole home directory).
+ */
+export const FOLDER_PLACEHOLDER = '$HOME';
+
+/** Open the native folder picker so the user explicitly chooses a directory. */
+export async function pickExposedFolder(initial?: string): Promise<string | null> {
+  if (!hasTauri()) return null;
+  return invoke<string | null>('pick_project_folder', { initial: initial || null });
+}
+
 export interface McpCatalogEntry {
   id: string; // grok config server name
   name: string; // display name
@@ -79,8 +82,8 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     name: 'Filesystem',
     description: 'Read, write, and search files in a directory you allow.',
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem', '$HOME'],
-    argHint: 'Edit the last arg to the directory you want to expose.',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', FOLDER_PLACEHOLDER],
+    argHint: 'You pick the folder to expose when you click Add.',
     category: 'files',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem',
   },
@@ -90,7 +93,9 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     description: 'Browse repos, read/write issues & PRs, search code.',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
-    requiredEnv: [{ key: 'GITHUB_PERSONAL_ACCESS_TOKEN', hint: 'A GitHub PAT with the scopes you need.' }],
+    requiredEnv: [
+      { key: 'GITHUB_PERSONAL_ACCESS_TOKEN', hint: 'A GitHub PAT with the scopes you need.' },
+    ],
     category: 'dev',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
   },
@@ -99,8 +104,8 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     name: 'Git',
     description: 'Inspect and operate on a local git repository.',
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-git', '--repository', '$HOME'],
-    argHint: 'Point --repository at your repo path.',
+    args: ['-y', '@modelcontextprotocol/server-git', '--repository', FOLDER_PLACEHOLDER],
+    argHint: 'You pick the repository folder when you click Add.',
     category: 'dev',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/git',
   },
@@ -180,7 +185,15 @@ export function previewAddCommand(entry: McpCatalogEntry): string {
   // Mirror exactly what the backend runs: each arg as its own `--args=VALUE`
   // (clap rejects a bare `-y`; the `=` form binds it). Keep in sync with
   // grok_mcp_add in src-tauri/src/lib.rs.
-  const parts = ['grok', 'mcp', 'add', entry.id, '--command', entry.command, ...entry.args.map((a) => `--args=${a}`)];
+  const parts = [
+    'grok',
+    'mcp',
+    'add',
+    entry.id,
+    '--command',
+    entry.command,
+    ...entry.args.map((a) => `--args=${a}`),
+  ];
   const env = (entry.requiredEnv ?? []).flatMap((e) => ['--env', `${e.key}=…`]);
   return [...parts, ...env].join(' ');
 }

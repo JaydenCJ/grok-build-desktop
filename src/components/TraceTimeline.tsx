@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTraces } from '../hooks/useTraces';
 import type { TraceEvent, TraceKind, TraceStatus } from '../lib/traceParser';
+import { t } from '../i18n';
 
 interface Props {
   runId: string;
@@ -18,7 +19,7 @@ export function TraceTimeline({ runId }: Props) {
   const traces = useTraces(runId);
   if (traces.length === 0) return null;
   return (
-    <div className="trace-timeline" aria-label="Tool and subagent activity">
+    <div className="trace-timeline" aria-label={t('message.traceAriaLabel')}>
       {traces.map((t) => (
         <TraceCard key={t.key} trace={t} />
       ))}
@@ -28,9 +29,7 @@ export function TraceTimeline({ runId }: Props) {
 
 function TraceCard({ trace }: { trace: TraceEvent }) {
   const [expanded, setExpanded] = useState(false);
-  const duration = trace.endedAt
-    ? formatDuration(trace.endedAt - trace.startedAt)
-    : null;
+  const duration = trace.endedAt ? formatDuration(trace.endedAt - trace.startedAt) : null;
   return (
     <div className={`trace-card trace-${trace.kind} trace-status-${trace.status}`}>
       <button
@@ -44,11 +43,7 @@ function TraceCard({ trace }: { trace: TraceEvent }) {
         </span>
         <span className="trace-label">{trace.label}</span>
         <span className="trace-meta">
-          {trace.status === 'running' ? (
-            <span className="trace-pulse">…</span>
-          ) : (
-            duration
-          )}
+          {trace.status === 'running' ? <span className="trace-pulse">…</span> : duration}
         </span>
       </button>
       {trace.detail ? <div className="trace-detail">{trace.detail}</div> : null}

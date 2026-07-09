@@ -3,6 +3,7 @@ import { useElapsed } from '../hooks/useElapsed';
 import { useQueue } from '../hooks/useQueue';
 import { usePendingSubmitCount } from '../hooks/usePendingSubmit';
 import type { RunSnapshot } from '../lib/streamStore';
+import { t } from '../i18n';
 
 function formatTokens(chars: number): string {
   const tokens = Math.round(chars / 4);
@@ -25,17 +26,25 @@ function formatElapsed(ms: number): string {
  */
 function stateSuffix(snap: RunSnapshot | undefined): string | null {
   if (!snap) return null;
-  if (snap.state === 'done') return `done${snap.stopReason ? ' · ' + snap.stopReason : ''}`;
-  if (snap.state === 'cancelled') return 'cancelled';
-  if (snap.state === 'failed') return `failed${snap.error ? ': ' + snap.error : ''}`;
+  if (snap.state === 'done') {
+    return snap.stopReason
+      ? t('statusBar.doneWithReason', { reason: snap.stopReason })
+      : t('statusBar.done');
+  }
+  if (snap.state === 'cancelled') return t('statusBar.cancelled');
+  if (snap.state === 'failed') {
+    return snap.error
+      ? t('statusBar.failedWithError', { error: snap.error })
+      : t('statusBar.failed');
+  }
   // Spell out exactly what Grok is doing right now (the user asked to always
   // see the live phase, Claude/Codex-style):
   //   thought event  → reasoning privately       → "thinking…"
   //   text event     → emitting the answer        → "writing…"
   //   running, none   → spun up, nothing back yet  → "working…"
-  if (snap.lastEventType === 'thought') return 'thinking…';
-  if (snap.lastEventType === 'text') return 'writing…';
-  if (snap.state === 'running' || snap.state === 'queued') return 'working…';
+  if (snap.lastEventType === 'thought') return t('statusBar.thinking');
+  if (snap.lastEventType === 'text') return t('statusBar.writing');
+  if (snap.state === 'running' || snap.state === 'queued') return t('statusBar.working');
   return null;
 }
 
@@ -46,10 +55,7 @@ function stateSuffix(snap: RunSnapshot | undefined): string | null {
  */
 function GrokMark({ pulsing }: { pulsing: boolean }) {
   return (
-    <span
-      aria-hidden
-      className={`status-mark${pulsing ? ' status-mark-pulse' : ''}`}
-    >
+    <span aria-hidden className={`status-mark${pulsing ? ' status-mark-pulse' : ''}`}>
       ✦
     </span>
   );
@@ -70,12 +76,14 @@ export function StatusBar() {
         <div className="status-bar">
           <GrokMark pulsing />
           <span className="status-state">
-            preparing run{pending > 1 ? ` (×${pending})` : ''}…
+            {pending > 1
+              ? t('statusBar.preparingMulti', { count: pending })
+              : t('statusBar.preparing')}
           </span>
           {queuedExtra > 0 ? (
             <>
               <span className="status-sep">·</span>
-              <span className="status-queue">+{queuedExtra} queued</span>
+              <span className="status-queue">{t('statusBar.queued', { count: queuedExtra })}</span>
             </>
           ) : null}
         </div>
@@ -85,16 +93,16 @@ export function StatusBar() {
       return (
         <div className="status-bar">
           <GrokMark pulsing={false} />
-          <span className="status-state">idle</span>
+          <span className="status-state">{t('statusBar.idle')}</span>
           <span className="status-sep">·</span>
-          <span className="status-queue">+{queuedExtra} queued</span>
+          <span className="status-queue">{t('statusBar.queued', { count: queuedExtra })}</span>
         </div>
       );
     }
     return (
       <div className="status-bar status-bar-idle">
         <GrokMark pulsing={false} />
-        <span className="status-state">idle</span>
+        <span className="status-state">{t('statusBar.idle')}</span>
       </div>
     );
   }
@@ -105,11 +113,11 @@ export function StatusBar() {
   return (
     <div className="status-bar">
       <GrokMark pulsing={isLive} />
-      <span className="status-elapsed">
-        {elapsed != null ? formatElapsed(elapsed) : '0.0s'}
-      </span>
+      <span className="status-elapsed">{elapsed != null ? formatElapsed(elapsed) : '0.0s'}</span>
       <span className="status-sep">·</span>
-      <span className="status-tokens">≈{formatTokens(chars)} tokens</span>
+      <span className="status-tokens">
+        {t('statusBar.tokens', { tokens: formatTokens(chars) })}
+      </span>
       {suffix ? (
         <>
           <span className="status-sep">·</span>
@@ -119,7 +127,7 @@ export function StatusBar() {
       {queuedExtra > 0 ? (
         <>
           <span className="status-sep">·</span>
-          <span className="status-queue">+{queuedExtra} queued</span>
+          <span className="status-queue">{t('statusBar.queued', { count: queuedExtra })}</span>
         </>
       ) : null}
     </div>

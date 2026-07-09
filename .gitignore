@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage/
 
 # Secrets — never commit. .env.example stays tracked as the template.
 .env
