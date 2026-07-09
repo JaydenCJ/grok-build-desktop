@@ -2,7 +2,7 @@
 // ⌘B sidebar, ⌘, settings, ⌘⇧L theme, ⌘N new session, ⌘F history search,
 // "/" composer focus, Esc panel dismissal, ⌘1/⌘2 mode switch). Extracted
 // from App.tsx unchanged; DOM focus targets arrive as callbacks.
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { PaletteAction } from '../components/CommandPalette';
 import { streamStore } from '../lib/streamStore';
 import type { InspectorTab, Mode, ThemeMode } from '../app/types';
@@ -69,6 +69,15 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
     mode,
   } = deps;
 
+  // Always-fresh mirror of clearRunHistory. The palette catalogue below is
+  // memoized on a narrow dep list, so its action closures go stale — running
+  // "Clear current conversation" from ⌘K would snapshot the FIRST render's
+  // (empty) messages for its undo, and undo would restore nothing. The other
+  // stale-prone actions already guard themselves (handleTabCreate via
+  // sessionStateRef, cancel-run via streamStore).
+  const clearRunHistoryRef = useRef(clearRunHistory);
+  clearRunHistoryRef.current = clearRunHistory;
+
   // ── Command palette catalogue ────────────────────────────────────────────
   // Every action here is reachable both through ⌘K and (where applicable) a
   // direct button in the UI. Keep them in sync — adding an action here is
@@ -88,7 +97,7 @@ export function useAppShortcuts(deps: AppShortcutsDeps) {
         label: t('palette.action.clearConversation'),
         hint: t('palette.action.clearConversationHint'),
         group: t('palette.group.session'),
-        run: () => clearRunHistory(),
+        run: () => clearRunHistoryRef.current(),
       },
       {
         id: 'focus-composer',
