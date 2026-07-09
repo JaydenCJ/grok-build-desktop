@@ -43,6 +43,18 @@ export function FilePicker({
   // host passes a fresh closure each render.
   const onActiveDescendantRef = useRef(onActiveDescendant);
   onActiveDescendantRef.current = onActiveDescendant;
+  // The window keydown listener reads these refs instead of closing over
+  // state/props. Re-subscribing on every entries/highlight change left a
+  // frame where a keypress hit a stale listener still closed over the old
+  // (possibly empty) list — Enter/Tab would dismiss instead of insert.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const highlightRef = useRef(highlight);
+  highlightRef.current = highlight;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   // Debounced fetch — 80ms is enough to avoid thrashing during fast typing,
   // imperceptible to the eye.
@@ -72,34 +84,37 @@ export function FilePicker({
   }, [cwd, query]);
 
   // Forward keyboard events from the Composer textarea. We listen at window
-  // level because the textarea keeps focus while the picker is open.
+  // level because the textarea keeps focus while the picker is open. The
+  // listener is attached exactly once and reads the mirrored refs so it can
+  // never observe a stale entries/highlight snapshot.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setHighlight((h) => Math.min(h + 1, Math.max(0, entries.length - 1)));
+        setHighlight((h) => Math.min(h + 1, Math.max(0, entriesRef.current.length - 1)));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setHighlight((h) => Math.max(h - 1, 0));
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        if (entries.length === 0) {
+        const current = entriesRef.current;
+        if (current.length === 0) {
           // Nothing to insert — dismiss instead of letting the keypress fall
           // through as a stray newline the Composer's mention guard blocks
           // from submitting.
-          onCancel();
+          onCancelRef.current();
           return;
         }
-        const pick = entries[highlight] ?? entries[0];
-        if (pick) onSelect(pick);
+        const pick = current[highlightRef.current] ?? current[0];
+        if (pick) onSelectRef.current(pick);
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        onCancel();
+        onCancelRef.current();
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [entries, highlight, onSelect, onCancel]);
+  }, []);
 
   // Keep the highlighted row visible when arrow-nav scrolls past viewport.
   useEffect(() => {
