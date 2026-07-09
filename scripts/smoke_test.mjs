@@ -652,17 +652,28 @@ assert.ok(
 
 // ── Coverage honesty guards ────────────────────────────────────────────────
 // The advertised coverage number must measure ALL of src/**, not just the
-// files tests happen to import. Two things silently shrink the denominator:
+// files tests happen to import. Three things silently shrink the denominator:
 //   1. dropping the coverage.include pattern (vitest then only counts loaded
-//      files), and
+//      files),
 //   2. raw-importing the whole src tree in a test (import.meta.glob with
 //      ?raw registers every file in the V8 coverage data as an EMPTY entry —
-//      0/0 lines — which excludes it from the totals without a trace).
+//      0/0 lines — which excludes it from the totals without a trace), and
+//   3. excluding source files via coverage.exclude (guarded further below).
 const vitestConfig = read('vitest.config.ts');
 assert.ok(
   /include:\s*\[\s*'src\/\*\*\/\*\.\{ts,tsx\}'/.test(vitestConfig),
   "vitest coverage.include must keep 'src/**/*.{ts,tsx}' so the denominator stays honest",
 );
+// Guard 3: only genuine non-code may be excluded — test files, the test
+// setup dir, and type-only declarations.
+const coverageExclude = /exclude:\s*\[([^\]]*)\]/.exec(vitestConfig)?.[1] ?? '';
+for (const [, pattern] of coverageExclude.matchAll(/'([^']+)'/g)) {
+  assert.ok(
+    pattern.includes('__tests__') || pattern.startsWith('src/test/') || pattern.endsWith('.d.ts'),
+    `vitest coverage.exclude lists '${pattern}' — only test files, test setup, and ` +
+      'type declarations may be excluded; excluding source files silently shrinks the denominator',
+  );
+}
 const testFiles = readdirSync(join(root, 'src'), { recursive: true })
   .map(String)
   .filter((f) => /__tests__\//.test(f) && /\.(ts|tsx)$/.test(f));

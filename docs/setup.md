@@ -48,7 +48,9 @@ npm run check        # tsc --noEmit && cargo check
 npm test             # smoke test (scripts/smoke_test.mjs; needs a prior `npm run build`)
 npm run test:unit    # vitest (unit + component tests)
 npm run test:e2e     # headless-Chromium end-to-end test (needs a prior `npm run build`)
-npm run coverage     # vitest with V8 coverage report
+npm run coverage     # vitest with V8 coverage report (honest denominator: counts
+                     # every file under src/, even ones no test imports; only test
+                     # files, test setup, and type declarations are excluded)
 npm run lint         # eslint (CI gate; warnings fail)
 npm run format:check # prettier check (`npm run format` rewrites)
 cargo test --manifest-path src-tauri/Cargo.toml
