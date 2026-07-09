@@ -268,8 +268,10 @@ the theme toggle to a 2px sliver (looked like a "dot").
 - `vitest` — streamStore, sanitization, trace/file parsing, hooks.
 - `cargo test` — runs/queue/parser + prompts.
 - Always run `npm run check && npm test` before committing; CI
-  (`.github/workflows/ci.yml`) runs build + vitest + smoke on ubuntu and
-  `cargo check`/`cargo test` on macOS for every push/PR.
+  (`.github/workflows/ci.yml`) runs lint + format + build + vitest + smoke
+  and the headless-Chromium e2e test on ubuntu, plus the Rust suite on macOS
+  (`cargo fmt`/`check`/`clippy`/`test`) and Windows (`cargo check`/`test`)
+  for every push/PR.
 
 ## 10. Privacy / security (this is a public repo)
 
