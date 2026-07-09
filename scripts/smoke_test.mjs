@@ -650,4 +650,29 @@ assert.ok(
   'dist/assets must contain the built JS bundle',
 );
 
+// ── Coverage honesty guards ────────────────────────────────────────────────
+// The advertised coverage number must measure ALL of src/**, not just the
+// files tests happen to import. Two things silently shrink the denominator:
+//   1. dropping the coverage.include pattern (vitest then only counts loaded
+//      files), and
+//   2. raw-importing the whole src tree in a test (import.meta.glob with
+//      ?raw registers every file in the V8 coverage data as an EMPTY entry —
+//      0/0 lines — which excludes it from the totals without a trace).
+const vitestConfig = read('vitest.config.ts');
+assert.ok(
+  /include:\s*\[\s*'src\/\*\*\/\*\.\{ts,tsx\}'/.test(vitestConfig),
+  "vitest coverage.include must keep 'src/**/*.{ts,tsx}' so the denominator stays honest",
+);
+const testFiles = readdirSync(join(root, 'src'), { recursive: true })
+  .map(String)
+  .filter((f) => /__tests__\//.test(f) && /\.(ts|tsx)$/.test(f));
+for (const file of testFiles) {
+  assert.ok(
+    !read(join('src', file)).includes('import.meta.glob('),
+    `src/${file} must not import.meta.glob the source tree — raw-loading files ` +
+      'registers empty coverage entries and silently drops them from the denominator ' +
+      '(read them with node:fs instead, see src/i18n/__tests__/i18n.test.ts)',
+  );
+}
+
 console.log('smoke: ok');

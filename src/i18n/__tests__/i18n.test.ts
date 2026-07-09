@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { en, format, t, type MessageKey } from '../index';
 
@@ -32,16 +34,16 @@ describe('en catalog', () => {
   });
 
   it('has no unused keys (every key is referenced somewhere in src/)', () => {
-    // Raw-load all non-test sources under src/, excluding the catalog itself,
-    // and check each key appears as a quoted literal somewhere.
-    const modules = import.meta.glob('../../**/*.{ts,tsx}', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>;
-    const blob = Object.entries(modules)
-      .filter(([path]) => !path.includes('__tests__') && !path.endsWith('i18n/en.ts'))
-      .map(([, source]) => source)
+    // Read all non-test sources under src/ from disk (not via import.meta.glob:
+    // raw-importing modules registers them in the V8 coverage data as empty
+    // entries, which silently drops them from the coverage denominator) and
+    // check each key appears as a quoted literal somewhere.
+    const srcRoot = join(__dirname, '..', '..');
+    const blob = readdirSync(srcRoot, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.(ts|tsx)$/.test(entry.name))
+      .map((entry) => join(entry.parentPath, entry.name))
+      .filter((path) => !path.includes('__tests__') && !path.endsWith('i18n/en.ts'))
+      .map((path) => readFileSync(path, 'utf8'))
       .join('\n');
     const unused = (Object.keys(en) as MessageKey[]).filter(
       (key) => !blob.includes(`'${key}'`) && !blob.includes(`"${key}"`),
