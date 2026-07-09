@@ -35,7 +35,7 @@
     "highlight.js": "^11.11.1",
     "lucide-react": "^1.16.0",
     "marked": "^18.0.4",
-    "react": "^19.1.0",
+    "react": "^19.2.7",
     "react-dom": "^19.1.0",
     "react-virtuoso": "^4.18.7"
   },
@@ -46,7 +46,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.20.1",
-    "@types/react": "^19.1.8",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.10",
