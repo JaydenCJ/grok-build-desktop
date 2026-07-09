@@ -110,7 +110,10 @@ export function MessageList({ messages, focusId, focusNonce }: Props) {
       atBottomStateChange={(bottom) => {
         atBottomRef.current = bottom;
       }}
-      style={{ height: '100%' }}
+      // No inline style prop for height: Virtuoso's scroller defaults already
+      // include height 100% (applied via the CSSOM, so it works under the
+      // strict no-'unsafe-inline' style-src), and the codebase stays free of
+      // inline-style props (guarded in scripts/smoke_test.mjs).
       increaseViewportBy={{ top: 200, bottom: 600 }}
       itemContent={(_, msg) => {
         const flash = msg.id && msg.id === flashId ? ' message-flash' : '';

@@ -38,10 +38,14 @@ interface Props {
  */
 export function ContextMenu({ menu, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState({ x: menu?.x ?? 0, y: menu?.y ?? 0 });
   const [openSub, setOpenSub] = useState<number | null>(null);
 
-  // Clamp into the viewport once measured.
+  // Position at the cursor, clamped into the viewport once measured. Written
+  // through the CSSOM (element.style) instead of a React style prop: the
+  // shipped CSP is `style-src 'self'` with no 'unsafe-inline', and while CSP
+  // only blocks style ATTRIBUTES parsed from markup (CSSOM writes are exempt
+  // by spec), keeping the tree free of style props keeps that invariant
+  // grep-able. Runs in a layout effect, so it lands before first paint.
   useLayoutEffect(() => {
     if (!menu) return;
     setOpenSub(null);
@@ -51,7 +55,8 @@ export function ContextMenu({ menu, onClose }: Props) {
     const pad = 8;
     const x = Math.min(menu.x, window.innerWidth - width - pad);
     const y = Math.min(menu.y, window.innerHeight - height - pad);
-    setPos({ x: Math.max(pad, x), y: Math.max(pad, y) });
+    el.style.left = `${Math.max(pad, x)}px`;
+    el.style.top = `${Math.max(pad, y)}px`;
   }, [menu]);
 
   useEffect(() => {
@@ -148,7 +153,6 @@ export function ContextMenu({ menu, onClose }: Props) {
     <div
       ref={ref}
       className="ctx-menu"
-      style={{ left: pos.x, top: pos.y }}
       role="menu"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
