@@ -8,8 +8,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { Sidebar } from '../Sidebar';
 import { ContextMenu, type ContextMenuState } from '../ContextMenu';
+import { UndoToast } from '../UndoToast';
 import { useSessionTabs } from '../../hooks/useSessionTabs';
 import { useHistoryOrganization } from '../../hooks/useHistoryOrganization';
+import { useUndoToast } from '../../hooks/useUndoToast';
 import { tabsActiveKey, tabsStorageKey } from '../../app/constants';
 import type { ChatMessage, Mode } from '../../app/types';
 
@@ -45,6 +47,7 @@ function Harness() {
   const [codingCwd, setCodingCwd] = useState('/a');
   const [, setDrafts] = useState<Record<Mode, string>>({ standard: '', coding: '' });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const { undoToast, showUndoToast, undoNow } = useUndoToast();
   const tabsApi = useSessionTabs({
     messages,
     setMessages,
@@ -56,7 +59,7 @@ function Harness() {
     setComposerValue: () => {},
     focusComposer: () => {},
     closePalette: () => {},
-    onConversationDeleted: (id) => historyApi.removeConversationMeta(id),
+    onConversationDeleted: () => setContextMenu(null),
   });
   const historyApi = useHistoryOrganization({
     tabs: tabsApi.tabs,
@@ -65,15 +68,27 @@ function Harness() {
     sessionFirstPrompt: tabsApi.sessionFirstPrompt,
     closeContextMenu: () => setContextMenu(null),
   });
+  // Mirrors App.deleteConversation: delete now, drop metadata only when the
+  // undo window lapses.
+  const deleteConversation = (id: string) => {
+    const undo = tabsApi.deleteSession(id);
+    if (!undo) return;
+    showUndoToast({
+      text: 'Conversation deleted.',
+      undo,
+      onExpire: () => historyApi.removeConversationMeta(id),
+    });
+  };
   return (
     <>
       <div data-testid="active-conversation">{messages.map((m) => m.id).join('|')}</div>
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
+      <UndoToast toast={undoToast} onUndo={undoNow} />
       <Sidebar
         history={historyApi}
         sessionFirstPrompt={tabsApi.sessionFirstPrompt}
         switchToSession={tabsApi.switchToSession}
-        deleteSession={tabsApi.deleteSession}
+        deleteSession={deleteConversation}
         handleTabCreate={tabsApi.handleTabCreate}
         focusComposer={() => {}}
         setContextMenu={setContextMenu}
@@ -203,6 +218,106 @@ describe('Sidebar right-click actions', () => {
     const menu = await screen.findByRole('menu');
     await user.click(within(menu).getByRole('menuitem', { name: /Copy first prompt/ }));
     expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar keyboard access to row actions', () => {
+  it('Shift+F10 on a focused row opens the same management menu', async () => {
+    render(<Harness />);
+    const row = historyRow('write release notes');
+    expect(row).toHaveAttribute('aria-haspopup', 'menu');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: /Delete conversation/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /Rename…/ })).toBeInTheDocument();
+  });
+
+  it('the ContextMenu key opens the menu and Escape returns focus to the row', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const row = historyRow('write release notes');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'ContextMenu' });
+    const menu = await screen.findByRole('menu');
+    // Focus moves into the menu so arrows/Escape work without a Tab stop.
+    expect(menu.contains(document.activeElement)).toBe(true);
+    // Wait for the deferred window listeners (attached in a 0ms timeout).
+    await new Promise((r) => setTimeout(r, 10));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('arrow keys walk the menu and Enter activates the focused item', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const row = historyRow('write release notes');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true });
+    await screen.findByRole('menu');
+    // Wait for the deferred window listeners (attached in a 0ms timeout).
+    await new Promise((r) => setTimeout(r, 10));
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveTextContent('Open conversation');
+    await user.keyboard('{ArrowUp}');
+    // Wraps to the last item.
+    expect(document.activeElement).toHaveTextContent('Delete conversation');
+    await user.keyboard('{ArrowDown}{Enter}');
+    // Enter ran "Open conversation" — the whole conversation loads.
+    await waitFor(() =>
+      expect(screen.getByTestId('active-conversation')).toHaveTextContent('m200'),
+    );
+  });
+
+  it('single-letter accelerators still work from the keyboard-opened menu', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(screen.queryByText('Pinned')).not.toBeInTheDocument();
+    const row = historyRow('write release notes');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true });
+    await screen.findByRole('menu');
+    await new Promise((r) => setTimeout(r, 10));
+    await user.keyboard('p');
+    await screen.findByText('Pinned');
+  });
+});
+
+describe('destructive actions offer undo', () => {
+  it('deleting a conversation shows an undo toast that restores it', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    fireEvent.contextMenu(historyRow('write release notes'));
+    const menu = await screen.findByRole('menu');
+    await user.click(within(menu).getByRole('menuitem', { name: /Delete conversation/ }));
+    await waitFor(() => expect(screen.queryByText('write release notes')).not.toBeInTheDocument());
+
+    expect(screen.getByText('Conversation deleted.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByText('write release notes')).toBeInTheDocument();
+    expect(screen.queryByText('Conversation deleted.')).not.toBeInTheDocument();
+  });
+
+  it('undo restores a pinned conversation into the Pinned section', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    fireEvent.contextMenu(historyRow('write release notes'));
+    let menu = await screen.findByRole('menu');
+    await user.click(within(menu).getByRole('menuitem', { name: /Pin to top/ }));
+    await screen.findByText('Pinned');
+
+    fireEvent.contextMenu(historyRow('write release notes'));
+    menu = await screen.findByRole('menu');
+    await user.click(within(menu).getByRole('menuitem', { name: /Delete conversation/ }));
+    await waitFor(() => expect(screen.queryByText('write release notes')).not.toBeInTheDocument());
+
+    // Metadata cleanup is deferred to the undo window, so undo restores the
+    // row still pinned.
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByText('write release notes');
+    const pinnedGroup = screen.getByText('Pinned').closest('.history-group')!;
+    expect(within(pinnedGroup as HTMLElement).getByText('write release notes')).toBeInTheDocument();
   });
 });
 
