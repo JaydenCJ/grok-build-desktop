@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockIPC } from '@tauri-apps/api/mocks';
@@ -58,6 +58,56 @@ describe('QueueDock', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel all' }));
     await waitFor(() => expect(calls).toContain('cancel_pending_runs'));
     expect(screen.queryByText(/Last session had/)).not.toBeInTheDocument();
+  });
+
+  it('surfaces a resume failure via onError and keeps the banner up', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_queue') return { active: null, queue: [queueItem('q1', 'only task')] };
+      if (cmd === 'resume_pending_runs') throw new Error('backend gone');
+      return undefined;
+    });
+    const onError = vi.fn();
+    const user = userEvent.setup();
+    render(<QueueDock onError={onError} />);
+    await screen.findByText(/Last session had 1 pending task\b/);
+
+    await user.click(screen.getByRole('button', { name: 'Resume all' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('backend gone'));
+    // Still visible — the user can retry once the cause is fixed.
+    expect(screen.getByText(/Last session had/)).toBeInTheDocument();
+  });
+
+  it('surfaces a cancel-all failure via onError and keeps the banner up', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_queue') return { active: null, queue: [queueItem('q1', 'only task')] };
+      if (cmd === 'cancel_pending_runs') throw new Error('queue locked');
+      return undefined;
+    });
+    const onError = vi.fn();
+    const user = userEvent.setup();
+    render(<QueueDock onError={onError} />);
+    await screen.findByText(/Last session had 1 pending task\b/);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel all' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('queue locked'));
+    expect(screen.getByText(/Last session had/)).toBeInTheDocument();
+  });
+
+  it('surfaces a single-item cancel failure via onError', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'get_queue') {
+        return { active: 'r-active', queue: [queueItem('q9', 'refactor the parser')] };
+      }
+      if (cmd === 'cancel_run') throw new Error('run already gone');
+      return undefined;
+    });
+    const onError = vi.fn();
+    const user = userEvent.setup();
+    render(<QueueDock onError={onError} />);
+
+    await user.click(await screen.findByRole('button', { name: /expand/ }));
+    await user.click(screen.getByRole('button', { name: 'Cancel this queued run' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('run already gone'));
   });
 
   it('expands to list queued prompts and cancels a single item', async () => {
