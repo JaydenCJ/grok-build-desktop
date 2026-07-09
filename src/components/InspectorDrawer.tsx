@@ -193,7 +193,10 @@ export function InspectorDrawer({
         <div className="inspector-tabs" role="tablist" aria-label={t('inspector.tablistAria')}>
           {inspectorTabs.map((tab) => (
             <button
-              aria-pressed={inspectorTab === tab.id}
+              role="tab"
+              id={`inspector-tab-${tab.id}`}
+              aria-selected={inspectorTab === tab.id}
+              aria-controls="inspector-tabpanel"
               className={inspectorTab === tab.id ? 'active' : ''}
               key={tab.id}
               onClick={() => setInspectorTab(tab.id)}
@@ -224,7 +227,12 @@ export function InspectorDrawer({
           </button>
         </div>
 
-        <div className="inspector-body">
+        <div
+          className="inspector-body"
+          role="tabpanel"
+          id="inspector-tabpanel"
+          aria-labelledby={`inspector-tab-${inspectorTab}`}
+        >
           {inspectorTab === 'context' ? (
             <>
               <section className="inspector-card hero-card">

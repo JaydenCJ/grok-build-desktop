@@ -7,6 +7,11 @@ interface Props {
   query: string;
   onSelect: (entry: FileEntry) => void;
   onCancel: () => void;
+  /** DOM id for the listbox, referenced by the host textarea's aria-controls. */
+  listboxId?: string;
+  /** Reports the highlighted option's id (or null) so the host textarea can
+   *  expose it as aria-activedescendant (combobox pattern). */
+  onActiveDescendant?: (id: string | null) => void;
 }
 
 /**
@@ -21,12 +26,23 @@ interface Props {
  * The picker is "uncontrolled" — the host (Composer) owns the query string
  * extracted from the textarea, and pushes it down via the `query` prop.
  */
-export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
+export function FilePicker({
+  cwd,
+  query,
+  onSelect,
+  onCancel,
+  listboxId = 'file-picker-listbox',
+  onActiveDescendant,
+}: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [highlight, setHighlight] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  // Latest callback in a ref so the reporting effects don't retrigger when a
+  // host passes a fresh closure each render.
+  const onActiveDescendantRef = useRef(onActiveDescendant);
+  onActiveDescendantRef.current = onActiveDescendant;
 
   // Debounced fetch — 80ms is enough to avoid thrashing during fast typing,
   // imperceptible to the eye.
@@ -93,10 +109,24 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
     row?.scrollIntoView({ block: 'nearest' });
   }, [highlight]);
 
+  // Combobox wiring: tell the host which option id is highlighted (null when
+  // the list is empty), and clear it when the picker unmounts.
+  useEffect(() => {
+    onActiveDescendantRef.current?.(entries.length > 0 ? `${listboxId}-opt-${highlight}` : null);
+  }, [entries, highlight, listboxId]);
+  useEffect(() => {
+    return () => onActiveDescendantRef.current?.(null);
+  }, []);
+
   const formattedQuery = useMemo(() => query.trim(), [query]);
 
   return (
-    <div className="file-picker" role="listbox" aria-label={t('filePicker.ariaLabel')}>
+    <div
+      className="file-picker"
+      id={listboxId}
+      role="listbox"
+      aria-label={t('filePicker.ariaLabel')}
+    >
       <div className="file-picker-head">
         <span className="file-picker-title">
           {formattedQuery ? `@${formattedQuery}` : t('filePicker.emptyQuery')}
@@ -124,6 +154,7 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
           entries.map((entry, idx) => (
             <div
               key={entry.path}
+              id={`${listboxId}-opt-${idx}`}
               role="option"
               aria-selected={idx === highlight}
               className={`file-picker-row${idx === highlight ? ' is-highlight' : ''}`}
