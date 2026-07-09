@@ -21,12 +21,12 @@ below are designed to break.
 `src-tauri/tauri.conf.json` ships this production policy:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-img-src 'self' asset: http://asset.localhost data: blob: https:;
+default-src 'self'; script-src 'self'; style-src 'self';
+img-src 'self' asset: http://asset.localhost data: blob:;
 media-src 'self' data: blob:; font-src 'self' data:;
 connect-src 'self' ipc: http://ipc.localhost;
 frame-src grokpreview: http://grokpreview.localhost;
-object-src 'none'; base-uri 'self'
+object-src 'none'; base-uri 'self'; form-action 'none'
 ```
 
 Key decisions:
@@ -35,18 +35,37 @@ Key decisions:
   Even if HTML injection slipped past sanitization, injected `<script>` tags
   and `javascript:` URLs do not execute. Tauri adds nonces/hashes for its own
   bootstrap scripts at build time; nothing else may run.
-- **`style-src 'self' 'unsafe-inline'`** — the codebase uses React `style={}`
-  props (governed by `style-src-attr`, which falls back to `style-src`), so
-  inline _styles_ stay allowed. This is a deliberate trade-off: inline style
-  abuse is a cosmetic/exfiltration-lite primitive, not code execution, and
-  `connect-src` still pins where the page can send data.
+- **`style-src 'self'`** — no `'unsafe-inline'`. This matters because
+  DOMPurify's defaults keep `style="..."` attributes, so a prompt-injected
+  style attribute in assistant markdown would otherwise apply (CSS-based
+  exfiltration probes, spoofed UI overlays). Markup-parsed style attributes
+  are now blocked. The app's own styling is entirely class-based; the one
+  dynamic value (context-menu position) is written through the CSSOM
+  (`element.style.left = …`), which CSP deliberately does not govern — but
+  reaching the CSSOM requires script execution, which `script-src` already
+  gates. `scripts/smoke_test.mjs` guards that no React `style={}` props creep
+  back in.
 - **Fonts are bundled** — Geist and JetBrains Mono ship via
   `@fontsource-variable` packages imported in `src/main.tsx`, so `font-src`
   needs no remote origins and the app renders identically offline.
-- **`img-src ... https:`** remains so markdown responses can show remote
-  images. Image fetches are the accepted remaining remote-request primitive.
-- `devCsp` additionally allows `'unsafe-inline'` scripts and websockets —
-  required by Vite HMR and the React refresh preamble. It never ships.
+- **`img-src` has no remote origins** — DOMPurify allows `<img>`, so an
+  `https:` source would let a prompt-injected markdown image exfiltrate
+  conversation data in a zero-click GET (the payload rides in the URL; no
+  script, no user interaction). Remote images in chat are therefore blocked
+  by design and simply do not render; local (`'self'`, `asset:`), `data:`,
+  and `blob:` images still work.
+- **`form-action 'none'`** — `form-action` does **not** inherit from
+  `default-src`; without it, an injected `<form action="https://…">` plus a
+  submit (DOMPurify keeps forms and submit buttons) is a navigation +
+  exfiltration primitive. The app submits no real HTML forms.
+- `devCsp` additionally allows `'unsafe-inline'` scripts and styles plus
+  websockets — required by Vite HMR (the React refresh preamble is an inline
+  script; HMR injects `<style>` tags). It carries the same locked-down
+  `img-src` and `form-action 'none'`, and it never ships.
+- The e2e smoke test (`e2e/smoke.e2e.mjs`) serves the production build with
+  this exact CSP attached as a response header, so a change that starts
+  depending on inline styles/scripts or remote origins fails CI as a CSP
+  violation, not in a shipped build.
 
 ## Preview isolation (`grokpreview://`)
 
@@ -87,7 +106,10 @@ not prevention — is the goal.
 `marked` does not sanitize. Every worker-produced HTML string is passed
 through DOMPurify (`src/lib/sanitizeHtml.ts`) before `dangerouslySetInnerHTML`
 in `MessageItem`. The CSP above is the second net behind it: even a DOMPurify
-bypass yields no script execution under `script-src 'self'`.
+bypass yields no script execution under `script-src 'self'`, and the elements
+DOMPurify deliberately allows (`<img>`, `style` attributes, `<form>`) are
+defanged by `img-src` (no remote origins), `style-src` (no
+`'unsafe-inline'`), and `form-action 'none'` respectively.
 
 ## IPC surface
 
