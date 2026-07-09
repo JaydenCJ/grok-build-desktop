@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: false,
+    // Anchor discovery to this project's src tree; the default glob also
+    // walks nested checkouts under the repo root (e.g. linked worktrees)
+    // and would run their copies of every test file.
+    include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
