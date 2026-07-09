@@ -17,11 +17,14 @@
   --bg-5: #353535;
   --bg-overlay: rgba(0, 0, 0, 0.6);
 
-  /* Text — warm off-white, never pure */
+  /* Text — warm off-white, never pure. --text-4 is the faintest tier that
+     still renders words (placeholders, path hints, shortcut hints): it must
+     hold WCAG AA 4.5:1 on every surface it appears on (bg-1…bg-3). The old
+     #46443f measured 1.7–1.9:1 — illegible. */
   --text-1: #ece9e2;
   --text-2: #999692;
   --text-3: #6a6864;
-  --text-4: #46443f;
+  --text-4: #888580;
 
   /* Borders — hairlines, low contrast */
   --border: #232323;
@@ -128,7 +131,9 @@ body[data-theme='light'] {
   --text-1: #1f1d19;
   --text-2: #5c5953;
   --text-3: #8e8b83;
-  --text-4: #b5b1a7;
+  /* Same AA contract as the dark token: ≥4.5:1 on bg-1…bg-3 (was #b5b1a7,
+     which measured 1.8–2.0:1 on the parchment surfaces). */
+  --text-4: #6e6a63;
 
   --border: #e1dcce;
   --border-2: #d4cfbe;
