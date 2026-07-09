@@ -12,7 +12,15 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
 }
 
-export function QueueDock() {
+interface Props {
+  /** Called when a queue action (resume / cancel) fails, with a
+   *  human-readable message. The host surfaces it (session notice) — an
+   *  unhandled rejection here left the buttons looking like they worked while
+   *  the queue stayed exactly as it was. */
+  onError?: (message: string) => void;
+}
+
+export function QueueDock({ onError }: Props) {
   const [expanded, setExpanded] = useState(false);
   const queue = useQueue();
   const active = useActiveRun();
@@ -40,13 +48,26 @@ export function QueueDock() {
     };
   }, []);
 
+  const surfaceError = (err: unknown) => {
+    onError?.(err instanceof Error ? err.message : String(err));
+  };
+  // On failure the banner stays up so the user can retry once the cause
+  // (e.g. backend hiccup) is gone.
   const handleResume = async () => {
-    await resumePendingRuns();
-    setResumeBannerVisible(false);
+    try {
+      await resumePendingRuns();
+      setResumeBannerVisible(false);
+    } catch (err) {
+      surfaceError(err);
+    }
   };
   const handleCancelAll = async () => {
-    await cancelPendingRuns();
-    setResumeBannerVisible(false);
+    try {
+      await cancelPendingRuns();
+      setResumeBannerVisible(false);
+    } catch (err) {
+      surfaceError(err);
+    }
   };
 
   // Only surface the dock when it has something to manage: queued tasks
@@ -94,7 +115,10 @@ export function QueueDock() {
             <li key={item.id} className="queue-item">
               <span className="queue-item-state">⏸</span>
               <span className="queue-item-prompt">{item.prompt.slice(0, 80)}</span>
-              <button onClick={() => cancelRun(item.id)} aria-label={t('queue.cancelQueuedRun')}>
+              <button
+                onClick={() => void cancelRun(item.id).catch(surfaceError)}
+                aria-label={t('queue.cancelQueuedRun')}
+              >
                 ✕
               </button>
             </li>

@@ -416,6 +416,7 @@ export const en = {
 
   // ── Session notices / toasts ──────────────────────────────────────────────
   'notices.stopFailed': 'Stop failed: {error}',
+  'notices.queueActionFailed': 'Queue action failed: {error}',
   'notices.cleared': 'Cleared conversation, run history, and terminal.',
   'notices.desktopContextAppended': 'Desktop context appended to your draft.',
   'notices.restored': 'Restored {count} recent {runWord}{messagePart}.',

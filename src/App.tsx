@@ -674,7 +674,11 @@ function App() {
               </div>
             ) : null}
 
-            <QueueDock />
+            <QueueDock
+              onError={(message) =>
+                setSessionNotice(t('notices.queueActionFailed', { error: message }))
+              }
+            />
             <StatusBar />
 
             <ComposerSection
