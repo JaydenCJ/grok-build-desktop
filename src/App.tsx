@@ -22,8 +22,10 @@ import { WorkspaceStatusBar } from './components/WorkspaceStatusBar';
 import { TitleBar } from './components/TitleBar';
 import { ComposerSection } from './components/ComposerSection';
 import { SettingsHost } from './components/SettingsHost';
+import { UndoToast } from './components/UndoToast';
 import { useActiveRun } from './hooks/useActiveRun';
 import { useGrokRunners } from './hooks/useGrokRunners';
+import { useUndoToast } from './hooks/useUndoToast';
 import { useSessionPersistence } from './hooks/useSessionPersistence';
 import { useModelConfig } from './hooks/useModelConfig';
 import { useSessionTabs } from './hooks/useSessionTabs';
@@ -95,11 +97,14 @@ function App() {
       setComposerValue,
       focusComposer: () => composerRef.current?.focus(),
       closePalette: () => setPaletteOpen(false),
-      onConversationDeleted: (id) => {
-        removeConversationMeta(id);
+      onConversationDeleted: () => {
+        // Metadata cleanup is deferred to the undo-toast expiry (see
+        // deleteConversation below) so undo restores pin/group/label too.
         setContextMenu(null);
       },
     });
+  // Undo window for destructive actions (delete conversation, clear history).
+  const { undoToast, showUndoToast, undoNow } = useUndoToast();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -216,14 +221,41 @@ function App() {
     activeModel,
     modelIsVerified,
   } = modelConfig;
+  // Clear conversation + run history + terminal — destructive, so it offers
+  // an undo window instead of firing blind. The snapshot is cheap (immutable
+  // arrays) and restoring it re-mirrors into the active tab automatically.
   function clearRunHistory() {
+    const snapshot = { lastRun, history, messages, terminalLines, totalRuns };
     setLastRun(null);
     setHistory([]);
     setMessages([]);
     setTerminalLines([]);
     setTotalRuns(0);
     window.localStorage.setItem('grok-desktop-run-count-total', '0');
-    setSessionNotice(t('notices.cleared'));
+    showUndoToast({
+      text: t('notices.cleared'),
+      undo: () => {
+        setLastRun(snapshot.lastRun);
+        setHistory(snapshot.history);
+        setMessages(snapshot.messages);
+        setTerminalLines(snapshot.terminalLines);
+        setTotalRuns(snapshot.totalRuns);
+        window.localStorage.setItem('grok-desktop-run-count-total', String(snapshot.totalRuns));
+      },
+    });
+  }
+
+  // Delete a conversation with an undo window. The tab restore comes from
+  // useSessionTabs; its pin/label/group/archive metadata is only dropped once
+  // the window lapses, so undo brings the row back fully organized.
+  function deleteConversation(id: string) {
+    const undo = deleteSession(id);
+    if (!undo) return;
+    showUndoToast({
+      text: t('notices.conversationDeleted'),
+      undo,
+      onExpire: () => removeConversationMeta(id),
+    });
   }
 
   // Write the streamed assistant text back into `messages` when a run reaches
@@ -605,7 +637,7 @@ function App() {
         history={historyApi}
         sessionFirstPrompt={sessionFirstPrompt}
         switchToSession={switchToSession}
-        deleteSession={deleteSession}
+        deleteSession={deleteConversation}
         handleTabCreate={handleTabCreate}
         focusComposer={() => composerRef.current?.focus()}
         setContextMenu={setContextMenu}
@@ -670,6 +702,7 @@ function App() {
                 {sessionNotice}
               </div>
             ) : null}
+            <UndoToast toast={undoToast} onUndo={undoNow} />
 
             <QueueDock
               onError={(message) =>

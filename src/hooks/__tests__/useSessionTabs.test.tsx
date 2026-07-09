@@ -165,6 +165,50 @@ describe('deleteSession', () => {
     expect(result.current.codingCwd).toBe('/repo/beta');
   });
 
+  it('returns an undo closure that reinstates the deleted conversation', () => {
+    seedTabs();
+    const { result } = renderHook(() => useHarness([message('a1')]));
+    let undo: (() => void) | null = null;
+    act(() => {
+      undo = result.current.deleteSession('t2');
+    });
+    expect(result.current.tabs.map((t) => t.id)).toEqual(['t1']);
+    expect(undo).toBeTypeOf('function');
+
+    act(() => undo!());
+    const restored = result.current.tabs.find((t) => t.id === 't2');
+    expect(restored).toBeDefined();
+    expect(restored!.messages.map((m) => m.id)).toEqual(['b1', 'b2']);
+    expect(restored!.cwd).toBe('/repo/beta');
+  });
+
+  it('undo captures the live messages when deleting the active conversation', () => {
+    seedTabs();
+    const { result } = renderHook(() => useHarness([message('a1')]));
+    // New chat activity in the active conversation, then delete it.
+    act(() => result.current.setMessages((cur) => [...cur, message('a2')]));
+    let undo: (() => void) | null = null;
+    act(() => {
+      undo = result.current.deleteSession('t1');
+    });
+    expect(result.current.activeTabId).toBe('t2');
+
+    act(() => undo!());
+    const restored = result.current.tabs.find((t) => t.id === 't1');
+    expect(restored!.messages.map((m) => m.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('returns null for an unknown id and deletes nothing', () => {
+    seedTabs();
+    const { result } = renderHook(() => useHarness([message('a1')]));
+    let undo: (() => void) | null = null;
+    act(() => {
+      undo = result.current.deleteSession('ghost');
+    });
+    expect(undo).toBeNull();
+    expect(result.current.tabs.map((t) => t.id)).toEqual(['t1', 't2']);
+  });
+
   it('resets to a single fresh empty conversation when the last one is deleted', () => {
     window.localStorage.setItem(
       tabsStorageKey,

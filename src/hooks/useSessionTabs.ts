@@ -22,7 +22,9 @@ export interface SessionTabsDeps {
   setComposerValue: (value: string) => void;
   focusComposer: () => void;
   closePalette: () => void;
-  /** Drop per-conversation metadata (pin/label/group/archive) + close menus. */
+  /** A conversation was deleted: close menus and schedule metadata cleanup
+   *  (pin/label/group/archive). The host defers the actual metadata drop to
+   *  the undo-toast expiry so undo restores the row with its organization. */
   onConversationDeleted: (id: string) => void;
 }
 
@@ -207,7 +209,20 @@ export function useSessionTabs(deps: SessionTabsDeps) {
   // "some conversations can't be deleted" — the old delete only hid a message
   // preview while the underlying message stayed). If the active conversation is
   // deleted, fall back to the newest remaining one, or a fresh empty session.
-  function deleteSession(id: string) {
+  // Returns an undo closure that reinstates the deleted conversation (the host
+  // surfaces it via an undo toast); null when the id didn't match anything.
+  function deleteSession(id: string): (() => void) | null {
+    const victim = tabs.find((t) => t.id === id);
+    if (!victim) return null;
+    // The mirror effect keeps the active tab's messages current, but capture
+    // the live array anyway so undo can't lose the last few keystrokes.
+    const victimSnapshot: Tab = {
+      ...victim,
+      messages: (id === activeTabId
+        ? (messages as unknown as TabMessage[])
+        : victim.messages
+      ).slice(),
+    };
     const remaining = tabs.filter((t) => t.id !== id);
     if (remaining.length === 0) {
       // Last conversation → reset to a single fresh, empty one.
@@ -225,8 +240,14 @@ export function useSessionTabs(deps: SessionTabsDeps) {
       }
       setTabs(remaining);
     }
-    // Drop any per-conversation metadata so it doesn't linger.
+    // Notify the host (menu close, deferred metadata cleanup).
     onConversationDeleted(id);
+    return () => {
+      // Reinstate the conversation unless an identically-id'd tab reappeared.
+      setTabs((current) =>
+        current.some((t) => t.id === victimSnapshot.id) ? current : [...current, victimSnapshot],
+      );
+    };
   }
 
   return {
