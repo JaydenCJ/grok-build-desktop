@@ -15,21 +15,22 @@ interface RawFileEntry {
   size_bytes: number;
 }
 
+/**
+ * List files under `cwd` matching `query`. Backend failures (bad cwd,
+ * permission error, IPC hiccup) REJECT rather than resolving to `[]` — the
+ * FilePicker shows a distinct error state, since "no matches" for a broken
+ * listing sent users hunting for typos in their query.
+ */
 export async function globFiles(cwd: string, query: string, limit = 25): Promise<FileEntry[]> {
   if (!hasTauri()) return [];
   const trimmed = cwd.trim();
   if (!trimmed) return [];
-  try {
-    const raw = await invoke<RawFileEntry[]>('glob_files', { cwd: trimmed, query, limit });
-    return raw.map((e) => ({
-      path: e.path,
-      displayName: e.display_name,
-      sizeBytes: e.size_bytes,
-    }));
-  } catch (err) {
-    console.warn('[grok-desktop] glob_files failed', err);
-    return [];
-  }
+  const raw = await invoke<RawFileEntry[]>('glob_files', { cwd: trimmed, query, limit });
+  return raw.map((e) => ({
+    path: e.path,
+    displayName: e.display_name,
+    sizeBytes: e.size_bytes,
+  }));
 }
 
 export async function readFileSafe(

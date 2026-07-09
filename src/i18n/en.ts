@@ -62,6 +62,8 @@ export const en = {
   'filePicker.matchMany': '{count} matches',
   'filePicker.scanning': 'Scanning…',
   'filePicker.noFiles': 'No files matched. ⎋ to dismiss.',
+  'filePicker.errorMeta': 'listing failed',
+  'filePicker.error': 'Could not list files: {error}',
   'filePicker.hint': '↑↓ navigate · ⏎/Tab insert · ⎋ dismiss',
 
   // ── Composer ──────────────────────────────────────────────────────────────

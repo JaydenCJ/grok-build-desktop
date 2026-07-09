@@ -25,6 +25,7 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [highlight, setHighlight] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Debounced fetch — 80ms is enough to avoid thrashing during fast typing,
@@ -33,9 +34,18 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
     let cancelled = false;
     setLoading(true);
     const t = window.setTimeout(async () => {
-      const result = await globFiles(cwd, query, 25);
+      let result: FileEntry[] = [];
+      let failure: string | null = null;
+      try {
+        result = await globFiles(cwd, query, 25);
+      } catch (err) {
+        // A failed listing is NOT "no matches" — rendering the empty-state
+        // copy here sent users hunting for typos when the cwd was the problem.
+        failure = err instanceof Error ? err.message : String(err);
+      }
       if (cancelled) return;
       setEntries(result);
+      setError(failure);
       setHighlight(0);
       setLoading(false);
     }, 80);
@@ -94,13 +104,19 @@ export function FilePicker({ cwd, query, onSelect, onCancel }: Props) {
         <span className="file-picker-meta">
           {loading
             ? t('common.busy')
-            : t(entries.length === 1 ? 'filePicker.matchOne' : 'filePicker.matchMany', {
-                count: entries.length,
-              })}
+            : error
+              ? t('filePicker.errorMeta')
+              : t(entries.length === 1 ? 'filePicker.matchOne' : 'filePicker.matchMany', {
+                  count: entries.length,
+                })}
         </span>
       </div>
       <div className="file-picker-list" ref={listRef}>
-        {entries.length === 0 ? (
+        {!loading && error ? (
+          <div className="file-picker-error" role="alert">
+            {t('filePicker.error', { error })}
+          </div>
+        ) : entries.length === 0 ? (
           <div className="file-picker-empty">
             {loading ? t('filePicker.scanning') : t('filePicker.noFiles')}
           </div>

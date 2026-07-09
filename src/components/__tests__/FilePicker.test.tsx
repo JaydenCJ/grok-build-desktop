@@ -124,6 +124,46 @@ describe('FilePicker', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('surfaces a listing failure distinctly from "no matches"', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'glob_files') throw new Error('cwd does not exist');
+      return undefined;
+    });
+    const { onSelect, onCancel } = renderPicker();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not list files: cwd does not exist',
+    );
+    expect(screen.getByText('listing failed')).toBeInTheDocument();
+    expect(screen.queryByText(/No files matched/)).not.toBeInTheDocument();
+
+    // Enter has nothing to insert — dismiss, same as the empty state.
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('clears the error state once a later query succeeds', async () => {
+    let fail = true;
+    mockIPC((cmd) => {
+      if (cmd !== 'glob_files') return undefined;
+      if (fail) throw new Error('transient');
+      return RAW_ENTRIES;
+    });
+    const onSelect = vi.fn();
+    const onCancel = vi.fn();
+    const { rerender } = render(
+      <FilePicker cwd="/repo" query="src" onSelect={onSelect} onCancel={onCancel} />,
+    );
+    await screen.findByRole('alert');
+
+    fail = false;
+    rerender(<FilePicker cwd="/repo" query="docs" onSelect={onSelect} onCancel={onCancel} />);
+    expect(await screen.findByText('a.ts')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('3 matches')).toBeInTheDocument();
+  });
+
   it('selects an entry on mousedown and highlights on hover', async () => {
     mockGlob();
     const { onSelect } = renderPicker();
