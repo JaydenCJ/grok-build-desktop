@@ -34,5 +34,5 @@ ignore = "0.4"
 # nix is Unix-only (signals, process groups); skipped on Windows where we use
 # taskkill /T for process-tree termination instead. See src/runs/process.rs.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process"] }
 
